@@ -19,12 +19,20 @@ permissions:
 jobs:
     cleanup:
         runs-on: ubuntu-latest
+        env:
+            GH_PAT_ACTIONS_DELETE: ${{ vars.GH_PAT_ACTIONS_DELETE }}
         steps:
+            - name: PAT が設定されているか確認
+              run: |
+                  if [ -z "${GH_PAT_ACTIONS_DELETE}" ]; then
+                    echo "GH_PAT_ACTIONS_DELETE が未設定です (Repository Variables)" >&2
+                    exit 1
+                  fi
             - name: 失敗したワークフロー実行を全削除（PAT使用・全Workflow横断）
               uses: actions/github-script@v7
               with:
                   # 重要：GITHUB_TOKEN では権限不足の可能性があるため Fine-grained PAT を使用
-                  github-token: ${{ secrets.GH_PAT_ACTIONS_DELETE }}
+                  github-token: ${{ env.GH_PAT_ACTIONS_DELETE }}
                   script: |
                       const { owner, repo } = context.repo;
 
@@ -71,7 +79,7 @@ jobs:
             - name: （任意）古いアーティファクト・キャッシュも整理
               uses: actions/github-script@v7
               with:
-                  github-token: ${{ secrets.GH_PAT_ACTIONS_DELETE }}
+                  github-token: ${{ env.GH_PAT_ACTIONS_DELETE }}
                   script: |
                       const { owner, repo } = context.repo;
                       const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000; // 7日前
