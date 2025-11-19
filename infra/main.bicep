@@ -88,6 +88,9 @@ param aksAdminUsername string = 'aksadmin'
 @description('AKS ノード用 SSH 公開鍵')
 param aksSshPublicKey string
 
+@description('既存 AKS がある場合は true にして再作成をスキップ (SSH 公開鍵変更禁止エラーを回避)')
+param aksSkipCreate bool = false
+
 @description('AKS Service CIDR')
 param aksServiceCidr string = '10.10.0.0/24'
 
@@ -231,7 +234,7 @@ module containerAppsEnv './modules/containerAppEnv.bicep' = {
   }
 }
 
-module aks './modules/aks.bicep' = {
+module aks './modules/aks.bicep' = if (!aksSkipCreate) {
   name: 'aks'
   params: {
     name: aksName
@@ -386,7 +389,8 @@ resource caeDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-previe
 }
 
 output azureContainerRegistryId string = acr.outputs.id
-output aksClusterId string = aks.outputs.id
+// 既存クラスタ再利用時も ID を一貫して出力 (aksSkipCreate=true の場合 module は作成されない)
+output aksClusterId string = resourceId('Microsoft.ContainerService/managedClusters', aksName)
 output containerAppsEnvironmentId string = containerAppsEnv.outputs.id
 output logAnalyticsId string = logAnalytics.outputs.id
 output virtualNetworkId string = vnet.outputs.id
