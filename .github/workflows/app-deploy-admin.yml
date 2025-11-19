@@ -1,111 +1,111 @@
 name: app-deploy-admin
 
 on:
-    workflow_dispatch:
-        inputs:
-            imageTag:
-                description: "ACR にプッシュ済みの admin-app イメージタグ (空なら latest)"
-                required: false
-    push:
-        branches:
-            - master
-        paths:
-            - "app/admin-app/**"
-            - ".github/workflows/app-deploy-admin.yml"
+  workflow_dispatch:
+    inputs:
+      imageTag:
+        description: "ACR にプッシュ済みの admin-app イメージタグ (空なら latest)"
+        required: false
+  push:
+    branches:
+      - master
+    paths:
+      - "app/admin-app/**"
+      - ".github/workflows/app-deploy-admin.yml"
 
 permissions:
-    contents: read
-    id-token: write
+  contents: read
+  id-token: write
 
 env:
-    RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
-    ACA_ENVIRONMENT_NAME: ${{ vars.ACA_ENVIRONMENT_NAME }}
-    CONTAINER_APP_NAME: ${{ vars.ADMIN_CONTAINER_APP_NAME }}
-    ACR_NAME: ${{ vars.ACR_NAME }}
-    ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
-    ADMIN_IMAGE_NAME: admin-app
-    ADMIN_TARGET_PORT: 8000
-    DB_ENDPOINT: ${{ vars.DB_ENDPOINT }}
-    BACKUP_CONTAINER: ${{ vars.BACKUP_CONTAINER_NAME }}
+  RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+  ACA_ENVIRONMENT_NAME: ${{ vars.ACA_ENVIRONMENT_NAME }}
+  CONTAINER_APP_NAME: ${{ vars.ADMIN_CONTAINER_APP_NAME }}
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
+  ADMIN_IMAGE_NAME: admin-app
+  ADMIN_TARGET_PORT: 8000
+  DB_ENDPOINT: ${{ vars.DB_ENDPOINT }}
+  BACKUP_CONTAINER: ${{ vars.BACKUP_CONTAINER_NAME }}
 
 jobs:
-    deploy:
-        runs-on: ubuntu-latest
-        steps:
-            - name: コードを取得
-              uses: actions/checkout@v4
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
 
-            - name: Azure に OIDC でログイン
-              uses: azure/login@v2
-              with:
-                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
-                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-                  subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Azure に OIDC でログイン
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-            - name: Container Apps 拡張機能を更新
-              run: |
-                  az extension add --name containerapp --upgrade
+      - name: Container Apps 拡張機能を更新
+        run: |
+          az extension add --name containerapp --upgrade
 
-            - name: イメージタグを決定
-              id: image_meta
-              run: |
-                  IMAGE_TAG='${{ github.event.inputs.imageTag }}'
-                  if [ -z "$IMAGE_TAG" ]; then
-                    IMAGE_TAG='latest'
-                  fi
-                  echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
-                  echo "IMAGE_FULL=$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
+      - name: イメージタグを決定
+        id: image_meta
+        run: |
+          IMAGE_TAG='${{ github.event.inputs.imageTag }}'
+          if [ -z "$IMAGE_TAG" ]; then
+            IMAGE_TAG='latest'
+          fi
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "IMAGE_FULL=$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
 
-            - name: ACR Pull 用トークンを取得
-              id: acr_token
-              run: |
-                  TOKEN_JSON=$(az acr login --name "$ACR_NAME" --expose-token)
-                  echo "ACR_USERNAME=$(echo "$TOKEN_JSON" | jq -r '.username')" >> "$GITHUB_ENV"
-                  echo "ACR_PASSWORD=$(echo "$TOKEN_JSON" | jq -r '.accessToken')" >> "$GITHUB_ENV"
+      - name: ACR Pull 用トークンを取得
+        id: acr_token
+        run: |
+          TOKEN_JSON=$(az acr login --name "$ACR_NAME" --expose-token)
+          echo "ACR_USERNAME=$(echo "$TOKEN_JSON" | jq -r '.username')" >> "$GITHUB_ENV"
+          echo "ACR_PASSWORD=$(echo "$TOKEN_JSON" | jq -r '.accessToken')" >> "$GITHUB_ENV"
 
-            - name: Container Apps へデプロイ
-              env:
-                  ADMIN_BASIC_AUTH_USERNAME: ${{ secrets.ADMIN_BASIC_AUTH_USERNAME }}
-                  ADMIN_BASIC_AUTH_PASSWORD: ${{ secrets.ADMIN_BASIC_AUTH_PASSWORD }}
-              run: |
-                  az containerapp up \
-                    --name "$CONTAINER_APP_NAME" \
-                    --resource-group "$RESOURCE_GROUP_NAME" \
-                    --environment "$ACA_ENVIRONMENT_NAME" \
-                    --image "$IMAGE_FULL" \
-                    --ingress external \
-                    --target-port "$ADMIN_TARGET_PORT" \
-                    --min-replicas 0 \
-                    --max-replicas 1 \
-                    --transport auto \
-                    --registry-server "$ACR_LOGIN_SERVER" \
-                    --registry-username "$ACR_USERNAME" \
-                    --registry-password "$ACR_PASSWORD" \
-                    --revision-suffix "gh-${GITHUB_RUN_NUMBER}" \
-                    --query name
+      - name: Container Apps へデプロイ
+        env:
+          ADMIN_BASIC_AUTH_USERNAME: ${{ secrets.ADMIN_BASIC_AUTH_USERNAME }}
+          ADMIN_BASIC_AUTH_PASSWORD: ${{ secrets.ADMIN_BASIC_AUTH_PASSWORD }}
+        run: |
+          az containerapp up \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --environment "$ACA_ENVIRONMENT_NAME" \
+            --image "$IMAGE_FULL" \
+            --ingress external \
+            --target-port "$ADMIN_TARGET_PORT" \
+            --min-replicas 0 \
+            --max-replicas 1 \
+            --transport auto \
+            --registry-server "$ACR_LOGIN_SERVER" \
+            --registry-username "$ACR_USERNAME" \
+            --registry-password "$ACR_PASSWORD" \
+            --revision-suffix "gh-${GITHUB_RUN_NUMBER}" \
+            --query name
 
-                  az containerapp secret set \
-                    --name "$CONTAINER_APP_NAME" \
-                    --resource-group "$RESOURCE_GROUP_NAME" \
-                    --secrets admin-username="$ADMIN_BASIC_AUTH_USERNAME" admin-password="$ADMIN_BASIC_AUTH_PASSWORD"
+          az containerapp secret set \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --secrets admin-username="$ADMIN_BASIC_AUTH_USERNAME" admin-password="$ADMIN_BASIC_AUTH_PASSWORD"
 
-                  az containerapp envvar set \
-                    --name "$CONTAINER_APP_NAME" \
-                    --resource-group "$RESOURCE_GROUP_NAME" \
-                    --environment-variables \
-                      ADMIN_USERNAME=secretref:admin-username \
-                      ADMIN_PASSWORD=secretref:admin-password \
-                      DB_ENDPOINT="$DB_ENDPOINT" \
-                      BACKUP_CONTAINER="$BACKUP_CONTAINER"
+          az containerapp envvar set \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --environment-variables \
+              ADMIN_USERNAME=secretref:admin-username \
+              ADMIN_PASSWORD=secretref:admin-password \
+              DB_ENDPOINT="$DB_ENDPOINT" \
+              BACKUP_CONTAINER="$BACKUP_CONTAINER"
 
-                  az containerapp revision set-mode \
-                    --name "$CONTAINER_APP_NAME" \
-                    --resource-group "$RESOURCE_GROUP_NAME" \
-                    --mode single
+          az containerapp revision set-mode \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --mode single
 
-            - name: FQDN を表示
-              run: |
-                  az containerapp show \
-                    --name "$CONTAINER_APP_NAME" \
-                    --resource-group "$RESOURCE_GROUP_NAME" \
-                    --query "properties.configuration.ingress.fqdn"
+      - name: FQDN を表示
+        run: |
+          az containerapp show \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --query "properties.configuration.ingress.fqdn"
