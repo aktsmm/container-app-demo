@@ -6,13 +6,11 @@ on:
             imageTag:
                 description: "ACR にプッシュ済みのイメージタグ (未指定時は latest)"
                 required: false
-    push:
-        branches:
-            - master
-        paths:
-            - "app/board-app/k8s/**"
-            - "scripts/sync-board-vars.ps1"
-            - ".github/workflows/app-deploy-board.yml"
+    workflow_run:
+        workflows:
+            - app-build-board
+        types:
+            - completed
 
 permissions:
     contents: read
@@ -29,6 +27,8 @@ env:
 jobs:
     deploy:
         runs-on: ubuntu-latest
+        # build ワークフロー経由のときのみ自動実行し、失敗 run は除外する
+        if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
         steps:
             - name: コードを取得
               uses: actions/checkout@v4
@@ -84,7 +84,13 @@ jobs:
             - name: デプロイに使用するイメージを決定
               id: image_meta
               run: |
-                  IMAGE_TAG='${{ github.event.inputs.imageTag }}'
+                  EVENT_NAME='${{ github.event_name }}'
+                  if [ "$EVENT_NAME" = 'workflow_run' ]; then
+                    HEAD_SHA='${{ github.event.workflow_run.head_sha }}'
+                    IMAGE_TAG="${HEAD_SHA:0:12}"
+                  else
+                    IMAGE_TAG='${{ github.event.inputs.imageTag }}'
+                  fi
                   if [ -z "$IMAGE_TAG" ]; then
                     IMAGE_TAG='latest'
                   fi
