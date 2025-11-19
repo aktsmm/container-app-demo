@@ -1,0 +1,2 @@
+# Ignore local npm cache artifacts
+.npm-cache/
