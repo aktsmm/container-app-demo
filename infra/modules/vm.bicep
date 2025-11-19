@@ -48,12 +48,12 @@ param tags object = {}
 
 var mysqlInitScript = loadTextContent('../../scripts/mysql-init.sh')
 var mysqlInitCommand = format('''
-bash -c "cat <<'EOF' >/tmp/mysql-init.sh
+bash -c 'cat <<'\''EOFSCRIPT'\'' >/tmp/mysql-init.sh
 {0}
-EOF
-sudo chmod +x /tmp/mysql-init.sh
-sudo /tmp/mysql-init.sh $(echo '{1}' | base64 -d) $(echo '{2}' | base64 -d) $(echo '{3}' | base64 -d)"
-''', mysqlInitScript, base64(mysqlRootPassword), base64(mysqlAppUsername), base64(mysqlAppPassword))
+EOFSCRIPT
+chmod +x /tmp/mysql-init.sh
+/tmp/mysql-init.sh "{1}" "{2}" "{3}"'
+''', mysqlInitScript, mysqlRootPassword, mysqlAppUsername, mysqlAppPassword)
 
 resource publicIp 'Microsoft.Network/publicIPAddresses@2023-09-01' = {
   name: '${name}-pip'
@@ -170,6 +170,9 @@ resource vm 'Microsoft.Compute/virtualMachines@2023-09-01' = {
   }
 }
 
+// Azure Monitor Agent は Data Collection Rule (DCR) が必要なため一時無効化
+// TODO: DCR 作成後に有効化
+/*
 resource azureMonitorAgent 'Microsoft.Compute/virtualMachines/extensions@2022-11-01' = {
   name: 'AzureMonitorLinuxAgent'
   parent: vm
@@ -187,6 +190,7 @@ resource azureMonitorAgent 'Microsoft.Compute/virtualMachines/extensions@2022-11
     }
   }
 }
+*/
 
 resource mysqlInit 'Microsoft.Compute/virtualMachines/extensions@2022-11-01' = {
   name: 'MysqlInit'
