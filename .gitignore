@@ -3,3 +3,11 @@
 
 # Ignore sample assets placed under ignore/
 ignore/
+
+# Node.js build artifacts
+node_modules/
+dist/
+
+# Python bytecode
+__pycache__/
+*.pyc
