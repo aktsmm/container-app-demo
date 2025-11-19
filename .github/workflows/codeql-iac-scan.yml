@@ -1,0 +1,126 @@
+name: codeql-iac-scan
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'app/board-app/**'
+      - 'app/admin-app/**'
+      - 'infra/**'
+      - '.github/workflows/codeql-iac-scan.yml'
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'app/board-app/**'
+      - 'app/admin-app/**'
+      - 'infra/**'
+  schedule:
+    - cron: '0 3 * * *' # 毎日 03:00 UTC (JST 午前 12時) 定期スキャン
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  CODEQL_LANGUAGES: 'javascript,python'
+
+jobs:
+  codeql:
+    name: CodeQL (JS+Python)
+    runs-on: ubuntu-latest
+    steps:
+      - name: コード取得
+        uses: actions/checkout@v4
+
+      - name: CodeQL 初期化
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ env.CODEQL_LANGUAGES }}
+          queries: security-extended # 追加のセキュリティ拡張クエリ
+
+      - name: 自動ビルド
+        uses: github/codeql-action/autobuild@v3
+
+      - name: CodeQL 解析
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: 'codeql'
+
+  iac-security:
+    name: IaC セキュリティ (Bicep/K8s/Secrets)
+    runs-on: ubuntu-latest
+    steps:
+      - name: コード取得
+        uses: actions/checkout@v4
+
+      - name: Trivy DB キャッシュ復元
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('infra/**/*.bicep') }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      - name: Trivy CLI インストール
+        run: |
+          set -euo pipefail
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy --version
+
+      - name: Bicep (infra/) 設定 & 秘密情報 & ミスコンフィグ スキャン (SARIF)
+        run: |
+          set -euo pipefail
+          trivy fs infra \
+            --scanners config,secret \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --format sarif --output trivy-infra.sarif \
+            --ignore-unfixed
+
+      - name: Kubernetes マニフェスト (board-app/k8s) スキャン (SARIF)
+        run: |
+          set -euo pipefail
+          trivy fs app/board-app/k8s \
+            --scanners config,secret \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --format sarif --output trivy-k8s.sarif \
+            --ignore-unfixed
+
+      - name: Trivy SARIF アップロード (infra)
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-infra.sarif
+
+      - name: Trivy SARIF アップロード (k8s)
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-k8s.sarif
+
+      - name: スキャン成果物保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: iac-scan-results
+          path: |
+            trivy-infra.sarif
+            trivy-k8s.sarif
+
+  summary:
+    name: まとめレポート
+    runs-on: ubuntu-latest
+    needs: [codeql, iac-security]
+    steps:
+      - name: ステータス集計
+        run: |
+          echo "CodeQL & IaC スキャン完了。Security タブでアラートを確認してください" > summary.txt
+      - name: アーティファクト保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-summary
+          path: summary.txt
+
+# コメント:
+# - CodeQL: JavaScript(React/Vite) と Python(FastAPI/Flask等) を security-extended クエリで解析。
+# - IaC: Bicep と Kubernetes YAML を Trivy config+secret スキャナでスキャンし、ミスコンフィグ/シークレット漏洩を検出。
+# - SARIF: GitHub Security(Code scanning alerts) に集約し、レビュー効率化。
+# - 定期実行: cron により日次のドリフト/新規脆弱性検知を自動化。
+# - 失敗条件: 現状はアップロードのみで gating せず。必要なら --exit-code 1 を追加し PR ブロック可能。
