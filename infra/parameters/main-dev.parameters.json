@@ -108,10 +108,10 @@
       "value": "Standard_B1ms"
     },
     "vmAdminUsername": {
-      "value": "mysqladmin"
+      "value": "__PIPELINE_OVERRIDDEN__"
     },
     "vmAdminPassword": {
-      "value": "<REPLACE_WITH_SECURE_PASSWORD>"
+      "value": "__PIPELINE_OVERRIDDEN__"
     },
     "mysqlPort": {
       "value": 3306

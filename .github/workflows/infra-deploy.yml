@@ -16,6 +16,8 @@ env:
     PARAM_FILE: infra/parameters/main-dev.parameters.json
     ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
     STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
+    VM_ADMIN_USERNAME: ${{ vars.VM_ADMIN_USERNAME }}
+    VM_ADMIN_PASSWORD: ${{ secrets.VM_ADMIN_PASSWORD }}
 
 jobs:
     deploy:
@@ -93,6 +95,14 @@ jobs:
                   echo "ACR_LOGIN_SERVER=${ACR_NAME}.azurecr.io" >> "$GITHUB_ENV"
                   echo "STORAGE_ACCOUNT_NAME=$STORAGE_NAME" >> "$GITHUB_ENV"
 
+            - name: 入力値を検証
+              run: |
+                  set -euo pipefail
+                  if [ -z "$VM_ADMIN_USERNAME" ] || [ -z "$VM_ADMIN_PASSWORD" ]; then
+                    echo "VM の認証情報が未設定です。GitHub Actions の Variables/Secrets を確認してください" >&2
+                    exit 1
+                  fi
+
             - name: Ensure resource group exists
               run: |
                   az group create \
@@ -106,7 +116,8 @@ jobs:
                     --name "validate-$(date +%s)" \
                     --template-file infra/main.bicep \
                     --parameters "@${{ env.PARAM_FILE }}" \
-                    --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME"
+                    --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
+                    --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD"
 
             - name: Bicep What-If
               run: |
@@ -115,7 +126,8 @@ jobs:
                     --name "whatif-$(date +%s)" \
                     --template-file infra/main.bicep \
                     --parameters "@${{ env.PARAM_FILE }}" \
-                    --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME"
+                    --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
+                    --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD"
 
             - name: Bicep Deploy
               run: |
@@ -125,6 +137,7 @@ jobs:
                     --template-file infra/main.bicep \
                     --parameters "@${{ env.PARAM_FILE }}" \
                     --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
+                    --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
                     --only-show-errors
 
             - name: Azure logout
