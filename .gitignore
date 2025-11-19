@@ -1,2 +1,5 @@
 # Ignore local npm cache artifacts
 .npm-cache/
+
+# Ignore sample assets placed under ignore/
+ignore/

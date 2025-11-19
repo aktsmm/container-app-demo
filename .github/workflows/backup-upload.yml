@@ -1,0 +1,74 @@
+name: backup-upload
+
+on:
+    schedule:
+        - cron: "0 * * * *"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    id-token: write
+
+env:
+    RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+    VM_NAME: ${{ vars.VM_NAME }}
+    STORAGE_ACCOUNT_NAME: ${{ vars.STORAGE_ACCOUNT_NAME }}
+    STORAGE_CONTAINER_NAME: ${{ vars.STORAGE_CONTAINER_NAME }}
+
+jobs:
+    backup:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Azure に OIDC でログイン
+              uses: azure/login@v2
+              with:
+                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+            - name: Storage 用 SAS を発行
+              id: sas
+              run: |
+                  EXPIRY=$(date -u -d '+90 minutes' +%Y-%m-%dT%H:%MZ)
+                  SAS=$(az storage account generate-sas \
+                    --permissions acdlpu \
+                    --account-name "$STORAGE_ACCOUNT_NAME" \
+                    --services b \
+                    --resource-types co \
+                    --expiry "$EXPIRY" \
+                    -o tsv)
+                  echo "SAS_TOKEN=$SAS" >> "$GITHUB_ENV"
+
+            - name: VM 上でバックアップを実行しアップロード
+              env:
+                  MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+              run: |
+                  SCRIPT=$(cat <<'EOF'
+                  set -euo pipefail
+                  STORAGE_ACCOUNT_NAME="$1"
+                  STORAGE_CONTAINER_NAME="$2"
+                  SAS_TOKEN="$3"
+                  MYSQL_ROOT_PASSWORD="$4"
+                  TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
+                  BACKUP_DIR=/tmp/mysql-backups
+                  mkdir -p "$BACKUP_DIR"
+                  BACKUP_FILE="$BACKUP_DIR/backup-$TIMESTAMP.sql"
+                  mysqldump --all-databases --single-transaction --quick --lock-tables=false -u root -p"$MYSQL_ROOT_PASSWORD" > "$BACKUP_FILE"
+                  if ! command -v azcopy >/dev/null 2>&1; then
+                    TMPDIR=$(mktemp -d)
+                    curl -sSL https://aka.ms/downloadazcopy-v10-linux | tar -xz -C "$TMPDIR"
+                    AZCOPY_PATH=$(find "$TMPDIR" -name azcopy -type f | head -n 1)
+                    sudo install -m 755 "$AZCOPY_PATH" /usr/local/bin/azcopy
+                  fi
+                  DEST_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${STORAGE_CONTAINER_NAME}/backup-${TIMESTAMP}.sql?${SAS_TOKEN}"
+                  azcopy copy "$BACKUP_FILE" "$DEST_URL" --from-to=LocalBlob --overwrite ifSourceNewer --log-level WARNING
+                  logger "mysql-backup-upload success $TIMESTAMP"
+                  EOF
+                  )
+
+                  az vm run-command invoke \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --name "$VM_NAME" \
+                    --command-id RunShellScript \
+                    --scripts "$SCRIPT" \
+                    --parameters "$STORAGE_ACCOUNT_NAME" "$STORAGE_CONTAINER_NAME" "$SAS_TOKEN" "$MYSQL_ROOT_PASSWORD"

@@ -1,0 +1,53 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+images:
+  - name: acr-placeholder.azurecr.io/board-app
+    newName: ${BOARD_APP_IMAGE:-acrdemodev.azurecr.io/board-app}
+    newTag: ${BOARD_APP_TAG:-latest}
+configMapGenerator:
+  - name: board-app-vars
+    envs:
+      - vars.env
+generatorOptions:
+  disableNameSuffixHash: true
+replacements:
+  - source:
+      kind: ConfigMap
+      name: board-app-vars
+      fieldPath: data.ingressHost
+    targets:
+      - select:
+          kind: Ingress
+          name: board-app
+        fieldPaths:
+          - spec.rules.0.host
+  - source:
+      kind: ConfigMap
+      name: board-app-vars
+      fieldPath: data.kubernetesNamespace
+    targets:
+      - select:
+          kind: Namespace
+          name: board-app
+        fieldPaths:
+          - metadata.name
+      - select:
+          kind: Deployment
+          name: board-app
+        fieldPaths:
+          - metadata.namespace
+      - select:
+          kind: Service
+          name: board-app
+        fieldPaths:
+          - metadata.namespace
+      - select:
+          kind: Ingress
+          name: board-app
+        fieldPaths:
+          - metadata.namespace

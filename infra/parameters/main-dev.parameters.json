@@ -1,0 +1,129 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "japaneast"
+    },
+    "environmentName": {
+      "value": "dev"
+    },
+    "tags": {
+      "value": {
+        "project": "container-app-demo",
+        "owner": "platform-team"
+      }
+    },
+    "vnetName": {
+      "value": "vnet-demo-dev"
+    },
+    "vnetAddressPrefix": {
+      "value": "10.0.0.0/16"
+    },
+    "aksSubnetName": {
+      "value": "snet-aks"
+    },
+    "aksSubnetPrefix": {
+      "value": "10.0.0.0/22"
+    },
+    "vmSubnetName": {
+      "value": "snet-vm"
+    },
+    "vmSubnetPrefix": {
+      "value": "10.0.4.0/24"
+    },
+    "containerAppSubnetName": {
+      "value": "snet-aca"
+    },
+    "containerAppSubnetPrefix": {
+      "value": "10.0.5.0/24"
+    },
+    "logAnalyticsName": {
+      "value": "law-demo-dev"
+    },
+    "logAnalyticsSku": {
+      "value": "PerGB2018"
+    },
+    "logAnalyticsRetentionDays": {
+      "value": 30
+    },
+    "acrName": {
+      "value": "acrdemodev"
+    },
+    "storageAccountName": {
+      "value": "stbackupdemodev"
+    },
+    "storageSku": {
+      "value": "Standard_LRS"
+    },
+    "storageAccessTier": {
+      "value": "Cool"
+    },
+    "containerAppsEnvironmentName": {
+      "value": "cae-demo-dev"
+    },
+    "aksName": {
+      "value": "aks-demo-dev"
+    },
+    "aksDnsPrefix": {
+      "value": "aksdemodev"
+    },
+    "aksKubernetesVersion": {
+      "value": ""
+    },
+    "aksNodeResourceGroup": {
+      "value": "mc-aks-demo-dev"
+    },
+    "aksSystemPoolName": {
+      "value": "systempool"
+    },
+    "aksNodeVmSize": {
+      "value": "Standard_B2s"
+    },
+    "aksNodeCount": {
+      "value": 1
+    },
+    "aksNodeOsDiskSizeGB": {
+      "value": 64
+    },
+    "aksAdminUsername": {
+      "value": "aksadmin"
+    },
+    "aksSshPublicKey": {
+      "value": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDREPLACEWITHREALKEY"
+    },
+    "aksServiceCidr": {
+      "value": "10.10.0.0/24"
+    },
+    "aksDnsServiceIp": {
+      "value": "10.10.0.10"
+    },
+    "aksPodCidr": {
+      "value": "10.244.0.0/16"
+    },
+    "vmName": {
+      "value": "vm-mysql-demo"
+    },
+    "vmSize": {
+      "value": "Standard_B1ms"
+    },
+    "vmAdminUsername": {
+      "value": "mysqladmin"
+    },
+    "vmAdminPassword": {
+      "value": "<REPLACE_WITH_SECURE_PASSWORD>"
+    },
+    "mysqlPort": {
+      "value": 3306
+    },
+    "sshPort": {
+      "value": 22
+    },
+    "boardAppNamespace": {
+      "value": "board-app"
+    },
+    "boardAppIngressHost": {
+      "value": "board.localdemo.internal"
+    }
+  }
+}

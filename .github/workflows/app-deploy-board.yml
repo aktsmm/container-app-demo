@@ -1,0 +1,87 @@
+name: app-deploy-board
+
+on:
+    workflow_dispatch:
+        inputs:
+            imageTag:
+                description: "ACR にプッシュ済みのイメージタグ (未指定時は latest)"
+                required: false
+    push:
+        branches:
+            - master
+        paths:
+            - "app/board-app/k8s/**"
+            - "scripts/sync-board-vars.ps1"
+            - ".github/workflows/app-deploy-board.yml"
+
+permissions:
+    contents: read
+    id-token: write
+
+env:
+    RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+    AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+    PARAM_FILE: infra/parameters/main-dev.parameters.json
+    KUSTOMIZE_DIR: app/board-app/k8s
+    ACR_NAME: ${{ vars.ACR_NAME }}
+    ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
+    BOARD_IMAGE_NAME: board-app
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        steps:
+            - name: コードを取得
+              uses: actions/checkout@v4
+
+            - name: Azure に OIDC でログイン
+              uses: azure/login@v2
+              with:
+                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+            - name: kubectl を準備
+              run: az aks install-cli
+
+            - name: Namespace/Ingress の値を同期
+              shell: pwsh
+              run: |
+                  ./scripts/sync-board-vars.ps1 \
+                    -ParametersFile ${{ env.PARAM_FILE }} \
+                    -OutputFile ${{ env.KUSTOMIZE_DIR }}/vars.env
+
+            - name: AKS に ACR Pull 権限を付与
+              run: |
+                  az aks update \
+                    --name "$AKS_CLUSTER_NAME" \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --attach-acr "$ACR_NAME"
+
+            - name: AKS 資格情報を取得
+              run: |
+                  az aks get-credentials \
+                    --name "$AKS_CLUSTER_NAME" \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --overwrite-existing
+
+            - name: デプロイに使用するイメージを決定
+              id: image_meta
+              run: |
+                  IMAGE_TAG='${{ github.event.inputs.imageTag }}'
+                  if [ -z "$IMAGE_TAG" ]; then
+                    IMAGE_TAG='latest'
+                  fi
+                  echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+                  echo "IMAGE_FULL=$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
+
+            - name: Kustomize を適用
+              env:
+                  PYTHONUNBUFFERED: "1"
+              run: |
+                  BOARD_NS=$(grep kubernetesNamespace "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
+                  kubectl kustomize "$KUSTOMIZE_DIR" \
+                    | sed "s#acr-placeholder.azurecr.io/board-app:latest#${IMAGE_FULL}#g" \
+                    | kubectl apply -f -
+                  kubectl rollout status deployment/board-app -n "$BOARD_NS" --timeout=120s
+                  kubectl get ingress -n "$BOARD_NS"

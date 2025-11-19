@@ -1,0 +1,84 @@
+name: app-build-admin
+
+on:
+    workflow_dispatch:
+    push:
+        branches:
+            - master
+        paths:
+            - "app/admin-app/**"
+            - ".github/workflows/app-build-admin.yml"
+
+permissions:
+    contents: read
+    id-token: write
+
+env:
+    ACR_NAME: ${{ vars.ACR_NAME }}
+    ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
+    ADMIN_IMAGE_NAME: admin-app
+
+jobs:
+    build-and-push:
+        runs-on: ubuntu-latest
+        steps:
+            - name: コードを取得
+              uses: actions/checkout@v4
+
+            - name: Gitleaks で秘密情報を検出
+              uses: gitleaks/gitleaks-action@v2
+              with:
+                  args: "detect --no-banner"
+
+            - name: Azure に OIDC でログイン
+              uses: azure/login@v2
+              with:
+                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+            - name: ACR へログイン
+              run: |
+                  az acr login --name "$ACR_NAME"
+
+            - name: イメージタグを決定
+              id: image_meta
+              run: |
+                  SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-12)"
+                  echo "IMAGE_TAG=$SHORT_SHA" >> "$GITHUB_ENV"
+                  echo "IMAGE_SHA_TAG=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+            - name: コンテナイメージをビルド
+              run: |
+                  IMAGE_REF="$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:${IMAGE_TAG}"
+                  docker build \
+                    --file app/admin-app/Dockerfile \
+                    --tag "$IMAGE_REF" \
+                    app/admin-app
+                  docker tag "$IMAGE_REF" "$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:latest"
+
+            - name: Trivy でコンテナをスキャン
+              uses: aquasecurity/trivy-action@0.28.0
+              with:
+                  image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ env.ADMIN_IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+                  format: table
+                  hide-progress: true
+                  ignore-unfixed: true
+                  vuln-type: "os,library"
+                  severity: "CRITICAL,HIGH"
+                  exit-code: "1"
+
+            - name: イメージを ACR へプッシュ
+              run: |
+                  docker push "$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:${IMAGE_TAG}"
+                  docker push "$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:latest"
+
+            - name: ビルド成果を記録
+              run: |
+                  printf "image=%s\n" "$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:${IMAGE_TAG}" | tee build-output.txt
+
+            - name: 成果メタデータを保存
+              uses: actions/upload-artifact@v4
+              with:
+                  name: admin-app-image
+                  path: build-output.txt
