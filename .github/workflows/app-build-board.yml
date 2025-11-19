@@ -49,6 +49,7 @@ jobs:
             {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
 
       - name: ACR 名を解決
+        id: resolve_acr
         run: |
           set -euo pipefail
           if [ -z "$ACR_NAME_PREFIX" ] || [ -z "$RESOURCE_GROUP_NAME" ]; then
@@ -65,6 +66,7 @@ jobs:
           fi
           echo "ACR_NAME=$ACR_NAME" >> "$GITHUB_ENV"
           echo "ACR_LOGIN_SERVER=${ACR_NAME}.azurecr.io" >> "$GITHUB_ENV"
+          echo "acr_login_server=${ACR_NAME}.azurecr.io" >> "$GITHUB_OUTPUT"
 
       - name: ACR へログイン
         run: |
@@ -86,16 +88,55 @@ jobs:
             app/board-app
           docker tag "$IMAGE_REF" "$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:latest"
 
-      - name: Trivy でコンテナをスキャン
+      - name: Trivy DB キャッシュ復元
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('app/board-app/package.json') }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      - name: コンテナ SBOM 生成 (CycloneDX)
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ env.BOARD_IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          format: table
+          image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.BOARD_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
+          format: 'cyclonedx'
+          output: 'sbom-board.cdx.json'
           hide-progress: true
           ignore-unfixed: true
-          vuln-type: "os,library"
-          severity: "CRITICAL,HIGH"
-          exit-code: "1"
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: Trivy でコンテナをスキャン (SARIF)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.BOARD_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
+          format: 'sarif'
+          output: 'trivy-image-board.sarif'
+          hide-progress: true
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+      - name: ソース/設定/シークレット総合スキャン (Trivy FS)
+        run: |
+          set -euo pipefail
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b ./trivy-bin
+          ./trivy-bin fs --scanners vuln,secret,config --ignore-unfixed --severity CRITICAL,HIGH \
+            --format sarif --output trivy-fs-board.sarif app/board-app
+
+
+      - name: Trivy SARIF をアップロード (Image)
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-image-board.sarif
+
+      - name: Trivy SARIF をアップロード (FS)
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-fs-board.sarif
 
       - name: イメージを ACR へプッシュ
         run: |
@@ -110,4 +151,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: board-app-image
-          path: build-output.txt
+          path: |
+            build-output.txt
+            sbom-board.cdx.json
+            trivy-image-board.sarif
+            trivy-fs-board.sarif
