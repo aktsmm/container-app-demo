@@ -19,6 +19,17 @@ escape_sql() {
     printf "%s" "$1" | sed "s/'/''/g"
 }
 
+CONFIG_FILE='/etc/mysql/mysql.conf.d/mysqld.cnf'
+
+ensure_bind_address() {
+    local key="$1"
+    if sudo grep -q "^[[:space:]]*${key}[[:space:]]*=" "$CONFIG_FILE"; then
+        sudo sed -i "s/^[[:space:]]*${key}[[:space:]]*=.*/${key} = 0.0.0.0/" "$CONFIG_FILE"
+    else
+        echo "${key} = 0.0.0.0" | sudo tee -a "$CONFIG_FILE" >/dev/null
+    fi
+}
+
 ROOT_ESC="$(escape_sql "$ROOT_PASSWORD")"
 APP_USER_ESC="$(escape_sql "$APP_USER")"
 APP_PASS_ESC="$(escape_sql "$APP_PASSWORD")"
@@ -38,5 +49,12 @@ CREATE USER IF NOT EXISTS '${APP_USER_ESC}'@'%' IDENTIFIED WITH mysql_native_pas
 GRANT ALL PRIVILEGES ON *.* TO '${APP_USER_ESC}'@'%' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
 SQL
+
+log "Enabling remote MySQL connections"
+ensure_bind_address 'bind-address'
+ensure_bind_address 'mysqlx-bind-address'
+
+log "Restarting MySQL to apply configuration"
+sudo systemctl restart mysql
 
 log "MySQL initialization complete"

@@ -11,26 +11,37 @@
 
 ### GitHub Secrets
 
-| 変数名                  | 用途                                                                                                                              |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `AZURE_SUBSCRIPTION_ID` | 対象サブスクリプション ID（例: `7134d7ae-2fe3-4eec-8f0b-5ffad8355907`）。本リポジトリではシークレットはこれのみ保持するポリシー。 |
+| 変数名                  | 用途                                                                                                                                      |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `AZURE_SUBSCRIPTION_ID` | 対象サブスクリプション ID（例: `7134d7ae-2fe3-4eec-8f0b-5ffad8355907`）。Azure CLI の `--subscription` へ引き渡す唯一の必須シークレット。 |
+| `GH_PAT_ACTIONS_DELETE` | 任意。`cleanup-failed-workflows` が `gh run delete` を大量実行する際の PAT。未設定時は `GITHUB_TOKEN` を利用し、削除対象が制限される。    |
+
+> Policy: Secrets は最小限に抑え、PAT が不要であれば `GH_PAT_ACTIONS_DELETE` を登録しない。PAT を使う場合も scope を `repo` のみに限定する。
 
 ### GitHub Actions Variables
 
-| 変数名                    | 用途                                                          |
-| ------------------------- | ------------------------------------------------------------- |
-| `AZURE_CLIENT_ID`         | Service Principal の Client ID                                |
-| `AZURE_TENANT_ID`         | Tenant ID                                                     |
-| `AZURE_CLIENT_SECRET`     | Service Principal のクライアントシークレット                  |
-| `RESOURCE_GROUP_NAME`     | 例: `rg-demodemo`                                             |
-| `LOCATION`                | 例: `JapanEast`                                               |
-| `VM_ADMIN_USERNAME`       | VM の管理者アカウント                                         |
-| `VM_ADMIN_PASSWORD`       | VM の管理者パスワード（シークレットではなく Variable で保持） |
-| `DB_APP_USERNAME`         | アプリ用 MySQL アカウント名                                   |
-| `DB_APP_PASSWORD`         | アプリ用 MySQL パスワード（Variable で保持）                  |
-| `MYSQL_ROOT_PASSWORD`     | MySQL root パスワード（Variable で保持）                      |
-| `AKS_CLUSTER_NAME`        | AKS クラスタ名（B 系や DS 系の 1 ノードプール）               |
-| `CONTAINER_REGISTRY_NAME` | ACR 名（Basic SKU）                                           |
+| 変数名                     | 用途                                                                             |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| `AZURE_CLIENT_ID`          | Service Principal の Client ID。`azure/login@v2` の `client-id` に渡す。         |
+| `AZURE_TENANT_ID`          | 同上テナント ID。                                                                |
+| `AZURE_CLIENT_SECRET`      | Service Principal のクライアントシークレット。                                   |
+| `RESOURCE_GROUP_NAME`      | すべての IaC デプロイ先 RG 名。                                                  |
+| `LOCATION`                 | 既定リージョン（例: `japaneast`）。                                              |
+| `ACR_NAME_PREFIX`          | infra-deploy で ACR 名を生成/検索する際のプレフィックス。                        |
+| `STORAGE_ACCOUNT_PREFIX`   | バックアップ用 Storage Account のプレフィックス。                                |
+| `VM_NAME`                  | MySQL VM リソース名。`backup-upload` 等が `az vm run-command` を行う際に使用。   |
+| `VM_ADMIN_USERNAME`        | VM 管理者アカウント名（Bicep へパラメータ渡し）。                                |
+| `VM_ADMIN_PASSWORD`        | VM 管理者パスワード。`parameters/*.json` の `__PIPELINE_OVERRIDDEN__` を上書き。 |
+| `DB_APP_USERNAME`          | アプリケーション用 MySQL ユーザー名。                                            |
+| `DB_APP_PASSWORD`          | 上記ユーザーのパスワード。`mysql-init.sh` へ渡し DB 接続を確立。                 |
+| `MYSQL_ROOT_PASSWORD`      | MySQL root アカウント用パスワード。                                              |
+| `AKS_CLUSTER_NAME`         | 掲示板アプリを載せる AKS クラスタ名。                                            |
+| `ACA_ENVIRONMENT_NAME`     | 管理アプリ用 Container Apps Environment 名。                                     |
+| `ADMIN_CONTAINER_APP_NAME` | ACA のコンテナアプリ名。                                                         |
+| `DB_ENDPOINT`              | 管理アプリへ注入する MySQL エンドポイント表示用文字列。                          |
+| `BACKUP_CONTAINER_NAME`    | Storage Account 側で MySQL バックアップを保管するコンテナ名。                    |
+
+> Note: パスワード系を Variables に置く理由は「Secrets は購読 ID のみ」というルールを守りつつ再現性を確保するためであり、必要に応じて Environment ごとに overrides 可。
 
 > Tip: Variables はリポジトリ共通値を置き、必要に応じて Environment Variables で上書きすると PR 用の検証環境を安全に切り替えられる。
 
@@ -57,7 +68,7 @@
 2. **Bicep パラメータ更新**
 
    - `infra/parameters/*.json` へ LOCATION・VNet・NSG・ノード SKU などを全てパラメータ化して格納。`mysqlRootPassword` / `mysqlAppUsername` / `mysqlAppPassword` は `__PIPELINE_OVERRIDDEN__` とし、パイプラインから上書きする。
-   - `scripts/mysql-init.sh` が VM 初回起動時に MySQL をインストールし、`MYSQL_ROOT_PASSWORD` と `DB_APP_*` Variable を用いて root / アプリユーザーを作成する。シークレットは購読 ID のみに限定する運用。
+   - `scripts/mysql-init.sh` が VM 初回起動時に MySQL をインストールし、`MYSQL_ROOT_PASSWORD` と `DB_APP_*` Variable を用いて root / アプリユーザーを作成する。あわせて `mysqld.cnf` の `bind-address` / `mysqlx-bind-address` を `0.0.0.0` へ更新し、サービスを再起動して AKS/ACA からのリモート接続を許可する。シークレットは購読 ID のみに限定する運用。
    - `az deployment sub what-if --no-pretty-print` で差分を確認し、意図しないリソース変更を検知する。
 
 3. **dummy-secret 公開**
