@@ -17,7 +17,10 @@ env:
     ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
     STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
     VM_ADMIN_USERNAME: ${{ vars.VM_ADMIN_USERNAME }}
-    VM_ADMIN_PASSWORD: ${{ secrets.VM_ADMIN_PASSWORD }}
+    VM_ADMIN_PASSWORD: ${{ vars.VM_ADMIN_PASSWORD }}
+    MYSQL_ROOT_PASSWORD: ${{ vars.MYSQL_ROOT_PASSWORD }}
+    DB_APP_USERNAME: ${{ vars.DB_APP_USERNAME }}
+    DB_APP_PASSWORD: ${{ vars.DB_APP_PASSWORD }}
 
 jobs:
     deploy:
@@ -102,6 +105,10 @@ jobs:
                     echo "VM の認証情報が未設定です。GitHub Actions の Variables/Secrets を確認してください" >&2
                     exit 1
                   fi
+                  if [ -z "$MYSQL_ROOT_PASSWORD" ] || [ -z "$DB_APP_USERNAME" ] || [ -z "$DB_APP_PASSWORD" ]; then
+                    echo "MySQL の認証情報が未設定です。GitHub Actions で MYSQL_ROOT_PASSWORD / DB_APP_USERNAME / DB_APP_PASSWORD を定義してください" >&2
+                    exit 1
+                  fi
 
             - name: Ensure resource group exists
               run: |
@@ -117,7 +124,8 @@ jobs:
                     --template-file infra/main.bicep \
                     --parameters "@${{ env.PARAM_FILE }}" \
                     --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
-                    --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD"
+                    --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
+                    --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD"
 
             - name: Bicep What-If
               run: |
@@ -127,7 +135,8 @@ jobs:
                     --template-file infra/main.bicep \
                     --parameters "@${{ env.PARAM_FILE }}" \
                     --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
-                    --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD"
+                    --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
+                    --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD"
 
             - name: Bicep Deploy
               run: |
@@ -138,6 +147,7 @@ jobs:
                     --parameters "@${{ env.PARAM_FILE }}" \
                     --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
                     --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
+                    --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
                     --only-show-errors
 
             - name: Azure logout

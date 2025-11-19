@@ -113,6 +113,15 @@
     "vmAdminPassword": {
       "value": "__PIPELINE_OVERRIDDEN__"
     },
+    "mysqlRootPassword": {
+      "value": "__PIPELINE_OVERRIDDEN__"
+    },
+    "mysqlAppUsername": {
+      "value": "__PIPELINE_OVERRIDDEN__"
+    },
+    "mysqlAppPassword": {
+      "value": "__PIPELINE_OVERRIDDEN__"
+    },
     "mysqlPort": {
       "value": 3306
     },

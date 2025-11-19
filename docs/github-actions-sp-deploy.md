@@ -11,23 +11,26 @@
 
 ### GitHub Secrets
 
-| 変数名                  | 用途                                                                    |
-| ----------------------- | ----------------------------------------------------------------------- |
-| `AZURE_SUBSCRIPTION_ID` | 対象サブスクリプション ID（例: `7134d7ae-2fe3-4eec-8f0b-5ffad8355907`） |
+| 変数名                  | 用途                                                                                                                              |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `AZURE_SUBSCRIPTION_ID` | 対象サブスクリプション ID（例: `7134d7ae-2fe3-4eec-8f0b-5ffad8355907`）。本リポジトリではシークレットはこれのみ保持するポリシー。 |
 
 ### GitHub Actions Variables
 
-| 変数名                                    | 用途                                            |
-| ----------------------------------------- | ----------------------------------------------- |
-| `AZURE_CLIENT_ID`                         | Service Principal の Client ID                  |
-| `AZURE_TENANT_ID`                         | Tenant ID                                       |
-| `AZURE_CLIENT_SECRET`                     | Service Principal のクライアントシークレット    |
-| `RESOURCE_GROUP_NAME`                     | 例: `rg-demodemo`                               |
-| `LOCATION`                                | 例: `JapanEast`                                 |
-| `VM_ADMIN_USERNAME` / `VM_ADMIN_PASSWORD` | VM の管理者資格情報                             |
-| `DB_USERNAME` / `DB_PASSWORD`             | MySQL 接続資格情報                              |
-| `AKS_CLUSTER_NAME`                        | AKS クラスタ名（B 系や DS 系の 1 ノードプール） |
-| `CONTAINER_REGISTRY_NAME`                 | ACR 名（Basic SKU）                             |
+| 変数名                    | 用途                                                          |
+| ------------------------- | ------------------------------------------------------------- |
+| `AZURE_CLIENT_ID`         | Service Principal の Client ID                                |
+| `AZURE_TENANT_ID`         | Tenant ID                                                     |
+| `AZURE_CLIENT_SECRET`     | Service Principal のクライアントシークレット                  |
+| `RESOURCE_GROUP_NAME`     | 例: `rg-demodemo`                                             |
+| `LOCATION`                | 例: `JapanEast`                                               |
+| `VM_ADMIN_USERNAME`       | VM の管理者アカウント                                         |
+| `VM_ADMIN_PASSWORD`       | VM の管理者パスワード（シークレットではなく Variable で保持） |
+| `DB_APP_USERNAME`         | アプリ用 MySQL アカウント名                                   |
+| `DB_APP_PASSWORD`         | アプリ用 MySQL パスワード（Variable で保持）                  |
+| `MYSQL_ROOT_PASSWORD`     | MySQL root パスワード（Variable で保持）                      |
+| `AKS_CLUSTER_NAME`        | AKS クラスタ名（B 系や DS 系の 1 ノードプール）               |
+| `CONTAINER_REGISTRY_NAME` | ACR 名（Basic SKU）                                           |
 
 > Tip: Variables はリポジトリ共通値を置き、必要に応じて Environment Variables で上書きすると PR 用の検証環境を安全に切り替えられる。
 
@@ -53,7 +56,8 @@
 
 2. **Bicep パラメータ更新**
 
-   - `infra/parameters/*.json` へ LOCATION・VNet・NSG・ノード SKU などを全てパラメータ化して格納。
+   - `infra/parameters/*.json` へ LOCATION・VNet・NSG・ノード SKU などを全てパラメータ化して格納。`mysqlRootPassword` / `mysqlAppUsername` / `mysqlAppPassword` は `__PIPELINE_OVERRIDDEN__` とし、パイプラインから上書きする。
+   - `scripts/mysql-init.sh` が VM 初回起動時に MySQL をインストールし、`MYSQL_ROOT_PASSWORD` と `DB_APP_*` Variable を用いて root / アプリユーザーを作成する。シークレットは購読 ID のみに限定する運用。
    - `az deployment sub what-if --no-pretty-print` で差分を確認し、意図しないリソース変更を検知する。
 
 3. **dummy-secret 公開**
@@ -62,15 +66,15 @@
 
 ## 3. GitHub Actions ワークフロー整理
 
-| Workflow                       | 主な処理                                   | 実装ポイント                                                                                             |
-| ------------------------------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `infra-deploy.yml`             | Bicep Validate → What-If → Deploy          | `azure/login@v2` を Client Secret 認証で利用。`az deployment sub create` に `parameters/*.json` を指定。 |
-| `app-build-board.yml`          | 掲示板アプリ build + Trivy scan + ACR push | `docker/login-action` と SP 資格情報で ACR にログイン。scan 結果を Artifact 化。                         |
-| `app-deploy-board.yml`         | AKS へ Deployment/Service/Ingress 適用     | `azure/aks-set-context@v3` で kubeconfig を取得し、`kubectl apply -k app/board-app/k8s` を実行。         |
-| `app-build-admin.yml`          | 管理アプリ build + Trivy + ACR push        | ACA スペック(0.5vCPU/1Gi)などをタグ化し、後続の deploy workflow へ渡す。                                 |
-| `app-deploy-admin.yml`         | ACA リビジョン更新 + Basic 認証            | `az containerapp update` で `--secrets` と `--ingress-target-port` を指定しゼロダウンタイム更新。        |
-| `backup-upload.yml`            | VM → Storage へ MySQL バックアップ送信     | GitHub Actions から VM へ SSH し `azcopy`/`rsync` を実行。Log Analytics に結果を送る。                   |
-| `cleanup-failed-workflows.yml` | 失敗 Workflow とキャッシュ清掃             | `gh run list --status failure` → `gh run delete` で停滞を解消。                                          |
+| Workflow                       | 主な処理                                   | 実装ポイント                                                                                                                                          |
+| ------------------------------ | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `infra-deploy.yml`             | Bicep Validate → What-If → Deploy          | `azure/login@v2` を Client Secret 認証で利用。`az deployment sub create` に `parameters/*.json` を指定。                                              |
+| `app-build-board.yml`          | 掲示板アプリ build + Trivy scan + ACR push | `docker/login-action` と SP 資格情報で ACR にログイン。scan 結果を Artifact 化。                                                                      |
+| `app-deploy-board.yml`         | AKS へ Deployment/Service/Ingress 適用     | `azure/aks-set-context@v3` で kubeconfig を取得し、`kubectl apply -k app/board-app/k8s` を実行。                                                      |
+| `app-build-admin.yml`          | 管理アプリ build + Trivy + ACR push        | ACA スペック(0.5vCPU/1Gi)などをタグ化し、後続の deploy workflow へ渡す。                                                                              |
+| `app-deploy-admin.yml`         | ACA リビジョン更新 + Basic 認証            | `az containerapp update` で `--secrets` と `--ingress-target-port` を指定しゼロダウンタイム更新。                                                     |
+| `backup-upload.yml`            | VM → Storage へ MySQL バックアップ送信     | GitHub Actions から VM へ SSH し `azcopy`/`rsync` を実行。`MYSQL_ROOT_PASSWORD` は Variable を参照し `mysqldump` を認証、Log Analytics へ結果を送る。 |
+| `cleanup-failed-workflows.yml` | 失敗 Workflow とキャッシュ清掃             | `gh run list --status failure` → `gh run delete` で停滞を解消。                                                                                       |
 
 ### 共通の Azure ログインステップ
 

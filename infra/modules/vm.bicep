@@ -25,6 +25,17 @@ param mysqlPort int = 3306
 @description('SSH ポート')
 param sshPort int = 22
 
+@description('MySQL の root パスワード (セキュア)')
+@secure()
+param mysqlRootPassword string
+
+@description('アプリケーション用 MySQL ユーザー名')
+param mysqlAppUsername string
+
+@description('アプリケーション用 MySQL パスワード (セキュア)')
+@secure()
+param mysqlAppPassword string
+
 @description('Log Analytics Workspace Customer ID')
 param logAnalyticsCustomerId string
 
@@ -34,6 +45,15 @@ param logAnalyticsSharedKey string
 
 @description('共通タグ')
 param tags object = {}
+
+var mysqlInitScript = loadTextContent('../../scripts/mysql-init.sh')
+var mysqlInitCommand = format('''
+bash -c "cat <<'EOF' >/tmp/mysql-init.sh
+{0}
+EOF
+sudo chmod +x /tmp/mysql-init.sh
+sudo /tmp/mysql-init.sh $(echo '{1}' | base64 -d) $(echo '{2}' | base64 -d) $(echo '{3}' | base64 -d)"
+''', mysqlInitScript, base64(mysqlRootPassword), base64(mysqlAppUsername), base64(mysqlAppPassword))
 
 resource publicIp 'Microsoft.Network/publicIPAddresses@2023-09-01' = {
   name: '${name}-pip'
@@ -163,6 +183,24 @@ resource azureMonitorAgent 'Microsoft.Compute/virtualMachines/extensions@2022-11
     }
     protectedSettings: {
       workspaceKey: logAnalyticsSharedKey
+    }
+  }
+}
+
+resource mysqlInit 'Microsoft.Compute/virtualMachines/extensions@2022-11-01' = {
+  name: 'MysqlInit'
+  parent: vm
+  properties: {
+    publisher: 'Microsoft.Azure.Extensions'
+    type: 'CustomScript'
+    typeHandlerVersion: '2.1'
+    autoUpgradeMinorVersion: true
+    settings: {
+      fileUris: []
+    }
+    protectedSettings: {
+      // Protected settings を利用し、シークレットをログに出さずに MySQL 初期化を実行
+      commandToExecute: mysqlInitCommand
     }
   }
 }

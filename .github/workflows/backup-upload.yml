@@ -13,7 +13,7 @@ env:
     RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
     VM_NAME: ${{ vars.VM_NAME }}
     STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
-    STORAGE_CONTAINER_NAME: ${{ vars.STORAGE_CONTAINER_NAME }}
+    BACKUP_CONTAINER_NAME: ${{ vars.BACKUP_CONTAINER_NAME }}
 
 jobs:
     backup:
@@ -57,12 +57,12 @@ jobs:
 
             - name: VM 上でバックアップを実行しアップロード
               env:
-                  MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+                  MYSQL_ROOT_PASSWORD: ${{ vars.MYSQL_ROOT_PASSWORD }}
               run: |
                   SCRIPT=$(cat <<'EOF'
                   set -euo pipefail
                   STORAGE_ACCOUNT_NAME="$1"
-                  STORAGE_CONTAINER_NAME="$2"
+                  BACKUP_CONTAINER_NAME="$2"
                   SAS_TOKEN="$3"
                   MYSQL_ROOT_PASSWORD="$4"
                   TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
@@ -76,7 +76,7 @@ jobs:
                     AZCOPY_PATH=$(find "$TMPDIR" -name azcopy -type f | head -n 1)
                     sudo install -m 755 "$AZCOPY_PATH" /usr/local/bin/azcopy
                   fi
-                  DEST_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${STORAGE_CONTAINER_NAME}/backup-${TIMESTAMP}.sql?${SAS_TOKEN}"
+                  DEST_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${BACKUP_CONTAINER_NAME}/backup-${TIMESTAMP}.sql?${SAS_TOKEN}"
                   azcopy copy "$BACKUP_FILE" "$DEST_URL" --from-to=LocalBlob --overwrite ifSourceNewer --log-level WARNING
                   logger "mysql-backup-upload success $TIMESTAMP"
                   EOF
@@ -87,4 +87,4 @@ jobs:
                     --name "$VM_NAME" \
                     --command-id RunShellScript \
                     --scripts "$SCRIPT" \
-                    --parameters "$STORAGE_ACCOUNT_NAME" "$STORAGE_CONTAINER_NAME" "$SAS_TOKEN" "$MYSQL_ROOT_PASSWORD"
+                    --parameters "$STORAGE_ACCOUNT_NAME" "$BACKUP_CONTAINER_NAME" "$SAS_TOKEN" "$MYSQL_ROOT_PASSWORD"

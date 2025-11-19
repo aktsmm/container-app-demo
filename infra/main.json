@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "15354536272816588820"
+      "templateHash": "16669840170398771814"
     }
   },
   "parameters": {
@@ -253,6 +253,24 @@
       "defaultValue": 22,
       "metadata": {
         "description": "SSH ポート"
+      }
+    },
+    "mysqlRootPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "MySQL の root パスワード (セキュア)"
+      }
+    },
+    "mysqlAppUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "アプリケーション用 MySQL ユーザー名"
+      }
+    },
+    "mysqlAppPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "アプリケーション用 MySQL パスワード (セキュア)"
       }
     },
     "boardAppNamespace": {
@@ -1208,6 +1226,15 @@
           "sshPort": {
             "value": "[parameters('sshPort')]"
           },
+          "mysqlRootPassword": {
+            "value": "[parameters('mysqlRootPassword')]"
+          },
+          "mysqlAppUsername": {
+            "value": "[parameters('mysqlAppUsername')]"
+          },
+          "mysqlAppPassword": {
+            "value": "[parameters('mysqlAppPassword')]"
+          },
           "logAnalyticsCustomerId": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logAnalytics'), '2025-04-01').outputs.customerId.value]"
           },
@@ -1225,7 +1252,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "11905440077969006447"
+              "templateHash": "444857768296008196"
             }
           },
           "parameters": {
@@ -1280,6 +1307,24 @@
                 "description": "SSH ポート"
               }
             },
+            "mysqlRootPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "MySQL の root パスワード (セキュア)"
+              }
+            },
+            "mysqlAppUsername": {
+              "type": "string",
+              "metadata": {
+                "description": "アプリケーション用 MySQL ユーザー名"
+              }
+            },
+            "mysqlAppPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "アプリケーション用 MySQL パスワード (セキュア)"
+              }
+            },
             "logAnalyticsCustomerId": {
               "type": "string",
               "metadata": {
@@ -1299,6 +1344,10 @@
                 "description": "共通タグ"
               }
             }
+          },
+          "variables": {
+            "mysqlInitScript": "#!/usr/bin/env bash\nset -euo pipefail\n\nROOT_PASSWORD=\"${1:-}\"\nAPP_USER=\"${2:-}\"\nAPP_PASSWORD=\"${3:-}\"\n\nif [[ -z \"$ROOT_PASSWORD\" || -z \"$APP_USER\" || -z \"$APP_PASSWORD\" ]]; then\n    echo \"[mysql-init] Required arguments are missing\" >&2\n    exit 1\nfi\n\nlog() {\n    echo \"[mysql-init] $1\"\n}\n\nescape_sql() {\n    # Escapes single quotes for SQL statements\n    printf \"%s\" \"$1\" | sed \"s/'/''/g\"\n}\n\nROOT_ESC=\"$(escape_sql \"$ROOT_PASSWORD\")\"\nAPP_USER_ESC=\"$(escape_sql \"$APP_USER\")\"\nAPP_PASS_ESC=\"$(escape_sql \"$APP_PASSWORD\")\"\n\nlog \"Updating apt cache\"\nsudo DEBIAN_FRONTEND=noninteractive apt-get update -y\nlog \"Installing mysql-server\"\nsudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server\n\nlog \"Enabling MySQL service\"\nsudo systemctl enable --now mysql\n\nlog \"Applying user configuration\"\ncat <<SQL | sudo mysql\nALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${ROOT_ESC}';\nCREATE USER IF NOT EXISTS '${APP_USER_ESC}'@'%' IDENTIFIED WITH mysql_native_password BY '${APP_PASS_ESC}';\nGRANT ALL PRIVILEGES ON *.* TO '${APP_USER_ESC}'@'%' WITH GRANT OPTION;\nFLUSH PRIVILEGES;\nSQL\n\nlog \"MySQL initialization complete\"\n",
+            "mysqlInitCommand": "[format('bash -c \"cat <<''EOF'' >/tmp/mysql-init.sh\r\n{0}\r\nEOF\r\nsudo chmod +x /tmp/mysql-init.sh\r\nsudo /tmp/mysql-init.sh $(echo ''{1}'' | base64 -d) $(echo ''{2}'' | base64 -d) $(echo ''{3}'' | base64 -d)\"\r\n', variables('mysqlInitScript'), base64(parameters('mysqlRootPassword')), base64(parameters('mysqlAppUsername')), base64(parameters('mysqlAppPassword')))]"
           },
           "resources": [
             {
@@ -1441,6 +1490,26 @@
                 },
                 "protectedSettings": {
                   "workspaceKey": "[parameters('logAnalyticsSharedKey')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', parameters('name'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Compute/virtualMachines/extensions",
+              "apiVersion": "2022-11-01",
+              "name": "[format('{0}/{1}', parameters('name'), 'MysqlInit')]",
+              "properties": {
+                "publisher": "Microsoft.Azure.Extensions",
+                "type": "CustomScript",
+                "typeHandlerVersion": "2.1",
+                "autoUpgradeMinorVersion": true,
+                "settings": {
+                  "fileUris": []
+                },
+                "protectedSettings": {
+                  "commandToExecute": "[variables('mysqlInitCommand')]"
                 }
               },
               "dependsOn": [

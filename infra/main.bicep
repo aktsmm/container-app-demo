@@ -116,6 +116,17 @@ param mysqlPort int = 3306
 @description('SSH ポート')
 param sshPort int = 22
 
+@description('MySQL の root パスワード (セキュア)')
+@secure()
+param mysqlRootPassword string
+
+@description('アプリケーション用 MySQL ユーザー名')
+param mysqlAppUsername string
+
+@description('アプリケーション用 MySQL パスワード (セキュア)')
+@secure()
+param mysqlAppPassword string
+
 @description('掲示板アプリが使用する Kubernetes Namespace')
 param boardAppNamespace string
 
@@ -256,6 +267,9 @@ module vm './modules/vm.bicep' = {
     adminPassword: vmAdminPassword
     mysqlPort: mysqlPort
     sshPort: sshPort
+    mysqlRootPassword: mysqlRootPassword
+    mysqlAppUsername: mysqlAppUsername
+    mysqlAppPassword: mysqlAppPassword
     logAnalyticsCustomerId: logAnalytics.outputs.customerId
     logAnalyticsSharedKey: logAnalyticsSharedKey
     tags: defaultTags
