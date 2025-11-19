@@ -1,132 +1,97 @@
-name: cleanup-failed-workflows
+name: 🧹 Cleanup Workflow Runs (Keep latest 7 human + 3 dependabot + 1 failed)
 
 on:
-    # 毎時 0 分に実行
     schedule:
-        - cron: "0 * * * *"
-    # 手動トリガー
+        - cron: "0 */12 * * *" # 12時間ごと
     workflow_dispatch:
-    # このファイルが更新されたときにトリガー
+    #  workflow_run:
+    #    workflows:
+    #     - "1. Deploy Infrastructure"
+    #    - "2-1. Build and Deploy Application"
+    #   - "2-2. Deploy Policy Guardrails"
+    #types: [completed]
     push:
+        branches: [main]
         paths:
-            - ".github/workflows/cleanup-failed-workflows.yml"
+            - ".github/workflows/cleanup.yml"
+            - ".github/workflows/🧹*.yml"
 
 permissions:
-    contents: read
     actions: write
-    # （必要に応じて）workflow: write
+    contents: read
 
 jobs:
     cleanup:
+        if: github.ref == 'refs/heads/main'
         runs-on: ubuntu-latest
-        env:
-            GH_PAT_ACTIONS_DELETE: ${{ vars.GH_PAT_ACTIONS_DELETE }}
+
         steps:
-            - name: PAT が設定されているか確認
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🧹 Cleanup all old workflow runs
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
-                  if [ -z "${GH_PAT_ACTIONS_DELETE}" ]; then
-                    echo "GH_PAT_ACTIONS_DELETE が未設定です (Repository Variables)" >&2
-                    exit 1
+                  REPO="${{ github.repository }}"
+                  # GitHub 側で付与される実行名を優先し、名称変更時も常に一致させる
+                  SELF_NAME="${GITHUB_WORKFLOW:-🧹 Cleanup Workflow Runs (Keep latest 7 human + 3 dependabot + 1 failed)}"
+
+                  echo "🔍 Getting all Cleanup workflow runs..."
+                  RUNS=$(gh run list --workflow "$SELF_NAME" --json databaseId,headBranch,status,conclusion,createdAt --limit 1000)
+                  COUNT=$(echo "$RUNS" | jq 'length')
+                  echo "🧾 Found $COUNT Cleanup runs total."
+
+                  # 現在の Cleanup 実行中の ID を取得
+                  CURRENT_ID=$(echo "$RUNS" | jq -r '.[] | select(.status=="in_progress" or .status=="queued") | .databaseId' | head -n 1)
+                  echo "🟢 Current Cleanup Run ID: ${CURRENT_ID:-none}"
+
+                  # 現行Run以外を削除対象とする
+                  TARGETS=$(echo "$RUNS" | jq -r --arg cur "$CURRENT_ID" '.[] | select(.databaseId != ($cur|tonumber)) | .databaseId')
+
+                  if [ -z "$TARGETS" ]; then
+                    echo "✅ No old Cleanup runs to delete."
+                  else
+                    echo "$TARGETS" | while read -r ID; do
+                      echo "🧹 Deleting old Cleanup run ID: $ID"
+                      gh api repos/$REPO/actions/runs/$ID -X DELETE || echo "⚠️ Failed to delete run $ID"
+                    done
                   fi
-            - name: 失敗したワークフロー実行を全削除（PAT使用・全Workflow横断）
-              uses: actions/github-script@v7
-              with:
-                  # 重要：GITHUB_TOKEN では権限不足の可能性があるため Fine-grained PAT を使用
-                  github-token: ${{ env.GH_PAT_ACTIONS_DELETE }}
-                  script: |
-                      const { owner, repo } = context.repo;
 
-                      // 全Workflowを取得
-                      const workflows = await github.paginate(
-                        github.rest.actions.listRepoWorkflows,
-                        { owner, repo, per_page: 100 },
-                        (resp) => resp.data.workflows || []
-                      );
+                  echo "🧩 Cleaning other workflows (7 human + 3 dependabot + 1 failed)..."
+                  ALL_RUNS=$(gh api repos/$REPO/actions/runs --paginate -q '.workflow_runs[] | {id: .id, name: .name, conclusion: .conclusion, created_at: .created_at, actor: (.actor.login // "unknown")}' | jq -s 'sort_by(.created_at) | reverse')
 
-                      let totalDeleted = 0;
-                      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                  # ✅ 成功した human 実行: 最新7件保持
+                  KEEP_HUMAN=$(echo "$ALL_RUNS" | jq -c '[.[] | select(.actor != "dependabot[bot]" and .conclusion == "success")][:10] | map(.id)')
 
-                      // 削除対象の結論（必要に応じて増やす）
-                      const DELETE_CONCLUSIONS = ['failure']; // 'cancelled','timed_out' を含めたい場合は追加
+                  # ✅ 成功した dependabot 実行: 最新3件保持
+                  KEEP_DEPENDABOT=$(echo "$ALL_RUNS" | jq -c '[.[] | select(.actor == "dependabot[bot]" and .conclusion == "success")][:5] | map(.id)')
 
-                      for (const wf of workflows) {
-                        core.info(`Processing workflow: ${wf.name} (id=${wf.id})`);
+                  # ✅ 失敗した実行: 最新1件保持
+                  KEEP_FAILED=$(echo "$ALL_RUNS" | jq -c '[.[] | select(.conclusion != "success")][:1] | map(.id)')
 
-                        // 該当Workflowの completed 実行をページング取得
-                        const runs = await github.paginate(
-                          github.rest.actions.listWorkflowRuns,
-                          { owner, repo, workflow_id: wf.id, status: 'completed', per_page: 100 },
-                          (resp) => resp.data.workflow_runs || []
-                        );
+                  # ✅ 保持対象を統合
+                  KEEP_ALL=$(jq -n --argjson a "$KEEP_HUMAN" --argjson b "$KEEP_DEPENDABOT" --argjson c "$KEEP_FAILED" '$a + $b + $c')
 
-                        for (const run of runs) {
-                          if (DELETE_CONCLUSIONS.includes(run.conclusion)) {
-                            try {
-                              await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
-                              core.info(`Deleted run id=${run.id} name=${run.name} conclusion=${run.conclusion} created_at=${run.created_at}`);
-                              totalDeleted++;
-                              await sleep(300); // 軽いバックオフ（大量削除対策）
-                            } catch (err) {
-                              core.warning(`Failed to delete run id=${run.id}: ${err.status} ${err.message}`);
-                              await sleep(1500); // レート制限対策
-                            }
-                          }
-                        }
-                      }
+                  # 🧹 削除対象を抽出
+                  TARGETS=$(echo "$ALL_RUNS" | jq -c --argjson keepIds "$KEEP_ALL" '[ .[] | select((.id as $id | ($keepIds | index($id)) | not)) ]')
+                  COUNT=$(echo "$TARGETS" | jq 'length')
+                  echo "🧹 Found $COUNT runs to delete."
 
-                      core.info(`Total deleted runs: ${totalDeleted}`);
+                  # 🚮 削除処理
+                  if (( COUNT > 0 )); then
+                    echo "$TARGETS" | jq -c '.[]' | while read -r run; do
+                      ID=$(echo "$run" | jq -r '.id')
+                      NAME=$(echo "$run" | jq -r '.name')
+                      CONCLUSION=$(echo "$run" | jq -r '.conclusion')
+                      echo "🗑️ Deleting run $ID [$NAME] ($CONCLUSION)"
+                      gh api repos/$REPO/actions/runs/$ID -X DELETE || echo "⚠️ Failed to delete run $ID"
+                    done
+                  else
+                    echo "✅ No old workflow runs to delete."
+                  fi
 
-            - name: （任意）古いアーティファクト・キャッシュも整理
-              uses: actions/github-script@v7
-              with:
-                  github-token: ${{ env.GH_PAT_ACTIONS_DELETE }}
-                  script: |
-                      const { owner, repo } = context.repo;
-                      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000; // 7日前
-                      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                  echo "🎉 Cleanup complete (kept 1 current + 7 human + 3 dependabot + 1 failed)."
 
-                      // アーティファクト
-                      const artifacts = await github.paginate(
-                        github.rest.actions.listArtifactsForRepo,
-                        { owner, repo, per_page: 100 },
-                        (resp) => resp.data.artifacts || []
-                      );
-
-                      let artifactsDeleted = 0;
-                      for (const art of artifacts) {
-                        const created = new Date(art.created_at).getTime();
-                        if (Number.isFinite(created) && created < cutoff) {
-                          try {
-                            await github.rest.actions.deleteArtifact({ owner, repo, artifact_id: art.id });
-                            core.info(`Deleted artifact id=${art.id} name=${art.name}`);
-                            artifactsDeleted++;
-                            await sleep(300);
-                          } catch (err) {
-                            core.warning(`Failed to delete artifact id=${art.id}: ${err.status} ${err.message}`);
-                            await sleep(1500);
-                          }
-                        }
-                      }
-
-                      // キャッシュ（actions_caches）
-                      const caches = await github.paginate(
-                        github.rest.actions.getActionsCacheList,
-                        { owner, repo, per_page: 100 },
-                        (resp) => resp.data.actions_caches || []
-                      );
-
-                      let cachesDeleted = 0;
-                      for (const cache of caches) {
-                        const lastAccessed = new Date(cache.last_accessed_at).getTime();
-                        if (Number.isFinite(lastAccessed) && lastAccessed < cutoff) {
-                          try {
-                            await github.rest.actions.deleteActionsCacheById({ owner, repo, cache_id: cache.id });
-                            core.info(`Deleted cache id=${cache.id} key=${cache.key}`);
-                            cachesDeleted++;
-                            await sleep(300);
-                          } catch (err) {
-                            core.warning(`Failed to delete cache id=${cache.id}: ${err.status} ${err.message}`);
-                            await sleep(1500);
-                          }
-                                     }
-                      }
+# Docs_work_history にも反映。
+# infra-deploy のワークフロー変数が最新化されているか再確認し、workflow_dispatch で動作を検証。
