@@ -100,11 +100,11 @@ jobs:
 
             - name: AKS 用一時 SSH 鍵生成 (秘密鍵はCI内のみ利用し保持しない)
               run: |
-                set -euo pipefail
-                ssh-keygen -t rsa -b 4096 -f aks_temp_key -N '' -C "aks-demo-dev" >/dev/null 2>&1
-                PUB_KEY=$(cat aks_temp_key.pub | tr -d '\n')
-                echo "AKS_SSH_PUBLIC_KEY=$PUB_KEY" >> "$GITHUB_ENV"
-                rm -f aks_temp_key  # 秘密鍵は不要なので削除
+                  set -euo pipefail
+                  ssh-keygen -t rsa -b 4096 -f aks_temp_key -N '' -C "aks-demo-dev" >/dev/null 2>&1
+                  PUB_KEY=$(cat aks_temp_key.pub | tr -d '\n')
+                  echo "AKS_SSH_PUBLIC_KEY=$PUB_KEY" >> "$GITHUB_ENV"
+                  rm -f aks_temp_key  # 秘密鍵は不要なので削除
               shell: bash
 
             - name: 入力値を検証

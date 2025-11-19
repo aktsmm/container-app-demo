@@ -100,25 +100,25 @@ jobs:
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.ADMIN_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
-          format: 'cyclonedx'
-          output: 'sbom-admin.cdx.json'
+          format: "cyclonedx"
+          output: "sbom-admin.cdx.json"
           hide-progress: true
           ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
 
       - name: Trivy でコンテナをスキャン (SARIF)
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.ADMIN_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
-          format: 'sarif'
-          output: 'trivy-image-admin.sarif'
+          format: "sarif"
+          output: "trivy-image-admin.sarif"
           hide-progress: true
           ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '1'
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
 
       - name: ソース/設定/シークレット総合スキャン (Trivy FS)
         run: |

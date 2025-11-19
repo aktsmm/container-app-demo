@@ -100,25 +100,25 @@ jobs:
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.BOARD_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
-          format: 'cyclonedx'
-          output: 'sbom-board.cdx.json'
+          format: "cyclonedx"
+          output: "sbom-board.cdx.json"
           hide-progress: true
           ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
 
       - name: Trivy でコンテナをスキャン (SARIF)
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.BOARD_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
-          format: 'sarif'
-          output: 'trivy-image-board.sarif'
+          format: "sarif"
+          output: "trivy-image-board.sarif"
           hide-progress: true
           ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '1'
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
 
       - name: ソース/設定/シークレット総合スキャン (Trivy FS)
         run: |
@@ -126,7 +126,6 @@ jobs:
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b ./trivy-bin
           ./trivy-bin fs --scanners vuln,secret,config --ignore-unfixed --severity CRITICAL,HIGH \
             --format sarif --output trivy-fs-board.sarif app/board-app
-
 
       - name: Trivy SARIF をアップロード (Image)
         uses: github/codeql-action/upload-sarif@v2
