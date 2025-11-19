@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_PASSWORD="${1:-}"
-APP_USER="${2:-}"
-APP_PASSWORD="${3:-}"
+# 引数が base64 エンコードされている場合はデコード
+if [[ "${1:-}" =~ ^[A-Za-z0-9+/=]+$ ]]; then
+    ROOT_PASSWORD=$(echo "$1" | base64 -d)
+    APP_USER=$(echo "$2" | base64 -d)
+    APP_PASSWORD=$(echo "$3" | base64 -d)
+else
+    ROOT_PASSWORD="${1:-}"
+    APP_USER="${2:-}"
+    APP_PASSWORD="${3:-}"
+fi
 
 if [[ -z "$ROOT_PASSWORD" || -z "$APP_USER" || -z "$APP_PASSWORD" ]]; then
     echo "[mysql-init] Required arguments are missing" >&2

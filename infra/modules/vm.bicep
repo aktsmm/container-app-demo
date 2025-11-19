@@ -47,13 +47,8 @@ param logAnalyticsSharedKey string
 param tags object = {}
 
 var mysqlInitScript = loadTextContent('../../scripts/mysql-init.sh')
-var mysqlInitCommand = format('''
-bash -c 'cat <<'\''EOFSCRIPT'\'' >/tmp/mysql-init.sh
-{0}
-EOFSCRIPT
-chmod +x /tmp/mysql-init.sh
-/tmp/mysql-init.sh "{1}" "{2}" "{3}"'
-''', mysqlInitScript, mysqlRootPassword, mysqlAppUsername, mysqlAppPassword)
+// スクリプトと引数をすべて base64 エンコードして bash に渡す（引用符エスケープ回避）
+var mysqlInitCommand = format('''bash -c "echo {0} | base64 -d > /tmp/mysql-init.sh && chmod +x /tmp/mysql-init.sh && /tmp/mysql-init.sh {1} {2} {3}"''', base64(mysqlInitScript), base64(mysqlRootPassword), base64(mysqlAppUsername), base64(mysqlAppPassword))
 
 resource publicIp 'Microsoft.Network/publicIPAddresses@2023-09-01' = {
   name: '${name}-pip'
