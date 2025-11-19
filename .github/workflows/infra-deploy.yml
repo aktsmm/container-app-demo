@@ -98,6 +98,15 @@ jobs:
                   echo "ACR_LOGIN_SERVER=${ACR_NAME}.azurecr.io" >> "$GITHUB_ENV"
                   echo "STORAGE_ACCOUNT_NAME=$STORAGE_NAME" >> "$GITHUB_ENV"
 
+            - name: AKS 用一時 SSH 鍵生成 (秘密鍵はCI内のみ利用し保持しない)
+              run: |
+                set -euo pipefail
+                ssh-keygen -t rsa -b 4096 -f aks_temp_key -N '' -C "aks-demo-dev" >/dev/null 2>&1
+                PUB_KEY=$(cat aks_temp_key.pub | tr -d '\n')
+                echo "AKS_SSH_PUBLIC_KEY=$PUB_KEY" >> "$GITHUB_ENV"
+                rm -f aks_temp_key  # 秘密鍵は不要なので削除
+              shell: bash
+
             - name: 入力値を検証
               run: |
                   set -euo pipefail
@@ -125,7 +134,8 @@ jobs:
                     --parameters "@${{ env.PARAM_FILE }}" \
                     --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
                     --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
-                    --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD"
+                    --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
+                    --parameters aksSshPublicKey="$AKS_SSH_PUBLIC_KEY"
 
             - name: Bicep What-If
               run: |
@@ -136,7 +146,8 @@ jobs:
                     --parameters "@${{ env.PARAM_FILE }}" \
                     --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
                     --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
-                    --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD"
+                    --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
+                    --parameters aksSshPublicKey="$AKS_SSH_PUBLIC_KEY"
 
             - name: Bicep Deploy
               run: |
@@ -148,6 +159,7 @@ jobs:
                     --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
                     --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
                     --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
+                    --parameters aksSshPublicKey="$AKS_SSH_PUBLIC_KEY" \
                     --only-show-errors
 
             - name: Azure logout
