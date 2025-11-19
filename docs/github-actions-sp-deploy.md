@@ -77,15 +77,15 @@
 
 ## 3. GitHub Actions ワークフロー整理
 
-| Workflow                       | 主な処理                                   | 実装ポイント                                                                                                                                                         |
-| ------------------------------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `infra-deploy.yml`             | Bicep Validate → What-If → Deploy          | `azure/login@v2` を Client Secret 認証で利用。`az deployment sub create` に `parameters/*.json` を指定。                                                             |
-| `app-build-board.yml`          | 掲示板アプリ build + Trivy scan + ACR push | `docker/login-action` と SP 資格情報で ACR にログイン。scan 結果を Artifact 化。                                                                                     |
-| `app-deploy-board.yml`         | AKS へ Deployment/Service/Ingress 適用     | `workflow_run` で `app-build-board` 成功後にのみ自動実行。`github.event.workflow_run.head_sha` から 12 桁タグを算出し、`kubectl apply -k app/board-app/k8s` を行う。 |
-| `app-build-admin.yml`          | 管理アプリ build + Trivy + ACR push        | ACA スペック(0.5vCPU/1Gi)などをタグ化し、後続の deploy workflow へ渡す。                                                                                             |
-| `app-deploy-admin.yml`         | ACA リビジョン更新 + Basic 認証            | `workflow_run` で `app-build-admin` 成功後にのみ自動実行。`workflow_dispatch` 入力と SHA 由来タグを自動で切り替えて `az containerapp up` を実行。                    |
-| `backup-upload.yml`            | VM → Storage へ MySQL バックアップ送信     | GitHub Actions から VM へ SSH し `azcopy`/`rsync` を実行。`MYSQL_ROOT_PASSWORD` は Variable を参照し `mysqldump` を認証、Log Analytics へ結果を送る。                |
-| `cleanup-failed-workflows.yml` | 失敗 Workflow とキャッシュ清掃             | `gh run list --status failure` → `gh run delete` で停滞を解消。                                                                                                      |
+| Workflow                       | 主な処理                                   | 実装ポイント                                                                                                                                                                                                       |
+| ------------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `infra-deploy.yml`             | Bicep Validate → What-If → Deploy          | `azure/login@v2` を Client Secret 認証で利用。`az deployment sub create` に `parameters/*.json` を指定。                                                                                                           |
+| `app-build-board.yml`          | 掲示板アプリ build + Trivy scan + ACR push | `workflow_run` で `infra-deploy` 成功後にも自動起動し、`github.event.workflow_run.head_sha` を checkout して同一コミットをビルド。`docker/login-action` と SP 資格情報で ACR にログイン。scan 結果を Artifact 化。 |
+| `app-deploy-board.yml`         | AKS へ Deployment/Service/Ingress 適用     | `workflow_run` で `app-build-board` 成功後にのみ自動実行。`github.event.workflow_run.head_sha` から 12 桁タグを算出し、`kubectl apply -k app/board-app/k8s` を行う。                                               |
+| `app-build-admin.yml`          | 管理アプリ build + Trivy + ACR push        | `workflow_run` で `infra-deploy` 成功後にも自動起動。`github.event.workflow_run.head_sha` を checkout して ACA 用コンテナをビルドし、後続 deploy workflow へ渡す。                                                 |
+| `app-deploy-admin.yml`         | ACA リビジョン更新 + Basic 認証            | `workflow_run` で `app-build-admin` 成功後にのみ自動実行。`workflow_dispatch` 入力と SHA 由来タグを自動で切り替えて `az containerapp up` を実行。                                                                  |
+| `backup-upload.yml`            | VM → Storage へ MySQL バックアップ送信     | GitHub Actions から VM へ SSH し `azcopy`/`rsync` を実行。`MYSQL_ROOT_PASSWORD` は Variable を参照し `mysqldump` を認証、Log Analytics へ結果を送る。                                                              |
+| `cleanup-failed-workflows.yml` | 失敗 Workflow とキャッシュ清掃             | `gh run list --status failure` → `gh run delete` で停滞を解消。                                                                                                                                                    |
 
 ### 共通の Azure ログインステップ
 

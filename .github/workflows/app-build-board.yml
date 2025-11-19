@@ -8,6 +8,11 @@ on:
     paths:
       - "app/board-app/**"
       - ".github/workflows/app-build-board.yml"
+  workflow_run:
+    workflows:
+      - infra-deploy
+    types:
+      - completed
 
 permissions:
   contents: read
@@ -21,9 +26,12 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: コードを取得
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Gitleaks で秘密情報を検出
         run: |
