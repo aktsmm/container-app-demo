@@ -90,7 +90,7 @@
       "value": "aksadmin"
     },
     "aksSshPublicKey": {
-      "value": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDREPLACEWITHREALKEY"
+      "value": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDTapIZIK30lJEl2xv/zwywywBsuuvJnmVFA4byM+YW4IMTEG+RZmo7D1G1RvnONrtRbjTFBSkV4p36x6wTv+oyJ6sEC4nGZgflQwuU1/QLeNC67RRwe+YDohZtZAZxbA3V+LZyB1qbEmytI1Fc5Jh92sf9L2v/pX9ELiihRLODPITZIxHXuLPOIX0jfyvfA0G6SaYpQ+NLf9RV38JK0snzzoImdo50sBLD8zuogUA8vabuDrk7gjKEtU029XLyvpD0P4m5WMEHZ+he7zyGwONXopUzA1ElbQHygrLIxL5mgHjFcpxS39KNZVqS0HSlax36LwdMdmEYJiuK5v7qL3ZYl6zHc9h1+dIRtCzOGezuhFZRpKik1bjVvqESJXe3q30yc4Uch+q+l7vGy6DDv+9rMTtsS7oAa2c9llojtd5lsOvEj40txiL+60qHXpy1RmW6xzY5UwVYP0pxte2amnY8tEuiWu02HIq45kbb6RPDdW+qm3A/dGIGP3PWba2BcED8dkGOIGLJPO0P7wrJL2JsusvmRD0RTSo4AKelbHIIS8npbEcORmq06F/XxDdql1+g64tq1ucwy6uBMtRd+cypIo38Ji/rQZPcTnbql5xSYLhXBs05G20uFQbP8Qw889rIEi2WZ/UX8iLQXlM0QbhVkIyWODph8tVNrFPS6HrOGw== aks-demo-dev"
     },
     "aksServiceCidr": {
       "value": "10.10.0.0/24"

@@ -35,7 +35,11 @@ function Get-CodeValue {
         throw "キー $Key の値を解析できません"
     }
 
-    return $parts[1].Trim()
+    $rawValue = $parts[1].Trim()
+    # 日本語/英語の括弧以降(説明コメント)を除去し純粋な値のみを取得
+    $rawValue = ($rawValue -replace '（.*$', '')
+    $rawValue = ($rawValue -replace '\(.*$', '')
+    return $rawValue.Trim()
 }
 
 $variableKeys = @(
