@@ -173,6 +173,7 @@ resource vm 'Microsoft.Compute/virtualMachines@2023-09-01' = {
 resource azureMonitorAgent 'Microsoft.Compute/virtualMachines/extensions@2022-11-01' = {
   name: 'AzureMonitorLinuxAgent'
   parent: vm
+  location: location
   properties: {
     publisher: 'Microsoft.Azure.Monitor'
     type: 'AzureMonitorLinuxAgent'
@@ -190,6 +191,7 @@ resource azureMonitorAgent 'Microsoft.Compute/virtualMachines/extensions@2022-11
 resource mysqlInit 'Microsoft.Compute/virtualMachines/extensions@2022-11-01' = {
   name: 'MysqlInit'
   parent: vm
+  location: location
   properties: {
     publisher: 'Microsoft.Azure.Extensions'
     type: 'CustomScript'
