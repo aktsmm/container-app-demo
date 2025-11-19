@@ -98,34 +98,14 @@ jobs:
                   echo "ACR_LOGIN_SERVER=${ACR_NAME}.azurecr.io" >> "$GITHUB_ENV"
                   echo "STORAGE_ACCOUNT_NAME=$STORAGE_NAME" >> "$GITHUB_ENV"
 
-            - name: AKS 用一時 SSH 鍵生成 (秘密鍵はCI内のみ利用し保持しない)
+            - name: AKS 用一時 SSH 鍵生成
+              if: env.AKS_SKIP_CREATE == 'false'
               run: |
-                  set -euo pipefail
-                  ssh-keygen -t rsa -b 4096 -f aks_temp_key -N '' -C "aks-demo-dev" >/dev/null 2>&1
-                  PUB_KEY=$(cat aks_temp_key.pub | tr -d '\n')
-                      - name: AKS 存在判定 (既存なら作成をスキップ)
-                        run: |
-                            set -euo pipefail
-                            AKS_NAME=$(jq -r '.parameters.aksName.value' "${PARAM_FILE}")
-                            if az aks show -g "$RESOURCE_GROUP_NAME" -n "$AKS_NAME" >/dev/null 2>&1; then
-                                echo "既存 AKS クラスター $AKS_NAME が見つかったため再作成をスキップします"
-                                echo "AKS_SKIP_CREATE=true" >> "$GITHUB_ENV"
-                            else
-                                echo "AKS クラスター $AKS_NAME は存在しないため新規作成します"
-                                echo "AKS_SKIP_CREATE=false" >> "$GITHUB_ENV"
-                            fi
-
-                      - name: AKS 用一時 SSH 鍵生成 (秘密鍵はCI内のみ利用し保持しない)
-                        if: env.AKS_SKIP_CREATE == 'false'
-                        run: |
-                            set -euo pipefail
-                            ssh-keygen -t rsa -b 4096 -f aks_temp_key -N '' -C "aks-demo-dev" >/dev/null 2>&1
-                            PUB_KEY=$(cat aks_temp_key.pub | tr -d '\n')
-                            echo "AKS_SSH_PUBLIC_KEY=$PUB_KEY" >> "$GITHUB_ENV"
-                            rm -f aks_temp_key  # 秘密鍵は不要なので削除
-                        shell: bash
-                  echo "AKS_SSH_PUBLIC_KEY=$PUB_KEY" >> "$GITHUB_ENV"
-                  rm -f aks_temp_key  # 秘密鍵は不要なので削除
+                set -euo pipefail
+                ssh-keygen -t rsa -b 4096 -f aks_temp_key -N '' -C "aks-demo-dev" >/dev/null 2>&1
+                PUB_KEY=$(cat aks_temp_key.pub | tr -d '\n')
+                echo "AKS_SSH_PUBLIC_KEY=$PUB_KEY" >> "$GITHUB_ENV"
+                rm -f aks_temp_key
               shell: bash
 
             - name: 入力値を検証
@@ -145,7 +125,19 @@ jobs:
                   az group create \
                     --name "$RESOURCE_GROUP_NAME" \
                     --location "$LOCATION"
-                              --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE"
+
+            - name: AKS 存在判定とスキップフラグ設定
+              run: |
+                  set -euo pipefail
+                  AKS_NAME=$(jq -r '.parameters.aksName.value' "${PARAM_FILE}")
+                  if az aks show -g "$RESOURCE_GROUP_NAME" -n "$AKS_NAME" >/dev/null 2>&1; then
+                      echo "既存 AKS クラスター $AKS_NAME が見つかったため再作成をスキップします"
+                      echo "AKS_SKIP_CREATE=true" >> "$GITHUB_ENV"
+                  else
+                      echo "AKS クラスター $AKS_NAME は存在しないため新規作成します"
+                      echo "AKS_SKIP_CREATE=false" >> "$GITHUB_ENV"
+                  fi
+
             - name: Bicep Validate
               run: |
                   az deployment group validate \
@@ -156,7 +148,7 @@ jobs:
                     --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
                     --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
                     --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
-                              --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE"
+                    --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE"
 
             - name: Bicep What-If
               run: |
@@ -167,8 +159,8 @@ jobs:
                     --parameters "@${{ env.PARAM_FILE }}" \
                     --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
                     --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
-                              --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE" \
-                    --parameters aksSshPublicKey="$AKS_SSH_PUBLIC_KEY"
+                    --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
+                    --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE"
 
             - name: Bicep Deploy
               run: |
@@ -180,7 +172,7 @@ jobs:
                     --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
                     --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
                     --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
-                    --parameters aksSshPublicKey="$AKS_SSH_PUBLIC_KEY" \
+                    --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE" \
                     --only-show-errors
 
             - name: Azure logout
