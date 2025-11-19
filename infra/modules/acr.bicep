@@ -36,9 +36,6 @@ resource registry 'Microsoft.ContainerRegistry/registries@2023-01-01-preview' = 
       }
     }
     anonymousPullEnabled: false
-    encryption: {
-      status: 'enabled'
-    }
     publicNetworkAccess: 'Enabled'
   }
 }

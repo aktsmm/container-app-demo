@@ -292,40 +292,11 @@ resource storageDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-pr
   scope: storageAccountExisting
   properties: {
     workspaceId: logAnalytics.outputs.id
-    logs: [
-      {
-        category: 'StorageRead'
-        enabled: true
-        retentionPolicy: {
-          enabled: false
-          days: 0
-        }
-      }
-      {
-        category: 'StorageWrite'
-        enabled: true
-        retentionPolicy: {
-          enabled: false
-          days: 0
-        }
-      }
-      {
-        category: 'StorageDelete'
-        enabled: true
-        retentionPolicy: {
-          enabled: false
-          days: 0
-        }
-      }
-    ]
+    logs: []
     metrics: [
       {
         category: 'Transaction'
         enabled: true
-        retentionPolicy: {
-          enabled: false
-          days: 0
-        }
       }
     ]
   }
@@ -375,15 +346,11 @@ resource caeDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-previe
     workspaceId: logAnalytics.outputs.id
     logs: [
       {
-        category: 'SystemLogs'
+        category: 'ContainerAppConsoleLogs'
         enabled: true
       }
       {
-        category: 'IngressLogs'
-        enabled: true
-      }
-      {
-        category: 'ConsoleLogs'
+        category: 'ContainerAppSystemLogs'
         enabled: true
       }
     ]
