@@ -9,6 +9,9 @@ param environmentName string
 @description('共通タグ')
 param tags object = {}
 
+@description('デプロイメント名を一意にするためのタイムスタンプ（既定: 現在時刻）')
+param deploymentTimestamp string = utcNow('yyyyMMddHHmmss')
+
 @description('仮想ネットワーク名')
 param vnetName string
 
@@ -178,7 +181,7 @@ var vnetSubnets = [
 ]
 
 module logAnalytics './modules/logAnalytics.bicep' = {
-  name: 'logAnalytics'
+  name: 'logAnalytics-${deploymentTimestamp}'
   params: {
     name: logAnalyticsName
     location: location
@@ -192,7 +195,7 @@ var logAnalyticsWorkspaceId = resourceId('Microsoft.OperationalInsights/workspac
 var logAnalyticsSharedKey = listKeys(logAnalyticsWorkspaceId, '2020-08-01').primarySharedKey
 
 module vnet './modules/vnet.bicep' = {
-  name: 'network'
+  name: 'network-${deploymentTimestamp}'
   params: {
     name: vnetName
     location: location
@@ -203,7 +206,7 @@ module vnet './modules/vnet.bicep' = {
 }
 
 module acr './modules/acr.bicep' = {
-  name: 'acr'
+  name: 'acr-${deploymentTimestamp}'
   params: {
     name: acrName
     location: location
@@ -212,7 +215,7 @@ module acr './modules/acr.bicep' = {
 }
 
 module storage './modules/storageAccount.bicep' = {
-  name: 'storage'
+  name: 'storage-${deploymentTimestamp}'
   params: {
     name: storageAccountName
     location: location
@@ -223,7 +226,7 @@ module storage './modules/storageAccount.bicep' = {
 }
 
 module containerAppsEnv './modules/containerAppEnv.bicep' = {
-  name: 'containerAppEnv'
+  name: 'containerAppsEnv-${deploymentTimestamp}'
   params: {
     name: containerAppsEnvironmentName
     location: location
@@ -235,7 +238,7 @@ module containerAppsEnv './modules/containerAppEnv.bicep' = {
 }
 
 module aks './modules/aks.bicep' = if (!aksSkipCreate) {
-  name: 'aks'
+  name: 'aks-${deploymentTimestamp}'
   params: {
     name: aksName
     location: location
@@ -260,7 +263,7 @@ module aks './modules/aks.bicep' = if (!aksSkipCreate) {
 }
 
 module vm './modules/vm.bicep' = {
-  name: 'vm'
+  name: 'vm-${deploymentTimestamp}'
   params: {
     name: vmName
     location: location
