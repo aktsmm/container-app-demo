@@ -11,11 +11,11 @@ permissions:
     contents: read
 
 env:
-  RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
-  LOCATION: ${{ vars.LOCATION }}
-  PARAM_FILE: infra/parameters/main-dev.parameters.json
-  ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
-  STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
+    RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+    LOCATION: ${{ vars.LOCATION }}
+    PARAM_FILE: infra/parameters/main-dev.parameters.json
+    ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
+    STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
 
 jobs:
     deploy:
@@ -37,16 +37,26 @@ jobs:
                     echo "Prefix 変数が未設定です" >&2
                     exit 1
                   fi
+                  # 既存リソースを参照する前にRGの有無を判定し、初回デプロイでの404を防ぐ
+                  RG_EXISTS=$(az group exists --name "$RESOURCE_GROUP_NAME" || echo false)
+                  if [ "$RG_EXISTS" != "true" ]; then
+                    echo "Resource group $RESOURCE_GROUP_NAME は未作成のため新規作成として処理します"
+                    RG_EXISTS=false
+                  fi
                   generate_suffix() {
                     local raw num
                     raw=$(od -An -N2 -tu2 /dev/urandom | tr -d ' \n')
                     num=$(( raw % 9000 + 1000 ))
                     printf '%04d' "$num"
                   }
-                  ACR_NAME=$(az acr list \
-                    --resource-group "$RESOURCE_GROUP_NAME" \
-                    --query "[?starts_with(name, '${ACR_NAME_PREFIX}')].name | [0]" \
-                    -o tsv)
+                  if [ "$RG_EXISTS" = "true" ]; then
+                    ACR_NAME=$(az acr list \
+                      --resource-group "$RESOURCE_GROUP_NAME" \
+                      --query "[?starts_with(name, '${ACR_NAME_PREFIX}')].name | [0]" \
+                      -o tsv)
+                  else
+                    ACR_NAME=""
+                  fi
                   if [ -z "$ACR_NAME" ]; then
                     while true; do
                       SUFFIX=$(generate_suffix)
@@ -59,10 +69,14 @@ jobs:
                       fi
                     done
                   fi
-                  STORAGE_NAME=$(az storage account list \
-                    --resource-group "$RESOURCE_GROUP_NAME" \
-                    --query "[?starts_with(name, '${STORAGE_ACCOUNT_PREFIX}')].name | [0]" \
-                    -o tsv)
+                  if [ "$RG_EXISTS" = "true" ]; then
+                    STORAGE_NAME=$(az storage account list \
+                      --resource-group "$RESOURCE_GROUP_NAME" \
+                      --query "[?starts_with(name, '${STORAGE_ACCOUNT_PREFIX}')].name | [0]" \
+                      -o tsv)
+                  else
+                    STORAGE_NAME=""
+                  fi
                   if [ -z "$STORAGE_NAME" ]; then
                     while true; do
                       SUFFIX=$(generate_suffix)

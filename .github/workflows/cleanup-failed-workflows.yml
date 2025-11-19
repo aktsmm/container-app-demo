@@ -1,51 +1,104 @@
-name: cleanup-failed-workflows
+name: 👋cleanup-failed-workflows
 
 on:
+    # 毎時トリガー
     schedule:
-        - cron: "15 * * * *"
+        - cron: "0 * * * *"
+    # 手動トリガー
     workflow_dispatch:
+    # このファイルが更新されたときにトリガー
+    push:
+        paths:
+            - ".github/workflows/cleanup-failed-workflows.yml"
 
 permissions:
     contents: read
     actions: write
+    # （必要に応じて）workflow: write
 
 jobs:
     cleanup:
         runs-on: ubuntu-latest
         steps:
-            - name: 失敗したワークフロー実行を削除
+            - name: 失敗したワークフロー実行をすべて削除（status=completed ∧ conclusion=failure）
               uses: actions/github-script@v7
               with:
                   script: |
-                      const cutoff = Date.now() - 24 * 60 * 60 * 1000; // 24 時間前
                       const { owner, repo } = context.repo;
-                      const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
-                        owner,
-                        repo,
-                        per_page: 100,
-                        status: 'completed'
-                      });
+
+                      // 'completed' の実行をページング取得
+                      const runs = await github.paginate(
+                        github.rest.actions.listWorkflowRunsForRepo,
+                        { owner, repo, per_page: 100, status: 'completed' },
+                        (response) => response.data.workflow_runs || []
+                      );
+
+                      let deleted = 0;
                       for (const run of runs) {
-                        const created = new Date(run.created_at).getTime();
-                        if (run.conclusion === 'failure' && created < cutoff) {
-                          await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+                        if (run.conclusion === 'failure') {
+                          try {
+                            await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+                            core.info(`Deleted failed run id=${run.id} name=${run.name} created_at=${run.created_at}`);
+                            deleted++;
+                          } catch (err) {
+                            core.warning(`Failed to delete run id=${run.id}: ${err.message}`);
+                          }
                         }
                       }
+                      core.info(`Total deleted failed runs: ${deleted}`);
 
-            - name: 古い Actions キャッシュを削除
+            - name: 古い Actions キャッシュも併せて削除（任意・最終アクセスから7日より前）
               uses: actions/github-script@v7
               with:
                   script: |
-                      const cacheCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000; // 7 日前
                       const { owner, repo } = context.repo;
-                      const caches = await github.paginate(github.rest.actions.getActionsCacheList, {
-                        owner,
-                        repo,
-                        per_page: 100
-                      });
+                      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000; // 7日前
+
+                      // キャッシュ一覧（actions_caches）をページング取得
+                      const caches = await github.paginate(
+                        github.rest.actions.getActionsCacheList,
+                        { owner, repo, per_page: 100 },
+                        (response) => response.data.actions_caches || []
+                      );
+
+                      let deleted = 0;
                       for (const cache of caches) {
                         const lastAccessed = new Date(cache.last_accessed_at).getTime();
-                        if (lastAccessed < cacheCutoff) {
-                          await github.rest.actions.deleteActionsCacheById({ owner, repo, cache_id: cache.id });
+                        if (Number.isFinite(lastAccessed) && lastAccessed < cutoff) {
+                          try {
+                            await github.rest.actions.deleteActionsCacheById({ owner, repo, cache_id: cache.id });
+                            core.info(`Deleted cache id=${cache.id} key=${cache.key} last_accessed_at=${cache.last_accessed_at}`);
+                            deleted++;
+                          } catch (err) {
+                            core.warning(`Failed to delete cache id=${cache.id}: ${err.message}`);
+                          }
+                        }
+                      }
+                      core.info(`Total deleted caches: ${deleted}`);
+
+            - name: 古いアーティファクトを削除（任意・作成から7日より前）
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const { owner, repo } = context.repo;
+                      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000; // 7日前
+
+                      const artifacts = await github.paginate(
+                        github.rest.actions.listArtifactsForRepo,
+                        { owner, repo, per_page: 100 },
+                        (response) => response.data.artifacts || []
+                      );
+
+                      let deleted = 0;
+                      for (const art of artifacts) {
+                        const created = new Date(art.created_at).getTime();
+                        if (Number.isFinite(created) && created < cutoff) {
+                          try {
+                            await github.rest.actions.deleteArtifact({ owner, repo, artifact_id: art.id });
+                            core.info(`Deleted artifact id=${art.id} name=${art.name} created_at=${art.created_at}`);
+                            deleted++;
+                          } catch (err) {
+                                             core.warning(`Failed to delete artifact id=${art.id}: ${err.message}`);
+                          }
                         }
                       }
