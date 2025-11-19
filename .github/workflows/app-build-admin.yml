@@ -14,8 +14,8 @@ permissions:
   id-token: write
 
 env:
-  ACR_NAME: ${{ vars.ACR_NAME }}
-  ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
+  RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+  ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
   ADMIN_IMAGE_NAME: admin-app
 
 jobs:
@@ -36,6 +36,24 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ACR 名を解決
+        run: |
+          set -euo pipefail
+          if [ -z "$ACR_NAME_PREFIX" ] || [ -z "$RESOURCE_GROUP_NAME" ]; then
+            echo "ACR 名を決定するための変数が不足しています" >&2
+            exit 1
+          fi
+          ACR_NAME=$(az acr list \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --query "[?starts_with(name, '${ACR_NAME_PREFIX}')].name | [0]" \
+            -o tsv)
+          if [ -z "$ACR_NAME" ]; then
+            echo "指定プレフィックスの ACR が存在しません。infra-deploy を先に実行してください" >&2
+            exit 1
+          fi
+          echo "ACR_NAME=$ACR_NAME" >> "$GITHUB_ENV"
+          echo "ACR_LOGIN_SERVER=${ACR_NAME}.azurecr.io" >> "$GITHUB_ENV"
 
       - name: ACR へログイン
         run: |

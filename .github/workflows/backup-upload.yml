@@ -12,7 +12,7 @@ permissions:
 env:
     RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
     VM_NAME: ${{ vars.VM_NAME }}
-    STORAGE_ACCOUNT_NAME: ${{ vars.STORAGE_ACCOUNT_NAME }}
+    STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
     STORAGE_CONTAINER_NAME: ${{ vars.STORAGE_CONTAINER_NAME }}
 
 jobs:
@@ -25,6 +25,23 @@ jobs:
                   client-id: ${{ vars.AZURE_CLIENT_ID }}
                   tenant-id: ${{ vars.AZURE_TENANT_ID }}
                   subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+            - name: ストレージアカウント名を解決
+              run: |
+                  set -euo pipefail
+                  if [ -z "$STORAGE_ACCOUNT_PREFIX" ] || [ -z "$RESOURCE_GROUP_NAME" ]; then
+                    echo "ストレージアカウント名を決定するための変数が不足しています" >&2
+                    exit 1
+                  fi
+                  STORAGE_ACCOUNT_NAME=$(az storage account list \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --query "[?starts_with(name, '${STORAGE_ACCOUNT_PREFIX}')].name | [0]" \
+                    -o tsv)
+                  if [ -z "$STORAGE_ACCOUNT_NAME" ]; then
+                    echo "指定プレフィックスのストレージアカウントが存在しません。infra-deploy を先に実行してください" >&2
+                    exit 1
+                  fi
+                  echo "STORAGE_ACCOUNT_NAME=$STORAGE_ACCOUNT_NAME" >> "$GITHUB_ENV"
 
             - name: Storage 用 SAS を発行
               id: sas

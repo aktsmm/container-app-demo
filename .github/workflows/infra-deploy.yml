@@ -11,9 +11,11 @@ permissions:
     contents: read
 
 env:
-    RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
-    LOCATION: ${{ vars.LOCATION }}
-    PARAM_FILE: infra/parameters/main-dev.parameters.json
+  RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+  LOCATION: ${{ vars.LOCATION }}
+  PARAM_FILE: infra/parameters/main-dev.parameters.json
+  ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
+  STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
 
 jobs:
     deploy:
@@ -30,6 +32,57 @@ jobs:
                   client-secret: ${{ vars.AZURE_CLIENT_SECRET }}
                   subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+            - name: ユニーク名を決定
+              run: |
+                  set -euo pipefail
+                  if [ -z "$ACR_NAME_PREFIX" ] || [ -z "$STORAGE_ACCOUNT_PREFIX" ]; then
+                    echo "Prefix 変数が未設定です" >&2
+                    exit 1
+                  fi
+                  ACR_NAME=$(az acr list \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --query "[?starts_with(name, '${ACR_NAME_PREFIX}')].name | [0]" \
+                    -o tsv)
+                  if [ -z "$ACR_NAME" ]; then
+                    while true; do
+                      SUFFIX=$(python - <<'PY'
+import secrets
+print(secrets.randbelow(9000) + 1000)
+PY
+)
+                      CANDIDATE="${ACR_NAME_PREFIX}${SUFFIX}"
+                      CANDIDATE=$(echo "$CANDIDATE" | tr '[:upper:]' '[:lower:]')
+                      AVAILABLE=$(az acr check-name --name "$CANDIDATE" --query nameAvailable -o tsv)
+                      if [ "$AVAILABLE" = "true" ]; then
+                        ACR_NAME="$CANDIDATE"
+                        break
+                      fi
+                    done
+                  fi
+                  STORAGE_NAME=$(az storage account list \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --query "[?starts_with(name, '${STORAGE_ACCOUNT_PREFIX}')].name | [0]" \
+                    -o tsv)
+                  if [ -z "$STORAGE_NAME" ]; then
+                    while true; do
+                      SUFFIX=$(python - <<'PY'
+import secrets
+print(secrets.randbelow(9000) + 1000)
+PY
+)
+                      CANDIDATE="${STORAGE_ACCOUNT_PREFIX}${SUFFIX}"
+                      CANDIDATE=$(echo "$CANDIDATE" | tr '[:upper:]' '[:lower:]')
+                      AVAILABLE=$(az storage account check-name --name "$CANDIDATE" --query nameAvailable -o tsv)
+                      if [ "$AVAILABLE" = "true" ]; then
+                        STORAGE_NAME="$CANDIDATE"
+                        break
+                      fi
+                    done
+                  fi
+                  echo "ACR_NAME=$ACR_NAME" >> "$GITHUB_ENV"
+                  echo "ACR_LOGIN_SERVER=${ACR_NAME}.azurecr.io" >> "$GITHUB_ENV"
+                  echo "STORAGE_ACCOUNT_NAME=$STORAGE_NAME" >> "$GITHUB_ENV"
+
             - name: Ensure resource group exists
               run: |
                   az group create \
@@ -42,7 +95,8 @@ jobs:
                     --resource-group "$RESOURCE_GROUP_NAME" \
                     --name "validate-$(date +%s)" \
                     --template-file infra/main.bicep \
-                    --parameters "@${{ env.PARAM_FILE }}"
+                    --parameters "@${{ env.PARAM_FILE }}" \
+                    --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME"
 
             - name: Bicep What-If
               run: |
@@ -50,7 +104,8 @@ jobs:
                     --resource-group "$RESOURCE_GROUP_NAME" \
                     --name "whatif-$(date +%s)" \
                     --template-file infra/main.bicep \
-                    --parameters "@${{ env.PARAM_FILE }}"
+                    --parameters "@${{ env.PARAM_FILE }}" \
+                    --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME"
 
             - name: Bicep Deploy
               run: |
@@ -59,6 +114,7 @@ jobs:
                     --name "deploy-$(date +%s)" \
                     --template-file infra/main.bicep \
                     --parameters "@${{ env.PARAM_FILE }}" \
+                    --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
                     --only-show-errors
 
             - name: Azure logout
