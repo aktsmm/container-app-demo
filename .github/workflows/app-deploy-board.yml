@@ -94,8 +94,6 @@ jobs:
                   echo "IMAGE_FULL=$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
 
             - name: Kustomize を適用
-              env:
-                  PYTHONUNBUFFERED: "1"
               run: |
                   BOARD_NS=$(grep kubernetesNamespace "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
                   kubectl kustomize "$KUSTOMIZE_DIR" \

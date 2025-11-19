@@ -39,17 +39,19 @@ jobs:
                     echo "Prefix 変数が未設定です" >&2
                     exit 1
                   fi
+                  generate_suffix() {
+                    local raw num
+                    raw=$(od -An -N2 -tu2 /dev/urandom | tr -d ' \n')
+                    num=$(( raw % 9000 + 1000 ))
+                    printf '%04d' "$num"
+                  }
                   ACR_NAME=$(az acr list \
                     --resource-group "$RESOURCE_GROUP_NAME" \
                     --query "[?starts_with(name, '${ACR_NAME_PREFIX}')].name | [0]" \
                     -o tsv)
                   if [ -z "$ACR_NAME" ]; then
                     while true; do
-                      SUFFIX=$(python - <<'PY'
-import secrets
-print(secrets.randbelow(9000) + 1000)
-PY
-)
+                      SUFFIX=$(generate_suffix)
                       CANDIDATE="${ACR_NAME_PREFIX}${SUFFIX}"
                       CANDIDATE=$(echo "$CANDIDATE" | tr '[:upper:]' '[:lower:]')
                       AVAILABLE=$(az acr check-name --name "$CANDIDATE" --query nameAvailable -o tsv)
@@ -65,11 +67,7 @@ PY
                     -o tsv)
                   if [ -z "$STORAGE_NAME" ]; then
                     while true; do
-                      SUFFIX=$(python - <<'PY'
-import secrets
-print(secrets.randbelow(9000) + 1000)
-PY
-)
+                      SUFFIX=$(generate_suffix)
                       CANDIDATE="${STORAGE_ACCOUNT_PREFIX}${SUFFIX}"
                       CANDIDATE=$(echo "$CANDIDATE" | tr '[:upper:]' '[:lower:]')
                       AVAILABLE=$(az storage account check-name --name "$CANDIDATE" --query nameAvailable -o tsv)
