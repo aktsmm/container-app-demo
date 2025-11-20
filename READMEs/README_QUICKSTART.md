@@ -47,17 +47,29 @@ az account set --subscription "<SUBSCRIPTION_ID>"
 
 ## 4. Service Principal の発行
 
-`scripts/create-github-actions-sp.ps1` を使うと GitHub Actions 専用の Service Principal (クライアントシークレット方式) を作成し、必要な値を一括出力できます。Contributor に加えて Resource Policy Contributor / User Access Administrator を自動付与します。
+`scripts/create-github-actions-sp.ps1` を使うと GitHub Actions 専用の Service Principal (クライアントシークレット方式) を作成し、必要な値を一括出力できます。
+
+### 自動付与されるロール
+
+このスクリプトは以下の3つのロールを自動で付与します：
+
+1. **Contributor** (指定したロール) – リソースの作成・更新・削除
+2. **Resource Policy Contributor** (自動追加) – Azure Policy の割り当て・管理（`infra/policy.bicep` デプロイに必要）
+3. **User Access Administrator** (自動追加) – Managed Identity へのロール割り当て（VM/ACA の Managed Identity に権限付与）
+
+### 実行例
 
 ```powershell
 pwsh ./scripts/create-github-actions-sp.ps1 `
     -SubscriptionId "<SUBSCRIPTION_ID>" `
-    -ResourceGroupName "rg-container-app-demo" `
+    -ResourceGroupName "RG-bbs-app-demo" `
     -DisplayName "gha-container-app-demo" `
     -RoleDefinitionName "Contributor" `
     -SecretDurationYears 2
 ```
 
+- **ResourceGroupName を指定した場合**: 3つのロールすべてがリソースグループスコープで付与されます（推奨）
+- **ResourceGroupName を省略した場合**: サブスクリプションスコープで付与されます（権限範囲が広いため注意）
 - 出力される `AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_CLIENT_SECRET / AZURE_SUBSCRIPTION_ID` をメモします。
 
 ## 5. GitHub Secrets / Variables の登録
