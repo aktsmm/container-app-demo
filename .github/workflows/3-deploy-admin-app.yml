@@ -263,7 +263,9 @@ jobs:
             --scope "$STORAGE_ID" || echo "既に割り当て済みまたはエラー（継続）"
           
           echo "⚠️ 【警告】Managed Identity に Subscription レベルの Contributor が付与されました"
-          echo "本番環境では最小権限の原則に従い、必要最小限のロールのみを付与してください"      - name: デプロイサマリを出力
+          echo "本番環境では最小権限の原則に従い、必要最小限のロールのみを付与してください"
+      
+      - name: デプロイサマリを出力
         if: success()
         run: |
           FQDN=$(az containerapp show \
