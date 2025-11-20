@@ -43,6 +43,29 @@ jobs:
           creds: >-
             {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
 
+      - name: Service Principal に Policy 権限を付与
+        run: |
+          set -euo pipefail
+          echo "Service Principal に Resource Policy Contributor ロールを付与します"
+
+          # 既存のロール割り当てを確認
+          EXISTING_ROLE=$(az role assignment list \
+            --assignee "${{ vars.AZURE_CLIENT_ID }}" \
+            --role "Resource Policy Contributor" \
+            --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            --query "[0].id" -o tsv || echo "")
+
+          if [ -n "$EXISTING_ROLE" ]; then
+            echo "既に Resource Policy Contributor ロールが割り当て済みです"
+          else
+            echo "Resource Policy Contributor ロールを割り当てます"
+            az role assignment create \
+              --assignee "${{ vars.AZURE_CLIENT_ID }}" \
+              --role "Resource Policy Contributor" \
+              --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+            echo "ロール割り当てが完了しました"
+          fi
+
       - name: ユニーク名を決定
         id: name_resolution
         run: |
