@@ -78,12 +78,13 @@ jobs:
           echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
           echo "IMAGE_FULL=$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
 
-      - name: ACR Pull 用トークンを取得
+      - name: ACR Pull 用認証情報を取得
         id: acr_token
         run: |
-          TOKEN_JSON=$(az acr login --name "$ACR_NAME" --expose-token)
-          echo "ACR_USERNAME=$(echo "$TOKEN_JSON" | jq -r '.username')" >> "$GITHUB_ENV"
-          echo "ACR_PASSWORD=$(echo "$TOKEN_JSON" | jq -r '.accessToken')" >> "$GITHUB_ENV"
+          ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
+          ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+          echo "ACR_USERNAME=$ACR_USERNAME" >> "$GITHUB_ENV"
+          echo "ACR_PASSWORD=$ACR_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Container Apps へデプロイ
         env:
@@ -93,6 +94,14 @@ jobs:
           # Container App が存在するか確認
           if az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" &>/dev/null; then
             echo "既存の Container App を更新します"
+            
+            # レジストリ認証情報を設定
+            az containerapp registry set \
+              --name "$CONTAINER_APP_NAME" \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --server "$ACR_LOGIN_SERVER" \
+              --username "$ACR_USERNAME" \
+              --password "$ACR_PASSWORD"
             
             # シークレットを更新
             az containerapp secret set \
@@ -114,7 +123,7 @@ jobs:
           else
             echo "新規 Container App を作成します"
             
-            # シークレット参照なしで Container App を作成
+            # Container App を作成
             az containerapp create \
               --name "$CONTAINER_APP_NAME" \
               --resource-group "$RESOURCE_GROUP_NAME" \
@@ -125,13 +134,9 @@ jobs:
               --min-replicas 0 \
               --max-replicas 1 \
               --registry-server "$ACR_LOGIN_SERVER" \
-              --registry-identity system \
+              --registry-username "$ACR_USERNAME" \
+              --registry-password "$ACR_PASSWORD" \
               --revision-suffix "gh-${GITHUB_RUN_NUMBER}"
-            
-            # ACR Pull 権限を付与
-            CONTAINER_APP_IDENTITY=$(az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query identity.principalId -o tsv)
-            ACR_ID=$(az acr show --name "$ACR_NAME" --query id -o tsv)
-            az role assignment create --assignee "$CONTAINER_APP_IDENTITY" --role AcrPull --scope "$ACR_ID"
             
             # シークレットを設定
             az containerapp secret set \
