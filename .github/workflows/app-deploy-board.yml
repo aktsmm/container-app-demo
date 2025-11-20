@@ -63,9 +63,10 @@ jobs:
             - name: Namespace/Ingress の値を同期
               shell: pwsh
               run: |
-                  ./scripts/sync-board-vars.ps1 \
-                    -ParametersFile ${{ env.PARAM_FILE }} \
-                    -OutputFile ${{ env.KUSTOMIZE_DIR }}/vars.env
+                  $ErrorActionPreference = 'Stop'
+                  & ./scripts/sync-board-vars.ps1 `
+                    -ParametersFile "infra/parameters/main-dev.parameters.json" `
+                    -OutputFile "app/board-app/k8s/vars.env"
 
             - name: AKS に ACR Pull 権限を付与
               run: |

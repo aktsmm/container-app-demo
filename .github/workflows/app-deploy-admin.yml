@@ -90,36 +90,52 @@ jobs:
           ADMIN_BASIC_AUTH_USERNAME: ${{ secrets.ADMIN_BASIC_AUTH_USERNAME }}
           ADMIN_BASIC_AUTH_PASSWORD: ${{ secrets.ADMIN_BASIC_AUTH_PASSWORD }}
         run: |
-          az containerapp up \
-            --name "$CONTAINER_APP_NAME" \
-            --resource-group "$RESOURCE_GROUP_NAME" \
-            --environment "$ACA_ENVIRONMENT_NAME" \
-            --image "$IMAGE_FULL" \
-            --ingress external \
-            --target-port "$ADMIN_TARGET_PORT" \
-            --min-replicas 0 \
-            --max-replicas 1 \
-            --transport auto \
-            --registry-server "$ACR_LOGIN_SERVER" \
-            --registry-username "$ACR_USERNAME" \
-            --registry-password "$ACR_PASSWORD" \
-            --revision-suffix "gh-${GITHUB_RUN_NUMBER}" \
-            --query name
+          # Container App が存在するか確認
+          if az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" &>/dev/null; then
+            echo "既存の Container App を更新します"
+            az containerapp update \
+              --name "$CONTAINER_APP_NAME" \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --image "$IMAGE_FULL" \
+              --revision-suffix "gh-${GITHUB_RUN_NUMBER}" \
+              --set-env-vars \
+                ADMIN_USERNAME=secretref:admin-username \
+                ADMIN_PASSWORD=secretref:admin-password \
+                DB_ENDPOINT="$DB_ENDPOINT" \
+                BACKUP_CONTAINER="$BACKUP_CONTAINER"
+          else
+            echo "新規 Container App を作成します"
+            az containerapp create \
+              --name "$CONTAINER_APP_NAME" \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --environment "$ACA_ENVIRONMENT_NAME" \
+              --image "$IMAGE_FULL" \
+              --ingress external \
+              --target-port "$ADMIN_TARGET_PORT" \
+              --min-replicas 0 \
+              --max-replicas 1 \
+              --registry-server "$ACR_LOGIN_SERVER" \
+              --registry-identity system \
+              --revision-suffix "gh-${GITHUB_RUN_NUMBER}" \
+              --env-vars \
+                ADMIN_USERNAME=secretref:admin-username \
+                ADMIN_PASSWORD=secretref:admin-password \
+                DB_ENDPOINT="$DB_ENDPOINT" \
+                BACKUP_CONTAINER="$BACKUP_CONTAINER"
+            
+            # ACR Pull 権限を付与
+            CONTAINER_APP_IDENTITY=$(az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query identity.principalId -o tsv)
+            ACR_ID=$(az acr show --name "$ACR_NAME" --query id -o tsv)
+            az role assignment create --assignee "$CONTAINER_APP_IDENTITY" --role AcrPull --scope "$ACR_ID"
+          fi
 
+          # シークレットを設定
           az containerapp secret set \
             --name "$CONTAINER_APP_NAME" \
             --resource-group "$RESOURCE_GROUP_NAME" \
             --secrets admin-username="$ADMIN_BASIC_AUTH_USERNAME" admin-password="$ADMIN_BASIC_AUTH_PASSWORD"
 
-          az containerapp envvar set \
-            --name "$CONTAINER_APP_NAME" \
-            --resource-group "$RESOURCE_GROUP_NAME" \
-            --environment-variables \
-              ADMIN_USERNAME=secretref:admin-username \
-              ADMIN_PASSWORD=secretref:admin-password \
-              DB_ENDPOINT="$DB_ENDPOINT" \
-              BACKUP_CONTAINER="$BACKUP_CONTAINER"
-
+          # シングルリビジョンモードに設定
           az containerapp revision set-mode \
             --name "$CONTAINER_APP_NAME" \
             --resource-group "$RESOURCE_GROUP_NAME" \
