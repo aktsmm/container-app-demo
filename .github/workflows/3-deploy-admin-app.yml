@@ -25,6 +25,8 @@ env:
   ADMIN_TARGET_PORT: 8000
   DB_ENDPOINT: ${{ vars.DB_ENDPOINT }}
   BACKUP_CONTAINER: ${{ vars.BACKUP_CONTAINER_NAME }}
+  ACA_ADMIN_USERNAME: ${{ vars.ACA_ADMIN_USERNAME }}
+  ACA_ADMIN_PASSWORD: ${{ vars.ACA_ADMIN_PASSWORD }}
 
 jobs:
   deploy:
@@ -77,6 +79,26 @@ jobs:
           echo "検出された Environment: $ACTUAL_ENV_NAME"
           echo "ACA_ENVIRONMENT_NAME=$ACTUAL_ENV_NAME" >> "$GITHUB_ENV"
 
+      - name: Container Apps Environment のプロビジョニング完了を待機
+        run: |
+          set -euo pipefail
+          MAX_RETRY=20
+          INTERVAL=30
+          for attempt in $(seq 1 $MAX_RETRY); do
+            STATE=$(az containerapp env show \
+              --name "$ACA_ENVIRONMENT_NAME" \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --query "properties.provisioningState" -o tsv || echo "Unknown")
+            if [ "$STATE" = "Succeeded" ]; then
+              echo "Container Apps Environment は正常にプロビジョニング済みです"
+              exit 0
+            fi
+            echo "[待機] 状態: $STATE (試行 $attempt/$MAX_RETRY)"
+            sleep $INTERVAL
+          done
+          echo "Container Apps Environment が規定時間内に Succeeded になりませんでした" >&2
+          exit 1
+
       - name: ACR 管理者認証を有効化
         run: |
           az acr update --name "$ACR_NAME" --admin-enabled true
@@ -106,9 +128,6 @@ jobs:
           echo "ACR_PASSWORD=$ACR_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Container Apps へデプロイ
-        env:
-          ADMIN_BASIC_AUTH_USERNAME: ${{ secrets.ADMIN_BASIC_AUTH_USERNAME }}
-          ADMIN_BASIC_AUTH_PASSWORD: ${{ secrets.ADMIN_BASIC_AUTH_PASSWORD }}
         run: |
           # Container App が存在するか確認
           if az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" &>/dev/null; then
@@ -126,7 +145,7 @@ jobs:
             az containerapp secret set \
               --name "$CONTAINER_APP_NAME" \
               --resource-group "$RESOURCE_GROUP_NAME" \
-              --secrets admin-username="$ADMIN_BASIC_AUTH_USERNAME" admin-password="$ADMIN_BASIC_AUTH_PASSWORD"
+              --secrets admin-username="$ACA_ADMIN_USERNAME" admin-password="$ACA_ADMIN_PASSWORD"
             
             # Container App を更新
             az containerapp update \
@@ -161,7 +180,7 @@ jobs:
             az containerapp secret set \
               --name "$CONTAINER_APP_NAME" \
               --resource-group "$RESOURCE_GROUP_NAME" \
-              --secrets admin-username="$ADMIN_BASIC_AUTH_USERNAME" admin-password="$ADMIN_BASIC_AUTH_PASSWORD"
+              --secrets admin-username="$ACA_ADMIN_USERNAME" admin-password="$ACA_ADMIN_PASSWORD"
             
             # 環境変数を追加（シークレット参照含む）
             az containerapp update \

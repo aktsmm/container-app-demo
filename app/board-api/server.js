@@ -10,6 +10,7 @@
 */
 import express from "express";
 import mysql from "mysql2/promise";
+import { randomUUID } from "crypto";
 
 // 環境変数 (GitHub Actions -> k8s Secret 経由で注入)
 // DB_ENDPOINT 形式: host:port
@@ -108,7 +109,7 @@ app.post("/api/posts", async (req, res) => {
     return res.status(400).json({ error: "author と message は必須です" });
   }
   try {
-    const id = crypto.randomUUID();
+    const id = randomUUID();
     const createdAt = new Date();
     const conn = await pool.getConnection();
     await conn.query(
