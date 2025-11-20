@@ -34,7 +34,7 @@ jobs:
       - name: コードを取得
         uses: actions/checkout@v4
 
-      - name: Azure に OIDC でログイン
+      - name: Azure に Service Principal でログイン
         uses: azure/login@v2
         with:
           creds: >-

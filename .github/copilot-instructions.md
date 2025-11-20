@@ -104,13 +104,14 @@ Copilot は必ず以下を実装する：
 
 ---
 
-## 🔐 認証（Service Principal + OIDC）
+## 🔐 認証（Service Principal + Client Secret）
 
-- GitHub Actions → Azure の認証は **OIDC（Federated Credentials）** を使用
-- Secrets は最小限の
-  - `AZURE_CLIENT_ID`
-  - `AZURE_TENANT_ID`
-  - `AZURE_SUBSCRIPTION_ID`
+- GitHub Actions → Azure の認証は **Service Principal (Client Secret)** を使用
+- Secrets/Variables:
+  - `AZURE_CLIENT_ID` (Variables)
+  - `AZURE_TENANT_ID` (Variables)
+  - `AZURE_CLIENT_SECRET` (Variables)
+  - `AZURE_SUBSCRIPTION_ID` (Secrets)
 - コード内に Subscription ID・GUID を埋め込まない
 
 ---
@@ -221,7 +222,7 @@ Copilot は生成時に必ず以下を守る：
 1. **フルコード化（IaC + CI/CD）**
 2. **低コスト設計**
 3. **マジックナンバー禁止**
-4. **セキュア（OIDC / 最小権限 / スキャン必須）**
+4. **セキュア（Service Principal / 最小権限 / スキャン必須）**
 5. **ログ収集を LA Workspace に統合**
 6. **dummy-secret を UI で確認できる状態で配置**
 7. **疎結合ワークフロー**

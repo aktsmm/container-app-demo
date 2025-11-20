@@ -49,7 +49,7 @@ jobs:
           fi
           exit 0
 
-      - name: Azure に OIDC でログイン
+      - name: Azure に Service Principal でログイン
         uses: azure/login@v2
         with:
           creds: >-
