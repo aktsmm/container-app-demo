@@ -70,10 +70,10 @@ jobs:
         run: |
           EXPIRY=$(date -u -d '+90 minutes' +%Y-%m-%dT%H:%MZ)
           SAS=$(az storage account generate-sas \
-            --permissions acdlpu \
+            --permissions acdlrw \
             --account-name "$STORAGE_ACCOUNT_NAME" \
             --services b \
-            --resource-types co \
+            --resource-types o \
             --expiry "$EXPIRY" \
             -o tsv)
           echo "SAS_TOKEN=$SAS" >> "$GITHUB_ENV"
