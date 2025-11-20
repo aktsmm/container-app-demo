@@ -1,4 +1,4 @@
-name: 🧹 Cleanup Workflow Runs (Keep latest 7 human + 3 dependabot + 1 failed)
+name: 8️⃣ Cleanup Workflow Runs
 
 on:
     schedule:

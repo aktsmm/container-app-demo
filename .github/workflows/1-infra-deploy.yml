@@ -1,4 +1,4 @@
-name: infra-deploy
+name: 1️⃣ Infrastructure Deploy
 
 on:
     workflow_dispatch:
@@ -174,6 +174,88 @@ jobs:
                     --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
                     --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE" \
                     --only-show-errors
+
+            - name: デプロイサマリを出力
+              if: success()
+              run: |
+                  echo "## 🎯 インフラデプロイ完了" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "### 📦 デプロイされたリソース" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  
+                  # リソース一覧を取得
+                  echo "| リソース種別 | リソース名 | 場所 |" >> $GITHUB_STEP_SUMMARY
+                  echo "|-------------|-----------|------|" >> $GITHUB_STEP_SUMMARY
+                  az resource list --resource-group "$RESOURCE_GROUP_NAME" \
+                    --query "sort_by([].{type:type, name:name, location:location}, &type)" \
+                    --output json | jq -r '.[] | "| \(.type) | \(.name) | \(.location) |"' >> $GITHUB_STEP_SUMMARY
+                  
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "### 🔗 主要リソース情報" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  
+                  # ACR情報
+                  ACR_NAME=$(az acr list --resource-group "$RESOURCE_GROUP_NAME" --query "[?starts_with(name, '${ACR_NAME_PREFIX}')].name | [0]" -o tsv)
+                  if [ -n "$ACR_NAME" ]; then
+                    ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query loginServer -o tsv)
+                    echo "**Container Registry (ACR)**" >> $GITHUB_STEP_SUMMARY
+                    echo "- Name: \`$ACR_NAME\`" >> $GITHUB_STEP_SUMMARY
+                    echo "- Login Server: \`$ACR_LOGIN_SERVER\`" >> $GITHUB_STEP_SUMMARY
+                    echo "" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  # AKS情報
+                  AKS_NAME=$(az aks list --resource-group "$RESOURCE_GROUP_NAME" --query "[0].name" -o tsv)
+                  if [ -n "$AKS_NAME" ]; then
+                    AKS_FQDN=$(az aks show --name "$AKS_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query fqdn -o tsv)
+                    AKS_VERSION=$(az aks show --name "$AKS_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query kubernetesVersion -o tsv)
+                    echo "**Kubernetes Service (AKS)**" >> $GITHUB_STEP_SUMMARY
+                    echo "- Name: \`$AKS_NAME\`" >> $GITHUB_STEP_SUMMARY
+                    echo "- FQDN: \`$AKS_FQDN\`" >> $GITHUB_STEP_SUMMARY
+                    echo "- Version: \`$AKS_VERSION\`" >> $GITHUB_STEP_SUMMARY
+                    echo "" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  # Container Apps Environment情報
+                  CAE_NAME=$(az containerapp env list --resource-group "$RESOURCE_GROUP_NAME" --query "[0].name" -o tsv)
+                  if [ -n "$CAE_NAME" ]; then
+                    CAE_DEFAULT_DOMAIN=$(az containerapp env show --name "$CAE_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query properties.defaultDomain -o tsv)
+                    echo "**Container Apps Environment**" >> $GITHUB_STEP_SUMMARY
+                    echo "- Name: \`$CAE_NAME\`" >> $GITHUB_STEP_SUMMARY
+                    echo "- Default Domain: \`$CAE_DEFAULT_DOMAIN\`" >> $GITHUB_STEP_SUMMARY
+                    echo "" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  # VM情報
+                  VM_NAME=$(az vm list --resource-group "$RESOURCE_GROUP_NAME" --query "[0].name" -o tsv)
+                  if [ -n "$VM_NAME" ]; then
+                    VM_SIZE=$(az vm show --name "$VM_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query hardwareProfile.vmSize -o tsv)
+                    echo "**Virtual Machine (MySQL)**" >> $GITHUB_STEP_SUMMARY
+                    echo "- Name: \`$VM_NAME\`" >> $GITHUB_STEP_SUMMARY
+                    echo "- Size: \`$VM_SIZE\`" >> $GITHUB_STEP_SUMMARY
+                    echo "" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  # Storage Account情報
+                  STORAGE_NAME=$(az storage account list --resource-group "$RESOURCE_GROUP_NAME" --query "[?starts_with(name, '${STORAGE_ACCOUNT_PREFIX}')].name | [0]" -o tsv)
+                  if [ -n "$STORAGE_NAME" ]; then
+                    echo "**Storage Account (Backups)**" >> $GITHUB_STEP_SUMMARY
+                    echo "- Name: \`$STORAGE_NAME\`" >> $GITHUB_STEP_SUMMARY
+                    echo "" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  # Log Analytics Workspace情報
+                  LAW_NAME=$(az monitor log-analytics workspace list --resource-group "$RESOURCE_GROUP_NAME" --query "[0].name" -o tsv)
+                  if [ -n "$LAW_NAME" ]; then
+                    LAW_ID=$(az monitor log-analytics workspace show --workspace-name "$LAW_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query customerId -o tsv)
+                    echo "**Log Analytics Workspace**" >> $GITHUB_STEP_SUMMARY
+                    echo "- Name: \`$LAW_NAME\`" >> $GITHUB_STEP_SUMMARY
+                    echo "- Workspace ID: \`$LAW_ID\`" >> $GITHUB_STEP_SUMMARY
+                    echo "" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  echo "---" >> $GITHUB_STEP_SUMMARY
+                  echo "✅ デプロイ日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY
 
             - name: Azure logout
               if: always()

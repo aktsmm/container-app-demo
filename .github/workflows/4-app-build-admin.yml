@@ -1,4 +1,4 @@
-name: app-build-admin
+name: 4️⃣ Build Admin App
 
 on:
   workflow_dispatch:
@@ -7,10 +7,10 @@ on:
       - master
     paths:
       - "app/admin-app/**"
-      - ".github/workflows/app-build-admin.yml"
+      - ".github/workflows/4-app-build-admin.yml"
   workflow_run:
     workflows:
-      - infra-deploy
+      - "1️⃣ Infrastructure Deploy"
     types:
       - completed
 
@@ -165,6 +165,33 @@ jobs:
         run: |
           docker push "$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:${IMAGE_TAG}"
           docker push "$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:latest"
+
+      - name: ビルドサマリを出力
+        if: success()
+        run: |
+          echo "## 🎯 管理アプリ ビルド完了" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 コンテナイメージ情報" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **レジストリ**: \`$ACR_LOGIN_SERVER\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **イメージ名**: \`$ADMIN_IMAGE_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **タグ**: \`${IMAGE_TAG}\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **フルパス**: \`$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:${IMAGE_TAG}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 セキュリティスキャン結果" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Gitleaks**: シークレットスキャン完了 → [Security タブで確認](/${{ github.repository }}/security/code-scanning)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trivy (Image)**: 脆弱性スキャン完了 → [Security タブで確認](/${{ github.repository }}/security/code-scanning)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trivy (FS)**: ソースコードスキャン完了 → [Security タブで確認](/${{ github.repository }}/security/code-scanning)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 成果物" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- SBOM (CycloneDX)" >> $GITHUB_STEP_SUMMARY
+          echo "- SARIF レポート (Trivy, Gitleaks)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "✅ ビルド日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY
+          echo "📝 コミット: \`${GITHUB_SHA:0:12}\`" >> $GITHUB_STEP_SUMMARY
 
       - name: ビルド成果を記録
         run: |

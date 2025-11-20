@@ -1,4 +1,4 @@
-name: backup-upload
+name: 6️⃣ MySQL Backup Upload
 
 on:
     schedule:

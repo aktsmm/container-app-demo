@@ -30,7 +30,7 @@
 
 ### ✅ 解決策
 
-#### 方法1: `.gitleaksignore` を作成（最初の試み）
+#### 方法 1: `.gitleaksignore` を作成（最初の試み）
 
 ```
 # Gitleaks 除外設定
@@ -41,7 +41,7 @@ README.md
 
 しかし、これだけでは解決せず。
 
-#### 方法2: Gitleaks ステップを警告のみに変更（最終解決）
+#### 方法 2: Gitleaks ステップを警告のみに変更（最終解決）
 
 ```yaml
 - name: Gitleaks で秘密情報を検出
@@ -62,6 +62,7 @@ README.md
 ```
 
 **ポイント:**
+
 - `continue-on-error: true` を追加
 - `set +e` でエラーでも継続
 - SARIF レポートを生成して GitHub Security タブに表示
@@ -76,7 +77,7 @@ Trivy スキャンも同様に修正：
   uses: aquasecurity/trivy-action@0.28.0
   continue-on-error: true
   with:
-    exit-code: "0"  # 1 から 0 に変更
+    exit-code: "0" # 1 から 0 に変更
 
 - name: ソース/設定/シークレット総合スキャン (Trivy FS)
   continue-on-error: true
@@ -107,7 +108,7 @@ Warning  Failed: Error: InvalidImageName
 ```yaml
 images:
   - name: acr-placeholder.azurecr.io/board-app
-    newName: ${BOARD_APP_IMAGE:-acrdemodev.azurecr.io/board-app}  # ❌ これは展開されない
+    newName: ${BOARD_APP_IMAGE:-acrdemodev.azurecr.io/board-app} # ❌ これは展開されない
     newTag: ${BOARD_APP_TAG:-latest}
 ```
 
@@ -150,7 +151,7 @@ configMapGenerator:
 Pod が ACR からイメージを取得できず、`ImagePullBackOff` エラー：
 
 ```
-Failed to pull image "acrdemo7904.azurecr.io/board-app:latest": 
+Failed to pull image "acrdemo7904.azurecr.io/board-app:latest":
 failed to authorize: failed to fetch anonymous token: 401 Unauthorized
 ```
 
@@ -159,19 +160,19 @@ failed to authorize: failed to fetch anonymous token: 401 Unauthorized
 AKS の managed identity に ACR Pull 権限が付与されていない。権限付与コマンドを実行しようとしたが、Service Principal に必要な権限がない：
 
 ```
-(AuthorizationFailed) The client does not have authorization to perform action 
+(AuthorizationFailed) The client does not have authorization to perform action
 'Microsoft.Authorization/roleAssignments/write'
 ```
 
 ### ✅ 解決策
 
-#### ステップ1: ACR 管理者認証を有効化
+#### ステップ 1: ACR 管理者認証を有効化
 
 ```bash
 az acr update --name acrdemo7904 --admin-enabled true
 ```
 
-#### ステップ2: Kubernetes Secret を作成
+#### ステップ 2: Kubernetes Secret を作成
 
 ```bash
 $acrCreds = az acr credential show --name acrdemo7904 | ConvertFrom-Json
@@ -184,7 +185,7 @@ kubectl create secret docker-registry acr-secret \
   -n board-app
 ```
 
-#### ステップ3: Deployment に imagePullSecrets を追加
+#### ステップ 3: Deployment に imagePullSecrets を追加
 
 `app/board-app/k8s/deployment.yaml`:
 
@@ -197,7 +198,7 @@ spec:
       image: acr-placeholder.azurecr.io/board-app:latest
 ```
 
-#### ステップ4: ワークフローに Secret 作成ステップを追加
+#### ステップ 4: ワークフローに Secret 作成ステップを追加
 
 `.github/workflows/app-deploy-board.yml`:
 
@@ -277,7 +278,7 @@ Container App が ACR からイメージを取得できない：
 
 ```
 ERROR: Failed to provision revision for container app 'admin-app'.
-Field 'template.containers.admin-app.image' is invalid: 
+Field 'template.containers.admin-app.image' is invalid:
 UNAUTHORIZED: authentication required
 ```
 
@@ -368,7 +369,7 @@ Please use 'Get-ChildItem' instead.
 `az aks update --attach-acr` コマンドがタイムアウトまたは権限エラー：
 
 ```
-ERROR: Could not create a role assignment for ACR. 
+ERROR: Could not create a role assignment for ACR.
 Are you an Owner on this subscription?
 ```
 
@@ -403,11 +404,13 @@ Are you an Owner on this subscription?
 ### ✅ 成功したビルド・デプロイフロー
 
 1. **app-build-board.yml**
+
    - Gitleaks: 警告のみ（SARIF レポート生成）
    - Trivy: 警告のみ（SARIF レポート生成）
    - ACR へプッシュ成功
 
 2. **app-deploy-board.yml**
+
    - sync-board-vars.ps1 実行成功
    - ACR Secret 作成
    - Kustomize + sed でイメージ置換
@@ -415,6 +418,7 @@ Are you an Owner on this subscription?
    - Pod が Running 状態
 
 3. **app-build-admin.yml**
+
    - Gitleaks: 警告のみ
    - Trivy: 警告のみ
    - ACR へプッシュ成功
@@ -452,7 +456,7 @@ Are you an Owner on this subscription?
 
 ### ワークフロー監視
 
-- 30秒間隔で確認することで迅速なデバッグが可能
+- 30 秒間隔で確認することで迅速なデバッグが可能
 - `gh run list --limit N` で最新の実行状況を確認
 - `gh run view --log-failed` でエラー詳細を即座に取得
 
@@ -500,14 +504,16 @@ az containerapp logs show --name admin-app --resource-group RG-Container-App --f
 v1.0.0 タグ作成後、ワークフローが再度失敗：
 
 **app-deploy-board エラー:**
+
 ```
 ERROR: Run 'az acr update -n acrdemo7904 --admin-enabled true' to enable admin first.
 ##[error]Process completed with exit code 1.
 ```
 
 **app-build-admin エラー:**
+
 ```
-Put "https://acrdemo7904.azurecr.io/v2/admin-app/manifests/c71adbd60875": 
+Put "https://acrdemo7904.azurecr.io/v2/admin-app/manifests/c71adbd60875":
 dial tcp 20.191.160.139:443: connect: connection refused
 ##[error]Process completed with exit code 1.
 ```
@@ -549,12 +555,13 @@ ACR の管理者認証が何らかの理由で無効化されていた（手動�
   run: |
     az acr update --name "$ACR_NAME" --admin-enabled true
 
-- name: ACR 認証情報で Secret を作成  # または ACR Pull 用認証情報を取得
+- name: ACR 認証情報で Secret を作成 # または ACR Pull 用認証情報を取得
   run: |
     # ... Secret 作成または認証情報取得 ...
 ```
 
 **ポイント:**
+
 - ワークフローの最初（ACR 名解決直後）に必ず ACR 管理者認証を有効化
 - 冪等性があるため、既に有効でも問題なし
 - 手動操作が不要になり、完全自動化を実現
@@ -582,22 +589,24 @@ git commit -m "ワークフローに ACR 管理者認証の自動有効化を追
 ## ✅ 最終確認結果
 
 ### 掲示板アプリ（AKS）
+
 - **Pod 状態**: Running (1/1 Ready)
 - **Pod 名**: board-app-868ddf9dc8-f56sl
 - **Ingress**: board.localdemo.internal
 - **イメージ**: acrdemo7904.azurecr.io/board-app:31185f48afe4
-- **デプロイ日時**: 2025年11月20日 10:02 JST
+- **デプロイ日時**: 2025 年 11 月 20 日 10:02 JST
 
 ### 管理アプリ（Container Apps）
+
 - **デプロイ状態**: Succeeded
 - **実行状態**: Running
 - **FQDN**: admin-app.yellowdesert-dc73f606.japaneast.azurecontainerapps.io
 - **イメージ**: acrdemo7904.azurecr.io/admin-app:31185f48afe4
-- **デプロイ日時**: 2025年11月20日 10:02 JST
+- **デプロイ日時**: 2025 年 11 月 20 日 10:02 JST
 
 両方のアプリが正常にデプロイされ、稼働中です。
 
 ---
 
-**記録日**: 2025年11月20日  
-**更新日**: 2025年11月20日 (ACR 管理者認証自動有効化の追加)
+**記録日**: 2025 年 11 月 20 日  
+**更新日**: 2025 年 11 月 20 日 (ACR 管理者認証自動有効化の追加)

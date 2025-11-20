@@ -1,4 +1,4 @@
-name: app-deploy-admin
+name: 5️⃣ Deploy Admin App to Container Apps
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         required: false
   workflow_run:
     workflows:
-      - app-build-admin
+      - "4️⃣ Build Admin App"
     types:
       - completed
 
@@ -164,6 +164,53 @@ jobs:
             --name "$CONTAINER_APP_NAME" \
             --resource-group "$RESOURCE_GROUP_NAME" \
             --mode single
+
+      - name: デプロイサマリを出力
+        if: success()
+        run: |
+          FQDN=$(az containerapp show \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+          
+          PROVISIONING_STATE=$(az containerapp show \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --query "properties.provisioningState" -o tsv)
+          
+          RUNNING_STATUS=$(az containerapp show \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --query "properties.runningStatus" -o tsv)
+          
+          echo "## 🎯 管理アプリ Container Apps デプロイ完了" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 デプロイ情報" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Container App 名**: \`$CONTAINER_APP_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: \`$ACA_ENVIRONMENT_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **イメージ**: \`$IMAGE_FULL\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Provisioning State**: \`$PROVISIONING_STATE\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Running Status**: \`$RUNNING_STATUS\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### 📍 アクセス情報" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **FQDN**: \`$FQDN\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **アクセスURL**: https://$FQDN" >> $GITHUB_STEP_SUMMARY
+          echo "- **認証**: Basic 認証 (ID/Password 必要)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### ⚙️ 環境変数" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **DB_ENDPOINT**: \`$DB_ENDPOINT\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **BACKUP_CONTAINER**: \`$BACKUP_CONTAINER\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **ADMIN_USERNAME**: secretref" >> $GITHUB_STEP_SUMMARY
+          echo "- **ADMIN_PASSWORD**: secretref" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "✅ デプロイ日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY
 
       - name: FQDN を表示
         run: |

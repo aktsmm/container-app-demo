@@ -1,4 +1,4 @@
-name: app-deploy-board
+name: 3️⃣ Deploy Board App to AKS
 
 on:
     workflow_dispatch:
@@ -8,7 +8,7 @@ on:
                 required: false
     workflow_run:
         workflows:
-            - app-build-board
+            - "2️⃣ Build Board App"
         types:
             - completed
 
@@ -133,3 +133,42 @@ jobs:
                     | kubectl apply -f -
                   kubectl rollout status deployment/board-app -n "$BOARD_NS" --timeout=120s
                   kubectl get ingress -n "$BOARD_NS"
+
+            - name: デプロイサマリを出力
+              if: success()
+              run: |
+                  BOARD_NS=$(grep kubernetesNamespace "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
+                  INGRESS_HOST=$(grep ingressHost "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
+                  
+                  echo "## 🎯 掲示板アプリ AKS デプロイ完了" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "### 🚀 デプロイ情報" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "- **AKS クラスタ**: \`$AKS_CLUSTER_NAME\`" >> $GITHUB_STEP_SUMMARY
+                  echo "- **Namespace**: \`$BOARD_NS\`" >> $GITHUB_STEP_SUMMARY
+                  echo "- **イメージ**: \`$IMAGE_FULL\`" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  
+                  echo "### 📍 アクセス情報" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "- **Ingress ホスト**: \`$INGRESS_HOST\`" >> $GITHUB_STEP_SUMMARY
+                  echo "- **アクセスURL**: http://$INGRESS_HOST" >> $GITHUB_STEP_SUMMARY
+                  echo "- **ダミーシークレット**: http://$INGRESS_HOST/dummy-secret.txt" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  
+                  echo "### 📦 Pod 状態" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+                  kubectl get pods -n "$BOARD_NS" -l app=board-app >> $GITHUB_STEP_SUMMARY
+                  echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  
+                  echo "### 🌐 Ingress 状態" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+                  kubectl get ingress -n "$BOARD_NS" >> $GITHUB_STEP_SUMMARY
+                  echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  
+                  echo "---" >> $GITHUB_STEP_SUMMARY
+                  echo "✅ デプロイ日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY

@@ -1,4 +1,4 @@
-name: codeql-iac-scan
+name: 7️⃣ Security Scan (CodeQL & IaC)
 
 on:
     push:
