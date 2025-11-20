@@ -75,6 +75,10 @@ jobs:
           echo "ACR_LOGIN_SERVER=${ACR_NAME}.azurecr.io" >> "$GITHUB_ENV"
           echo "acr_login_server=${ACR_NAME}.azurecr.io" >> "$GITHUB_OUTPUT"
 
+      - name: ACR 管理者認証を有効化
+        run: |
+          az acr update --name "$ACR_NAME" --admin-enabled true
+
       - name: ACR へログイン
         run: |
           az acr login --name "$ACR_NAME"

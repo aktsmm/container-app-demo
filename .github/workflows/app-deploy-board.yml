@@ -89,6 +89,10 @@ jobs:
                     --resource-group "$RESOURCE_GROUP_NAME" \
                     --overwrite-existing
 
+            - name: ACR 管理者認証を有効化
+              run: |
+                  az acr update --name "$ACR_NAME" --admin-enabled true
+
             - name: ACR 認証情報で Secret を作成
               run: |
                   BOARD_NS=$(grep kubernetesNamespace "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
