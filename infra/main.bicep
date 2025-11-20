@@ -276,8 +276,6 @@ module vm './modules/vm.bicep' = {
     mysqlRootPassword: mysqlRootPassword
     mysqlAppUsername: mysqlAppUsername
     mysqlAppPassword: mysqlAppPassword
-    logAnalyticsCustomerId: logAnalytics.outputs.customerId
-    logAnalyticsSharedKey: logAnalyticsSharedKey
     tags: defaultTags
   }
 }

@@ -36,13 +36,6 @@ param mysqlAppUsername string
 @secure()
 param mysqlAppPassword string
 
-@description('Log Analytics Workspace Customer ID')
-param logAnalyticsCustomerId string
-
-@description('Log Analytics Workspace Shared Key')
-@secure()
-param logAnalyticsSharedKey string
-
 @description('共通タグ')
 param tags object = {}
 

@@ -89,6 +89,52 @@ jobs:
             --resource-group "$RESOURCE_GROUP_NAME" \
             --overwrite-existing
 
+      - name: Ingress Controller (nginx) を確認/インストール
+        run: |
+          set -euo pipefail
+          # 目的: ClusterIP のアプリ Service を外部公開するため nginx Ingress Controller を Helm で導入し、LoadBalancer IP を取得する
+          # なぜ必要か: 現在 board-app の Service は ClusterIP。Ingress Controller が存在しないと外部 LB IP は割り当てられないため
+          if kubectl get ns ingress-nginx >/dev/null 2>&1; then
+            echo "既に ingress-nginx Namespace が存在します。再インストールはスキップします";
+          else
+            echo "ingress-nginx を Helm でインストールします";
+            helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+            helm repo update
+            # 低コスト & シンプル構成: 追加リソース最小限。Azure LB のヘルスプローブパスのみ注釈設定
+            helm install ingress-nginx ingress-nginx/ingress-nginx \
+              --namespace ingress-nginx \
+              --create-namespace \
+              --set controller.replicaCount=1 \
+              --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz
+          fi
+
+          echo "LoadBalancer IP の割り当てを待機します (最大 ~5分)";
+          ATTEMPTS=30
+          SLEEP_SEC=10
+          for i in $(seq 1 $ATTEMPTS); do
+            LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ -n "$LB_IP" ]; then
+              echo "✅ 取得成功: $LB_IP"
+              break
+            fi
+            echo "[$i/$ATTEMPTS] まだ割り当て待ち..."
+            sleep $SLEEP_SEC
+          done
+          if [ -z "${LB_IP:-}" ]; then
+            echo "⚠️ 規定時間内に IP を取得できませんでした。後続ステップで再度取得を試みます";
+          fi
+
+      - name: Ingress Controller 状態を記録
+        if: success()
+        run: |
+          echo "### 🌐 Ingress Controller 状態" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n ingress-nginx >> $GITHUB_STEP_SUMMARY || true
+          kubectl get svc -n ingress-nginx >> $GITHUB_STEP_SUMMARY || true
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
       - name: ACR 管理者認証を有効化
         run: |
           az acr update --name "$ACR_NAME" --admin-enabled true

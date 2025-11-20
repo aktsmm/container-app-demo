@@ -72,7 +72,7 @@
       "value": ""
     },
     "aksNodeResourceGroup": {
-      "value": "mc-aks-demo-dev"
+      "value": "__PIPELINE_OVERRIDDEN__"
     },
     "aksSystemPoolName": {
       "value": "systempool"

@@ -42,6 +42,9 @@ jobs:
             echo "Prefix 変数が未設定です" >&2
             exit 1
           fi
+          # NodeResourceGroup 名をリソースグループ名から生成（再利用可能性を保つ）
+          NODE_RG="mc-${RESOURCE_GROUP_NAME}"
+          echo "AKS_NODE_RESOURCE_GROUP=$NODE_RG" >> "$GITHUB_ENV"
           # 既存リソースを参照する前にRGの有無を判定し、初回デプロイでの404を防ぐ
           RG_EXISTS=$(az group exists --name "$RESOURCE_GROUP_NAME" || echo false)
           if [ "$RG_EXISTS" != "true" ]; then
@@ -148,7 +151,7 @@ jobs:
             --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
             --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
             --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
-            --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE"
+            --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE" aksNodeResourceGroup="$AKS_NODE_RESOURCE_GROUP"
 
       - name: Bicep What-If
         run: |
@@ -160,7 +163,7 @@ jobs:
             --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
             --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
             --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
-            --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE"
+            --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE" aksNodeResourceGroup="$AKS_NODE_RESOURCE_GROUP"
 
       - name: Bicep Deploy
         run: |
@@ -172,7 +175,7 @@ jobs:
             --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
             --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
             --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
-            --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE" \
+            --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE" aksNodeResourceGroup="$AKS_NODE_RESOURCE_GROUP" \
             --only-show-errors
 
       - name: デプロイサマリを出力
