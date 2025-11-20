@@ -16,6 +16,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  actions: read  # アーティファクトダウンロードに必要
 
 env:
   RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
