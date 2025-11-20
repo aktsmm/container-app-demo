@@ -1,0 +1,174 @@
+name: 3️⃣ Deploy Board App (AKS)
+
+on:
+    workflow_dispatch:
+        inputs:
+            imageTag:
+                description: "ACR にプッシュ済みのイメージタグ (未指定時は latest)"
+                required: false
+    workflow_run:
+        workflows:
+            - "2️⃣ Build Board App"
+        types:
+            - completed
+
+permissions:
+    contents: read
+    id-token: write
+
+env:
+  RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+  AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+  PARAM_FILE: infra/parameters/main-dev.parameters.json
+  KUSTOMIZE_DIR: app/board-app/k8s
+  ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
+  BOARD_IMAGE_NAME: board-app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # build ワークフロー経由のときのみ自動実行し、失敗 run は除外する
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+
+      - name: Azure に OIDC でログイン
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
+      - name: ACR 名を解決
+        run: |
+          set -euo pipefail
+          if [ -z "$ACR_NAME_PREFIX" ] || [ -z "$RESOURCE_GROUP_NAME" ]; then
+            echo "ACR 名を決定するための変数が不足しています" >&2
+            exit 1
+          fi
+          ACR_NAME=$(az acr list \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --query "[?starts_with(name, '${ACR_NAME_PREFIX}')].name | [0]" \
+            -o tsv)
+          if [ -z "$ACR_NAME" ]; then
+            echo "指定プレフィックスの ACR が存在しません。infra-deploy を先に実行してください" >&2
+            exit 1
+          fi
+          echo "ACR_NAME=$ACR_NAME" >> "$GITHUB_ENV"
+          echo "ACR_LOGIN_SERVER=${ACR_NAME}.azurecr.io" >> "$GITHUB_ENV"
+
+      - name: kubectl を準備
+        run: az aks install-cli
+
+      - name: Namespace/Ingress の値を同期
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./scripts/sync-board-vars.ps1 `
+            -ParametersFile "infra/parameters/main-dev.parameters.json" `
+            -OutputFile "app/board-app/k8s/vars.env"
+
+      - name: AKS に ACR Pull 権限を付与
+        continue-on-error: true
+        run: |
+          # ACR Pull 権限が既に付与されているか確認
+          if az aks check-acr --name "$AKS_CLUSTER_NAME" --resource-group "$RESOURCE_GROUP_NAME" --acr "${ACR_LOGIN_SERVER}" &>/dev/null; then
+            echo "ACR Pull 権限は既に付与されています"
+          else
+            echo "ACR Pull 権限を付与します"
+            az aks update \
+              --name "$AKS_CLUSTER_NAME" \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --attach-acr "$ACR_NAME" || echo "⚠️ ACR 権限付与に失敗しましたが、既存の権限で継続します"
+          fi
+
+      - name: AKS 資格情報を取得
+        run: |
+          az aks get-credentials \
+            --name "$AKS_CLUSTER_NAME" \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --overwrite-existing
+
+      - name: ACR 管理者認証を有効化
+        run: |
+          az acr update --name "$ACR_NAME" --admin-enabled true
+
+      - name: ACR 認証情報で Secret を作成
+        run: |
+          BOARD_NS=$(grep kubernetesNamespace "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
+          # namespace が存在しない場合は作成
+          kubectl create namespace "$BOARD_NS" --dry-run=client -o yaml | kubectl apply -f -
+          # ACR 認証情報を取得
+          ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
+          ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+          # Secret を作成または更新
+          kubectl create secret docker-registry acr-secret \
+            --docker-server="$ACR_LOGIN_SERVER" \
+            --docker-username="$ACR_USERNAME" \
+            --docker-password="$ACR_PASSWORD" \
+            -n "$BOARD_NS" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: デプロイに使用するイメージを決定
+        id: image_meta
+        run: |
+          EVENT_NAME='${{ github.event_name }}'
+          if [ "$EVENT_NAME" = 'workflow_run' ]; then
+            HEAD_SHA='${{ github.event.workflow_run.head_sha }}'
+            IMAGE_TAG="${HEAD_SHA:0:12}"
+          else
+            IMAGE_TAG='${{ github.event.inputs.imageTag }}'
+          fi
+          if [ -z "$IMAGE_TAG" ]; then
+            IMAGE_TAG='latest'
+          fi
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "IMAGE_FULL=$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: Kustomize を適用
+        run: |
+          BOARD_NS=$(grep kubernetesNamespace "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
+          kubectl kustomize "$KUSTOMIZE_DIR" \
+            | sed "s#acr-placeholder.azurecr.io/board-app:latest#${IMAGE_FULL}#g" \
+            | kubectl apply -f -
+          kubectl rollout status deployment/board-app -n "$BOARD_NS" --timeout=120s
+          kubectl get ingress -n "$BOARD_NS"
+
+      - name: デプロイサマリを出力
+        if: success()
+        run: |
+          BOARD_NS=$(grep kubernetesNamespace "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
+          INGRESS_HOST=$(grep ingressHost "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
+
+          echo "## 🎯 掲示板アプリ AKS デプロイ完了" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 デプロイ情報" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **AKS クラスタ**: \`$AKS_CLUSTER_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Namespace**: \`$BOARD_NS\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **イメージ**: \`$IMAGE_FULL\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### 📍 アクセス情報" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ingress ホスト**: \`$INGRESS_HOST\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **アクセスURL**: http://$INGRESS_HOST" >> $GITHUB_STEP_SUMMARY
+          echo "- **ダミーシークレット**: http://$INGRESS_HOST/dummy-secret.txt" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### 📦 Pod 状態" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n "$BOARD_NS" -l app=board-app >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### 🌐 Ingress 状態" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          kubectl get ingress -n "$BOARD_NS" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "✅ デプロイ日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY

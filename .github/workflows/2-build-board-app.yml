@@ -1,4 +1,4 @@
-name: 4️⃣ Build Admin App
+name: 2️⃣ Build Board App
 
 on:
   workflow_dispatch:
@@ -6,8 +6,8 @@ on:
     branches:
       - master
     paths:
-      - "app/admin-app/**"
-      - ".github/workflows/4-app-build-admin.yml"
+      - "app/board-app/**"
+      - ".github/workflows/2-build-board-app.yml"
   workflow_run:
     workflows:
       - "1️⃣ Infrastructure Deploy"
@@ -21,7 +21,7 @@ permissions:
 env:
   RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
   ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
-  ADMIN_IMAGE_NAME: admin-app
+  BOARD_IMAGE_NAME: board-app
 
 jobs:
   build-and-push:
@@ -42,7 +42,7 @@ jobs:
           tar -xzf gitleaks.tgz gitleaks
           sudo install -m 755 gitleaks /usr/local/bin/gitleaks
           # SARIF 形式でレポート生成して GitHub Security に表示
-          gitleaks detect --no-banner --report-format sarif --report-path gitleaks-admin.sarif
+          gitleaks detect --no-banner --report-format sarif --report-path gitleaks-board.sarif
           EXIT_CODE=$?
           if [ $EXIT_CODE -ne 0 ]; then
             echo "⚠️ シークレット検出あり（警告）- Security タブで確認してください"
@@ -92,27 +92,27 @@ jobs:
 
       - name: コンテナイメージをビルド
         run: |
-          IMAGE_REF="$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:${IMAGE_TAG}"
+          IMAGE_REF="$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:${IMAGE_TAG}"
           docker build \
-            --file app/admin-app/Dockerfile \
+            --file app/board-app/Dockerfile \
             --tag "$IMAGE_REF" \
-            app/admin-app
-          docker tag "$IMAGE_REF" "$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:latest"
+            app/board-app
+          docker tag "$IMAGE_REF" "$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:latest"
 
       - name: Trivy DB キャッシュ復元
         uses: actions/cache@v4
         with:
           path: ~/.cache/trivy
-          key: trivy-db-${{ runner.os }}-${{ hashFiles('app/admin-app/requirements.txt') }}
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('app/board-app/package.json') }}
           restore-keys: |
             trivy-db-${{ runner.os }}-
 
       - name: コンテナ SBOM 生成 (CycloneDX)
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.ADMIN_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
+          image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.BOARD_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
           format: "cyclonedx"
-          output: "sbom-admin.cdx.json"
+          output: "sbom-board.cdx.json"
           hide-progress: true
           ignore-unfixed: true
           vuln-type: "os,library"
@@ -123,9 +123,9 @@ jobs:
         uses: aquasecurity/trivy-action@0.28.0
         continue-on-error: true
         with:
-          image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.ADMIN_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
+          image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.BOARD_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
           format: "sarif"
-          output: "trivy-image-admin.sarif"
+          output: "trivy-image-board.sarif"
           hide-progress: true
           ignore-unfixed: true
           vuln-type: "os,library"
@@ -138,45 +138,45 @@ jobs:
           set -euo pipefail
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b ./trivy-bin
           ./trivy-bin fs --scanners vuln,secret,config --ignore-unfixed --severity CRITICAL,HIGH \
-            --format sarif --output trivy-fs-admin.sarif app/admin-app || echo "脆弱性検出あり（警告）"
+            --format sarif --output trivy-fs-board.sarif app/board-app || echo "脆弱性検出あり（警告）"
 
       - name: Trivy SARIF をアップロード (Image)
         if: always()
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v2
         with:
-          sarif_file: trivy-image-admin.sarif
+          sarif_file: trivy-image-board.sarif
 
       - name: Trivy SARIF をアップロード (FS)
         if: always()
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v2
         with:
-          sarif_file: trivy-fs-admin.sarif
+          sarif_file: trivy-fs-board.sarif
 
       - name: Gitleaks SARIF をアップロード
         if: always()
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v2
         with:
-          sarif_file: gitleaks-admin.sarif
+          sarif_file: gitleaks-board.sarif
 
       - name: イメージを ACR へプッシュ
         run: |
-          docker push "$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:${IMAGE_TAG}"
-          docker push "$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:latest"
+          docker push "$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:${IMAGE_TAG}"
+          docker push "$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:latest"
 
       - name: ビルドサマリを出力
         if: success()
         run: |
-          echo "## 🎯 管理アプリ ビルド完了" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎯 掲示板アプリ ビルド完了" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📦 コンテナイメージ情報" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **レジストリ**: \`$ACR_LOGIN_SERVER\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **イメージ名**: \`$ADMIN_IMAGE_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **イメージ名**: \`$BOARD_IMAGE_NAME\`" >> $GITHUB_STEP_SUMMARY
           echo "- **タグ**: \`${IMAGE_TAG}\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **フルパス**: \`$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:${IMAGE_TAG}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **フルパス**: \`$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:${IMAGE_TAG}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🔍 セキュリティスキャン結果" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -195,14 +195,14 @@ jobs:
 
       - name: ビルド成果を記録
         run: |
-          printf "image=%s\n" "$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:${IMAGE_TAG}" | tee build-output.txt
+          printf "image=%s\n" "$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:${IMAGE_TAG}" | tee build-output.txt
 
       - name: 成果メタデータを保存
         uses: actions/upload-artifact@v4
         with:
-          name: admin-app-image
+          name: board-app-image
           path: |
             build-output.txt
-            sbom-admin.cdx.json
-            trivy-image-admin.sarif
-            trivy-fs-admin.sarif
+            sbom-board.cdx.json
+            trivy-image-board.sarif
+            trivy-fs-board.sarif
