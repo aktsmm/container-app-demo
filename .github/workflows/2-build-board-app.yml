@@ -23,6 +23,7 @@ env:
   ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
   BOARD_IMAGE_NAME: board-app
   BOARD_API_IMAGE_NAME: board-api
+  PARAM_FILE: infra/parameters/main-dev.parameters.json
 
 jobs:
   build-and-push:
@@ -60,6 +61,24 @@ jobs:
         id: resolve_acr
         run: |
           set -euo pipefail
+          # --- リソースグループ存在チェック & フォールバック ---
+          if [ -z "$RESOURCE_GROUP_NAME" ]; then
+            echo "環境変数 RESOURCE_GROUP_NAME が空です" >&2; exit 1; fi
+          if ! az group show --name "$RESOURCE_GROUP_NAME" &>/dev/null; then
+            echo "⚠️ 指定 RG '$RESOURCE_GROUP_NAME' が存在しません。parameters ファイルから名称再取得を試みます" >&2
+            # パラメータファイル経由で RG 名を抽出 (命名標準: RG-Container-App2 を想定)
+            ALT_RG=$(grep -E '"resourceGroupName"' "$PARAM_FILE" | head -n1 | sed -E 's/.*"resourceGroupName".*"([^"]+)".*/\1/' || true)
+            if [ -n "$ALT_RG" ] && az group show --name "$ALT_RG" &>/dev/null; then
+              echo "代替 RG を使用: $ALT_RG"
+              echo "RESOURCE_GROUP_NAME=$ALT_RG" >> "$GITHUB_ENV"
+              RESOURCE_GROUP_NAME="$ALT_RG"
+            else
+              echo "致命的: 有効なリソースグループを特定できません (現在: '$RESOURCE_GROUP_NAME')" >&2
+              echo "利用可能 RG 一覧:" >&2
+              az group list --query '[].name' -o tsv >&2 || true
+              exit 3
+            fi
+          fi
           if [ -z "$ACR_NAME_PREFIX" ] || [ -z "$RESOURCE_GROUP_NAME" ]; then
             echo "ACR 名を決定するための変数が不足しています" >&2
             exit 1
