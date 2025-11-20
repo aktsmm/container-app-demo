@@ -81,6 +81,37 @@ jobs:
         with:
           fetch-depth: 0 # Gitleaks用に全履歴を取得
 
+      - name: 最新ビルド成果物を取得 (Board App)
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          workflow: 2-build-board-app.yml
+          name: board-app-image
+          path: build-artifacts/board
+
+      - name: 最新ビルド成果物を取得 (Admin App)
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          workflow: 2-build-admin-app.yml
+          name: admin-app-image
+          path: build-artifacts/admin
+
+      - name: ビルド成果物の SARIF を統合
+        run: |
+          mkdir -p sarif
+          # Board App のイメージスキャン結果をコピー
+          if [ -f build-artifacts/board/trivy-image-board.sarif ]; then
+            cp build-artifacts/board/trivy-image-board.sarif sarif/
+            echo "✓ Board App イメージスキャン取得"
+          fi
+          # Admin App のイメージスキャン結果をコピー
+          if [ -f build-artifacts/admin/trivy-image-admin.sarif ]; then
+            cp build-artifacts/admin/trivy-image-admin.sarif sarif/
+            echo "✓ Admin App イメージスキャン取得"
+          fi
+          ls -la sarif/ || true
+
       - name: Trivy DB キャッシュ復元
         uses: actions/cache@v4
         with:
@@ -213,6 +244,7 @@ jobs:
           declare -A CATEGORIES=(
             ["codeql"]="🔍 CodeQL (JS/Python コード品質)"
             ["gitleaks"]="🔑 Gitleaks (シークレット漏洩)"
+            ["trivy-image"]="🐳 Trivy Image (コンテナイメージ脆弱性)"
             ["trivy-fs"]="🛡️ Trivy FileSystem (脆弱性・シークレット)"
             ["trivy-infra"]="🏗️ Trivy Infra (Bicep 設定ミス)"
             ["trivy-k8s"]="☸️ Trivy K8s (Kubernetes 設定)"
@@ -221,12 +253,14 @@ jobs:
           echo '{"categorizedFindings":{' > $JSON_FILE
           FIRST_CAT=1
 
-          for PATTERN in codeql gitleaks trivy-fs trivy-infra trivy-k8s; do
+          for PATTERN in codeql gitleaks trivy-image trivy-fs trivy-infra trivy-k8s; do
             CAT_NAME="${CATEGORIES[$PATTERN]}"
             
             # ファイルリスト取得
             if [ "$PATTERN" = "codeql" ]; then
               FILES=$(ls sarif-codeql/*.sarif 2>/dev/null || true)
+            elif [ "$PATTERN" = "trivy-image" ]; then
+              FILES=$(ls sarif/trivy-image-*.sarif 2>/dev/null || true)
             elif [ "$PATTERN" = "trivy-fs" ]; then
               FILES=$(ls sarif/trivy-fs-all.sarif 2>/dev/null || true)
             else
@@ -266,7 +300,7 @@ jobs:
               COUNT=0
               while IFS=$'\t' read -r SEV_RANK LVL_RANK SEV RULE MSG; do
                 COUNT=$((COUNT+1))
-                SHORT=$(echo "$MSG" | cut -c1-80)
+                SHORT=$(echo "$MSG" | cut -c1-200)
                 echo "$COUNT. **$SEV** / \`$RULE\`: $SHORT" >> $TOP_FILE
                 
                 ESC_MSG=$(echo "$MSG" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
