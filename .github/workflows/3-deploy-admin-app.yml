@@ -21,10 +21,13 @@ env:
   ACA_ENVIRONMENT_NAME: ${{ vars.ACA_ENVIRONMENT_NAME }}
   CONTAINER_APP_NAME: ${{ vars.ADMIN_CONTAINER_APP_NAME }}
   ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
+  STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
   ADMIN_IMAGE_NAME: admin-app
   ADMIN_TARGET_PORT: 8000
   DB_ENDPOINT: ${{ vars.DB_ENDPOINT }}
   BACKUP_CONTAINER: ${{ vars.BACKUP_CONTAINER_NAME }}
+  DB_APP_USERNAME: ${{ vars.DB_APP_USERNAME }}
+  DB_APP_PASSWORD: ${{ vars.DB_APP_PASSWORD }}
   ACA_ADMIN_USERNAME: ${{ vars.ACA_ADMIN_USERNAME }}
   ACA_ADMIN_PASSWORD: ${{ vars.ACA_ADMIN_PASSWORD }}
 
@@ -59,6 +62,19 @@ jobs:
           fi
           echo "ACR_NAME=$ACR_NAME" >> "$GITHUB_ENV"
           echo "ACR_LOGIN_SERVER=${ACR_NAME}.azurecr.io" >> "$GITHUB_ENV"
+
+      - name: Storage Account 名を解決
+        run: |
+          set -euo pipefail
+          STORAGE_NAME=$(az storage account list \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --query "[?starts_with(name, '${STORAGE_ACCOUNT_PREFIX}')].name | [0]" \
+            -o tsv)
+          if [ -z "$STORAGE_NAME" ]; then
+            echo "指定プレフィックスの Storage Account が存在しません" >&2
+            exit 1
+          fi
+          echo "STORAGE_ACCOUNT_NAME=$STORAGE_NAME" >> "$GITHUB_ENV"
 
       - name: Container Apps 拡張機能を更新
         run: |
@@ -157,7 +173,11 @@ jobs:
                 ADMIN_USERNAME=secretref:admin-username \
                 ADMIN_PASSWORD=secretref:admin-password \
                 DB_ENDPOINT="$DB_ENDPOINT" \
-                BACKUP_CONTAINER="$BACKUP_CONTAINER"
+                DB_APP_USERNAME="$DB_APP_USERNAME" \
+                DB_APP_PASSWORD="$DB_APP_PASSWORD" \
+                DB_NAME="boarddb" \
+                BACKUP_CONTAINER="$BACKUP_CONTAINER" \
+                STORAGE_ACCOUNT_NAME="$STORAGE_ACCOUNT_NAME"
           else
             echo "新規 Container App を作成します"
             
@@ -190,7 +210,11 @@ jobs:
                 ADMIN_USERNAME=secretref:admin-username \
                 ADMIN_PASSWORD=secretref:admin-password \
                 DB_ENDPOINT="$DB_ENDPOINT" \
-                BACKUP_CONTAINER="$BACKUP_CONTAINER"
+                DB_APP_USERNAME="$DB_APP_USERNAME" \
+                DB_APP_PASSWORD="$DB_APP_PASSWORD" \
+                DB_NAME="boarddb" \
+                BACKUP_CONTAINER="$BACKUP_CONTAINER" \
+                STORAGE_ACCOUNT_NAME="$STORAGE_ACCOUNT_NAME"
           fi
 
           # シングルリビジョンモードに設定
@@ -198,6 +222,39 @@ jobs:
             --name "$CONTAINER_APP_NAME" \
             --resource-group "$RESOURCE_GROUP_NAME" \
             --mode single
+
+      - name: Container App に Managed Identity を付与
+        run: |
+          set -euo pipefail
+          echo "Container App に System Assigned Managed Identity を有効化します"
+          
+          # Managed Identity を有効化
+          az containerapp identity assign \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --system-assigned
+          
+          # Managed Identity の Principal ID を取得
+          PRINCIPAL_ID=$(az containerapp identity show \
+            --name "$CONTAINER_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --query principalId -o tsv)
+          
+          echo "Managed Identity Principal ID: $PRINCIPAL_ID"
+          
+          # Storage Account への Storage Blob Data Contributor ロールを付与
+          STORAGE_ID=$(az storage account show \
+            --name "$STORAGE_ACCOUNT_NAME" \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --query id -o tsv)
+          
+          echo "Storage Account に対して Storage Blob Data Contributor ロールを付与します"
+          az role assignment create \
+            --assignee "$PRINCIPAL_ID" \
+            --role "Storage Blob Data Contributor" \
+            --scope "$STORAGE_ID"
+          
+          echo "ロール割り当て完了"
 
       - name: デプロイサマリを出力
         if: success()
