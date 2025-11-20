@@ -123,7 +123,13 @@ jobs:
         id: image_meta
         run: |
           EVENT_NAME='${{ github.event_name }}'
-          if [ "$EVENT_NAME" = 'workflow_run' ]; then
+          INPUT_TAG='${{ github.event.inputs.imageTag }}'
+          
+          # 入力タグが指定されている場合はそれを使用
+          if [ -n "$INPUT_TAG" ]; then
+            IMAGE_TAG="$INPUT_TAG"
+            echo "指定されたタグを使用: $IMAGE_TAG"
+          else
             # ACR から最新のイメージタグを取得（latest 以外）
             LATEST_TAG=$(az acr repository show-tags \
               --name "$ACR_NAME" \
@@ -138,12 +144,8 @@ jobs:
               IMAGE_TAG='latest'
               echo "ACR にタグが見つからないため latest を使用"
             fi
-          else
-            IMAGE_TAG='${{ github.event.inputs.imageTag }}'
           fi
-          if [ -z "$IMAGE_TAG" ]; then
-            IMAGE_TAG='latest'
-          fi
+          
           echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
           echo "IMAGE_FULL=$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
 
