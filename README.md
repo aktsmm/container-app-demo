@@ -9,11 +9,12 @@
 - **IaC (Infrastructure as Code) の便利さ**: すべてのインフラ構成を `infra/main.bicep` と `parameters/*.json` でコード化することで、環境の再現性・変更履歴の可視化・レビューによる品質向上を実現。手作業での構築ミスを防ぎ、何度でも同じ環境を迅速に構築できます。
 - **CI/CD パイプラインの自動化**: GitHub Actions による 8 本の疎結合ワークフローで、インフラのデプロイ (`1️⃣ Infrastructure Deploy`)、コンテナイメージのビルド・スキャン (`2️⃣ Build`系)、アプリケーションのデプロイ (`3️⃣ Deploy`系)、定期バックアップ・クリーンアップを完全自動化。コードをプッシュするだけで、Validate → What-If → Deploy → Policy 適用まで一貫して実行されます。
 - **DevOps の文化**: インフラチームとアプリチームが同じリポジトリで協働し、IaC とアプリコードを統合管理。変更はすべて Git で追跡され、Pull Request レビュー → 自動テスト → 本番反映という DevOps サイクルを体感できます。
-- **DevSecOps によるセキュリティシフトレフト**: CodeQL (SAST)、Trivy (コンテナ・IaC スキャン)、Secret Scanning、Dependabot (SCA) を組み込み、開発初期段階から脆弱性を検出・修正。Azure Policy によるコンプライアンス強制、Log Analytics への全ログ統合により、セキュリティとガバナンスを開発プロセスに組み込んだ運用を実現します。
+- **DevSecOps によるセキュリティシフトレフト**: CodeQL (SAST)、Trivy (コンテナ・IaC スキャン)、Secret Scanning、Dependabot (SCA) を組み込み、開発初期段階から脆弱性を検出・修正。**Azure Policy** (`infra/policy.bicep`) によるコンプライアンス強制とガバナンス自動化、Log Analytics への全ログ統合により、セキュリティとガバナンスを開発プロセスに組み込んだ運用を実現します。
 
 ### 技術的特徴
 
-- すべてのリソースは `infra/main.bicep` と `infra/parameters/*.json` で定義され、`1️⃣ Infrastructure Deploy` ワークフローで Validate → What-If → Deploy → Policy の順に適用されます。
+- すべてのリソースは `infra/main.bicep` と `infra/parameters/*.json` で定義され、`1️⃣ Infrastructure Deploy` ワークフローで Validate → What-If → Deploy → **Azure Policy 適用** (`infra/policy.bicep` + `parameters/policy-dev.parameters.json`) の順に実行されます。
+- **Azure Policy によるガバナンス自動化**: タグ強制、リソース種別制限、SKU 制限、リージョン制限などのコンプライアンスルールを IaC で定義し、自動適用。ポリシー違反リソースの検出・修正を CI/CD に組み込むことで、組織のセキュリティ基準を開発フロー全体で担保します。
 - コスト最適化のため、AKS ノード (Standard_B2s)、Container Apps (Consumption)、VM (Standard_B1ms)、ストレージ (Standard_LRS + Cool) など **低コスト SKU** を標準採用しています。
 - `app/board-app/public/dummy-secret.txt` は UI からリンクされるダミー資格情報であり、本物の鍵を置かない運用ポリシーを README 群でも明記します。
 
