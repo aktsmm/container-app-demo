@@ -124,7 +124,7 @@ jobs:
         run: |
           EVENT_NAME='${{ github.event_name }}'
           INPUT_TAG='${{ github.event.inputs.imageTag }}'
-          
+
           # 入力タグが指定されている場合はそれを使用
           if [ -n "$INPUT_TAG" ]; then
             IMAGE_TAG="$INPUT_TAG"
@@ -145,7 +145,7 @@ jobs:
               echo "ACR にタグが見つからないため latest を使用"
             fi
           fi
-          
+
           echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
           echo "IMAGE_FULL=$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
 

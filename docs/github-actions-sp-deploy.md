@@ -14,9 +14,8 @@
 | 変数名                  | 用途                                                                                                                                      |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `AZURE_SUBSCRIPTION_ID` | 対象サブスクリプション ID（例: `7134d7ae-2fe3-4eec-8f0b-5ffad8355907`）。Azure CLI の `--subscription` へ引き渡す唯一の必須シークレット。 |
-| `GH_PAT_ACTIONS_DELETE` | 任意。`cleanup-failed-workflows` が `gh run delete` を大量実行する際の PAT。未設定時は `GITHUB_TOKEN` を利用し、削除対象が制限される。    |
 
-> Policy: Secrets は最小限に抑え、PAT が不要であれば `GH_PAT_ACTIONS_DELETE` を登録しない。PAT を使う場合も scope を `repo` のみに限定する。
+> Note: `cleanup-workflows.yml` は `GITHUB_TOKEN` を使用するため、追加の PAT は不要です。
 
 ### GitHub Actions Variables
 

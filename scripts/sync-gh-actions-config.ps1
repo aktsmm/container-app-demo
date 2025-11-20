@@ -60,8 +60,7 @@ $variableKeys = @(
     'VM_ADMIN_PASSWORD',
     'DB_APP_USERNAME',
     'DB_APP_PASSWORD',
-    'MYSQL_ROOT_PASSWORD',
-    'GH_PAT_ACTIONS_DELETE'
+    'MYSQL_ROOT_PASSWORD'
 )
 
 $secretKeys = @(
