@@ -9,14 +9,13 @@ on:
   workflow_run:
     workflows:
       - "2️⃣ Build Admin App"
-      - "1️⃣ Infrastructure Deploy"
     types:
       - completed
 
 permissions:
   contents: read
   id-token: write
-  actions: read  # アーティファクトダウンロードと workflow リスト取得に必要
+  actions: read # アーティファクトダウンロードと workflow リスト取得に必要
 
 env:
   RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}

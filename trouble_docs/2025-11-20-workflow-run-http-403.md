@@ -26,6 +26,7 @@ couldn't fetch workflows for aktsmm/container-app-demo: HTTP 403: Resource not a
 `workflow_run` トリガーで起動されたワークフローでは、`GITHUB_TOKEN` に **workflow リスト取得権限**がデフォルトで付与されていない。
 
 以下のコードが失敗:
+
 ```bash
 gh run list --workflow "1️⃣ Infrastructure Deploy" --status success --json databaseId --limit 1
 ```
@@ -38,7 +39,7 @@ gh run list --workflow "1️⃣ Infrastructure Deploy" --status success --json d
 permissions:
   contents: read
   id-token: write
-  actions: read  # アーティファクトダウンロードには有効だが workflow リスト取得には不十分
+  actions: read # アーティファクトダウンロードには有効だが workflow リスト取得には不十分
 ```
 
 ---
@@ -189,5 +190,6 @@ git commit -m "fix: gh run list の HTTP 403 を回避するため GitHub REST A
 ---
 
 **関連トラブルシューティング**:
+
 - [2025-11-20-vm-admin-username-invalid.md](./2025-11-20-vm-admin-username-invalid.md)
 - [2025-11-20-managed-identity-migration.md](./2025-11-20-managed-identity-migration.md)
