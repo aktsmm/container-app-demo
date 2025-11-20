@@ -22,6 +22,7 @@ env:
   RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
   ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
   BOARD_IMAGE_NAME: board-app
+  BOARD_API_IMAGE_NAME: board-api
 
 jobs:
   build-and-push:
@@ -98,6 +99,13 @@ jobs:
             --tag "$IMAGE_REF" \
             app/board-app
           docker tag "$IMAGE_REF" "$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:latest"
+          # board-api イメージ (API 層: MySQL 永続化) も同じタグでビルド
+          API_IMAGE_REF="$ACR_LOGIN_SERVER/$BOARD_API_IMAGE_NAME:${IMAGE_TAG}"
+          docker build \
+            --file app/board-api/Dockerfile \
+            --tag "$API_IMAGE_REF" \
+            app/board-api
+          docker tag "$API_IMAGE_REF" "$ACR_LOGIN_SERVER/$BOARD_API_IMAGE_NAME:latest"
 
       - name: Trivy DB キャッシュ復元
         uses: actions/cache@v4
@@ -118,6 +126,17 @@ jobs:
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
           exit-code: "0"
+      - name: コンテナ SBOM 生成 (API) CycloneDX
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.BOARD_API_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
+          format: "cyclonedx"
+          output: "sbom-board-api.cdx.json"
+          hide-progress: true
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
 
       - name: Trivy でコンテナをスキャン (SARIF)
         uses: aquasecurity/trivy-action@0.28.0
@@ -126,6 +145,18 @@ jobs:
           image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.BOARD_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
           format: "sarif"
           output: "trivy-image-board.sarif"
+          hide-progress: true
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+      - name: Trivy でコンテナ(API)をスキャン (SARIF)
+        uses: aquasecurity/trivy-action@0.28.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.BOARD_API_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
+          format: "sarif"
+          output: "trivy-image-board-api.sarif"
           hide-progress: true
           ignore-unfixed: true
           vuln-type: "os,library"
@@ -146,6 +177,12 @@ jobs:
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: trivy-image-board.sarif
+      - name: Trivy SARIF をアップロード (API Image)
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-image-board-api.sarif
 
       - name: Trivy SARIF をアップロード (FS)
         if: always()
@@ -165,6 +202,8 @@ jobs:
         run: |
           docker push "$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:${IMAGE_TAG}"
           docker push "$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:latest"
+          docker push "$ACR_LOGIN_SERVER/$BOARD_API_IMAGE_NAME:${IMAGE_TAG}"
+          docker push "$ACR_LOGIN_SERVER/$BOARD_API_IMAGE_NAME:latest"
 
       - name: ビルドサマリを出力
         if: success()
@@ -204,5 +243,7 @@ jobs:
           path: |
             build-output.txt
             sbom-board.cdx.json
+            sbom-board-api.cdx.json
             trivy-image-board.sarif
+            trivy-image-board-api.sarif
             trivy-fs-board.sarif

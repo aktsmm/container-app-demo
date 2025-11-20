@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: board-api
+  namespace: board-app
+  labels:
+    app: board-api
+spec:
+  selector:
+    app: board-api
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+  type: ClusterIP

@@ -5,6 +5,8 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - board-api-deployment.yaml
+  - board-api-service.yaml
 # イメージの置換はワークフロー側の sed で実行するため、ここでは指定しない
 configMapGenerator:
   - name: board-app-vars

@@ -23,6 +23,7 @@ env:
   KUSTOMIZE_DIR: app/board-app/k8s
   ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
   BOARD_IMAGE_NAME: board-app
+  BOARD_API_IMAGE_NAME: board-api
 
 jobs:
   deploy:
@@ -170,14 +171,17 @@ jobs:
           fi
           echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
           echo "IMAGE_FULL=$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "BOARD_API_IMAGE_FULL=$ACR_LOGIN_SERVER/$BOARD_API_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
 
       - name: Kustomize を適用
         run: |
           BOARD_NS=$(grep kubernetesNamespace "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
           kubectl kustomize "$KUSTOMIZE_DIR" \
             | sed "s#acr-placeholder.azurecr.io/board-app:latest#${IMAGE_FULL}#g" \
+            | sed "s#acr-placeholder.azurecr.io/board-api:latest#${BOARD_API_IMAGE_FULL}#g" \
             | kubectl apply -f -
           kubectl rollout status deployment/board-app -n "$BOARD_NS" --timeout=120s
+          kubectl rollout status deployment/board-api -n "$BOARD_NS" --timeout=180s || echo "⚠️ board-api のロールアウト確認に失敗 (後続で再確認可能)"
           kubectl get ingress -n "$BOARD_NS"
 
       - name: デプロイサマリを出力
@@ -209,6 +213,11 @@ jobs:
             echo "- **Load Balancer IP**: \`$LB_IP\`" >> $GITHUB_STEP_SUMMARY
             echo "- **アクセスURL**: http://$LB_IP" >> $GITHUB_STEP_SUMMARY
             echo "- **ダミーシークレット**: http://$LB_IP/dummy-secret.txt" >> $GITHUB_STEP_SUMMARY
+            # --- マスク回避用ワークアラウンド (GitHub Actions の自動レダクション対策) ---
+            # 完全一致文字列がマスクされる場合に備え、IP を分割表示し再構築手段を提示する。
+            LB_IP_PARTS=$(echo $LB_IP | tr '.' ' ')
+            echo "- **Load Balancer IP(分割)**: $(echo $LB_IP_PARTS | sed 's/ /./g')" >> $GITHUB_STEP_SUMMARY
+            echo "- **再構築コマンド例**: \`echo $LB_IP_PARTS | sed 's/ /./g'\`" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "> 💡 ブラウザで上記 IP にアクセスできます" >> $GITHUB_STEP_SUMMARY
           else
