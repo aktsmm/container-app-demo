@@ -10,15 +10,21 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # --- 設定値（必要に応じて編集） ---
-$DefaultRepo = 'aktsmm/container-app-demo'
+$DefaultRepo = 'your-github-username/your-repo-name'
+
+$GitHubSecrets = @{
+	# scripts/create-github-actions-sp.ps1 の出力値を転記する
+	AZURE_SUBSCRIPTION_ID = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+}
 
 $GitHubVariables = @{
-	RESOURCE_GROUP_NAME      = 'RG-bbs-app-demo'
-	# scripts/create-github-actions-sp.ps1 の出力値を転記する
-	AZURE_CLIENT_ID          = '23ec2e1f-a7d0-4996-b102-8ecf2c789730'
-	AZURE_CLIENT_SECRET      = 'P348Q~xWkqHB8.5iSN0s1jo2X3vBvzbvIoMXqbp9'
-	AZURE_TENANT_ID          = '892fd90b-434b-42d0-bd82-41f9e1ba23f3'
 
+	# scripts/create-github-actions-sp.ps1 の出力値を転記する
+	AZURE_CLIENT_ID          = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+	AZURE_CLIENT_SECRET      = 'xxx~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+	AZURE_TENANT_ID          = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+    
+	RESOURCE_GROUP_NAME      = 'RG-bbs-app-demo'
 	LOCATION                 = 'japaneast'
 	ACR_NAME_PREFIX          = 'acrdemo'
 	STORAGE_ACCOUNT_PREFIX   = 'demo'
@@ -38,10 +44,7 @@ $GitHubVariables = @{
 	INGRESS_PUBLIC_IP        = ''
 }
 
-$GitHubSecrets = @{
-	# scripts/create-github-actions-sp.ps1 の出力値を転記する
-	AZURE_SUBSCRIPTION_ID = '7134d7ae-2fe3-4eec-8f0b-5ffad8355907'
-}
+
 
 function Test-Command {
 	param([string]$Name)
