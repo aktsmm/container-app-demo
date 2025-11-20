@@ -7,13 +7,14 @@ on:
       - "app/board-app/**"
       - "app/admin-app/**"
       - "infra/**"
-      - ".github/workflows/codeql-iac-scan.yml"
+      - ".github/workflows/security-scan.yml"
   pull_request:
     branches: [master]
     paths:
       - "app/board-app/**"
       - "app/admin-app/**"
       - "infra/**"
+      - ".github/workflows/security-scan.yml"
   schedule:
     - cron: "0 3 * * *" # 毎日 03:00 UTC (JST 午前 12時) 定期スキャン
   workflow_dispatch:
