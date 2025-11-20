@@ -16,7 +16,7 @@
 
 | 層             | 技術                                                            | ファイル                                                          |
 | -------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
-| フロントエンド | React + Vite + Zustand (`useBoardStore.js`) + dayjs             | `app/board-app/src/**/*.jsx`                                      |
+| フロントエンド | React + Vite + 独自フック (`useBoardStore.js`) + dayjs          | `app/board-app/src/**/*.jsx`                                      |
 | API            | Node.js 20 + Express + mysql2/promise                           | `app/board-api/server.js`, `package.json`                         |
 | 管理アプリ     | Python 3 + Flask + Azure Identity + Azure Storage SDK + PyMySQL | `app/admin-app/src/app.py`, `requirements.txt`                    |
 | インフラ       | Bicep + Azure CLI + Azure Policy                                | `infra/main.bicep`, `infra/modules/*.bicep`, `infra/policy.bicep` |

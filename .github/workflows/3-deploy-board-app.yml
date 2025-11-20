@@ -27,6 +27,7 @@ env:
   BOARD_API_IMAGE_NAME: board-api
   DB_APP_USERNAME: ${{ vars.DB_APP_USERNAME }}
   DB_APP_PASSWORD: ${{ vars.DB_APP_PASSWORD }}
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   deploy:
@@ -151,8 +152,30 @@ jobs:
           helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx || true
           helm repo update
 
+          # Chart の appVersion から利用する Controller タグを動的に取得
+          CONTROLLER_IMAGE="ingress-nginx/controller"
+          INGRESS_APP_VERSION=$(helm show chart ingress-nginx/ingress-nginx | awk -F': ' '/^appVersion:/ {print $2}' | tr -d '[:space:]')
+          if [ -z "$INGRESS_APP_VERSION" ] || [ "$INGRESS_APP_VERSION" = "null" ]; then
+            echo "ingress-nginx の appVersion を取得できません" >&2
+            exit 1
+          fi
+          if [[ "$INGRESS_APP_VERSION" == v* ]]; then
+            CONTROLLER_TAG="$INGRESS_APP_VERSION"
+          else
+            CONTROLLER_TAG="v${INGRESS_APP_VERSION}"
+          fi
+          echo "ingress-nginx controller タグ: $CONTROLLER_TAG"
+
+          # helm install 時に参照する ACR 内イメージを事前にプル（ImagePull 遅延対策）
+          echo "ACR に ingress-nginx controller イメージをインポートします"
+          az acr import \
+            --name "$ACR_NAME" \
+            --source "mcr.microsoft.com/oss/kubernetes/${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" \
+            --image "${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" \
+            --force
+
           # Helm ロック状態を事前にチェック・解除（CI/CD の中断やタイムアウトで残ることがある）
-          if kubectl get secret -n ingress-nginx | grep -q 'sh\.helm\.release\.v1\.ingress-nginx'; then
+          if kubectl get ns ingress-nginx >/dev/null 2>&1 && kubectl get secret -n ingress-nginx | grep -q 'sh\.helm\.release\.v1\.ingress-nginx'; then
             echo "Helm リリースの状態を確認します"
             HELM_STATUS=$(helm status ingress-nginx -n ingress-nginx -o json 2>/dev/null | jq -r '.info.status' || echo "unknown")
             if [[ "$HELM_STATUS" == "pending-install" || "$HELM_STATUS" == "pending-upgrade" || "$HELM_STATUS" == "pending-rollback" ]]; then
@@ -182,21 +205,30 @@ jobs:
               --reuse-values \
               --set controller.service.externalTrafficPolicy=Local \
               --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+              --set controller.image.registry="$ACR_LOGIN_SERVER" \
+              --set controller.image.image="$CONTROLLER_IMAGE" \
+              --set controller.image.tag="$CONTROLLER_TAG" \
               $STATIC_IP_ARGS \
-              --wait --timeout=10m
+              --wait --timeout=15m --atomic
           else
             echo "ingress-nginx を Helm でインストールします"
             # 低コスト & シンプル構成: externalTrafficPolicy=Local で Azure LB が正しい NodePort を使用
-            # タイムアウトを10分に延長（低スペックノード + イメージプル + LB準備を考慮）
+            # タイムアウトを15分に延長（低スペックノード + イメージプル + LB準備を考慮）
             helm install ingress-nginx ingress-nginx/ingress-nginx \
               --namespace ingress-nginx \
               --create-namespace \
               --set controller.replicaCount=1 \
               --set controller.service.externalTrafficPolicy=Local \
               --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+              --set controller.image.registry="$ACR_LOGIN_SERVER" \
+              --set controller.image.image="$CONTROLLER_IMAGE" \
+              --set controller.image.tag="$CONTROLLER_TAG" \
               $STATIC_IP_ARGS \
-              --wait --timeout=10m
+              --wait --timeout=15m --atomic
           fi
+
+          echo "ingress-nginx controller のロールアウト完了を待機します"
+          kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=600s
 
           echo "LoadBalancer IP の割り当てを待機します (最大 ~5分)";
           ATTEMPTS=30

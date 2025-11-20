@@ -292,11 +292,29 @@ jobs:
 
           echo "Managed Identity Principal ID: $PRINCIPAL_ID"
 
+          # レプリケーション遅延を考慮し、AAD で参照可能になるまで待機する
+          MAX_MI_WAIT=10
+          SLEEP_SECONDS=30
+          echo "Managed Identity の AAD レプリケーションを最大 $((MAX_MI_WAIT * SLEEP_SECONDS)) 秒待機します"
+          for attempt in $(seq 1 $MAX_MI_WAIT); do
+            if az ad sp show --id "$PRINCIPAL_ID" >/dev/null 2>&1; then
+              echo "Managed Identity available (試行 $attempt/$MAX_MI_WAIT)"
+              break
+            fi
+            if [ "$attempt" -eq "$MAX_MI_WAIT" ]; then
+              echo "Managed Identity が指定時間内に参照可能になりませんでした" >&2
+              exit 1
+            fi
+            echo "[MI待機] レプリケーション中… (試行 $attempt/$MAX_MI_WAIT)"
+            sleep $SLEEP_SECONDS
+          done
+
           # ⚠️ デモ用：意図的に過剰な権限を付与（本番環境では非推奨）
           # Subscription スコープで Contributor ロールを付与
           echo "⚠️ 【デモ用】Subscription スコープで Contributor ロールを付与します（過剰な権限）"
           az role assignment create \
-            --assignee "$PRINCIPAL_ID" \
+            --assignee-object-id "$PRINCIPAL_ID" \
+            --assignee-principal-type ServicePrincipal \
             --role "Contributor" \
             --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}"
 
@@ -308,7 +326,8 @@ jobs:
 
           echo "Storage Account に対して Storage Blob Data Contributor ロールも付与します"
           az role assignment create \
-            --assignee "$PRINCIPAL_ID" \
+            --assignee-object-id "$PRINCIPAL_ID" \
+            --assignee-principal-type ServicePrincipal \
             --role "Storage Blob Data Contributor" \
             --scope "$STORAGE_ID" || echo "既に割り当て済みまたはエラー（継続）"
 

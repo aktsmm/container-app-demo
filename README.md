@@ -28,7 +28,7 @@
 | IaC        | `infra/`                       | `main.bicep`, `modules/*.bicep`, `parameters/*.json`                        | AKS/ACA/ACR/VM/Storage/Log Analytics/VNet/Policy/診断設定をモジュール化                      |
 | CI/CD      | `.github/workflows/`           | 8 本の YAML                                                                 | Build/Deploy/バックアップ/クリーンアップ/セキュリティスキャンを疎結合で実行                  |
 | スクリプト | `scripts/`                     | `create-github-actions-sp.ps1`, `mysql-init.sh`, `sync-board-vars.ps1` など | Service Principal 発行、MySQL 初期化、K8s 変数同期、GitHub Secrets 自動設定                  |
-| ナレッジ   | `docs/`, `trouble_docs/`       | 既存トラブルシュート                                                        | デプロイやランブック情報を Markdown 化                                                       |
+| ナレッジ   | `READMEs/`, `trouble_docs/`    | 役割別 README と障害対応メモ                                                | デプロイやランブック情報を Markdown 化                                                       |
 
 ## 3. ディレクトリ構造 (抜粋)
 
@@ -48,7 +48,7 @@ trouble_docs/       # トラブルシューティング履歴
 
 ## 4. ドキュメント一覧
 
-### メインドキュメント (READMEs/)
+### 読み始める順番のガイド (READMEs/)
 
 - [`READMEs/README_QUICKSTART.md`](READMEs/README_QUICKSTART.md) – 必要ツール、Service Principal 発行、Secrets 登録、IaC/アプリ展開手順
 - [`READMEs/README_WORKFLOWS.md`](READMEs/README_WORKFLOWS.md) – 8 本の GitHub Actions 詳細 (トリガー、依存関係、主処理)
@@ -59,22 +59,17 @@ trouble_docs/       # トラブルシューティング履歴
 - [`READMEs/README_ARCHITECTURE.md`](READMEs/README_ARCHITECTURE.md) – テキストベースの全体アーキテクチャ図とデータフロー
 - [`READMEs/README_SECURITY.md`](READMEs/README_SECURITY.md) – RBAC/スキャン/ポリシー/ログ統合などのセキュリティ対策
 
-### 詳細ドキュメント (docs/)
-
-- [`docs/architecture.md`](docs/architecture.md) – アーキテクチャ概要と CI/CD フロー概要
-- [`docs/github-actions-sp-deploy.md`](docs/github-actions-sp-deploy.md) – GitHub Actions 用 Service Principal 認証の詳細手順
-- [`docs/troubleshooting-app-deploy.md`](docs/troubleshooting-app-deploy.md) – アプリデプロイワークフローのトラブルシューティング履歴
-- [`docs/troubleshooting-infra-deploy.md`](docs/troubleshooting-infra-deploy.md) – インフラデプロイワークフローのトラブルシューティング履歴
-
 ### トラブルシューティング履歴 (trouble_docs/)
 
-個別の問題解決記録は [`trouble_docs/`](trouble_docs/) 配下に時系列で管理されています。
+- `trouble_docs/*.md` – 発生日ごとの障害記録・暫定対応・恒久対策メモ。例: [`trouble_docs/2025-11-21-ingress-ip-dynamic-change.md`](trouble_docs/2025-11-21-ingress-ip-dynamic-change.md)
+
+> 以前案内していた `docs/` ディレクトリは廃止済みです。詳細設計や手順は上記 README 群と `trouble_docs/` に統合しました。
 
 ## 5. 運用のポイント
 
 - **フル IaC**: AKS/ACA/VM/Storage/Log Analytics/Policy を `infra/main.bicep` に集約し、すべての定数は `infra/parameters/main-dev.parameters.json` に退避。
 - **低コスト設計**: VM `Standard_B1ms`, AKS `Standard_B2s`、Storage `Standard_LRS + Cool`、ACA Consumption など最小構成。
-- **ログ統合**: AKS Control Plane, Container Apps, Storage, VM から全ログを `logAnalytics.outputs.id` へ転送する診断リソースを main.bicep で作成。
+- **ログ統合**: 現在は AKS Control Plane・Container Apps・Storage からの診断ログ/メトリックを `logAnalytics.outputs.id` に集約済み。VM (MySQL) の Syslog やバックアップスクリプトのログを Log Analytics へ転送するには Azure Monitor Agent + Data Collection Rule の構成が必要であり（参考: [Collect Syslog events from virtual machine client with Azure Monitor](https://learn.microsoft.com/azure/azure-monitor/vm/data-collection-syslog)）、本リポジトリではまだ未導入です。
 - **dummy-secret 露出**: `public/dummy-secret.txt` はダミー値であり、本物の秘密情報を置かない。[`READMEs/README_SECRETS_VARIABLES.md`](READMEs/README_SECRETS_VARIABLES.md) にも明記。
 - **Service Principal 認証**: すべてのワークフローが `vars.AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID` と `secrets.AZURE_SUBSCRIPTION_ID` を使用。
 
