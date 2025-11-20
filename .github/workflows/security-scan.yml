@@ -56,15 +56,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p codeql-sarif
-          # 標準的な出力先: codeql-results/ を再帰探索
-          find . -maxdepth 5 -type f -name '*.sarif' -print -exec cp {} codeql-sarif/ \;
-          echo "収集済みSARIF:" && ls -1 codeql-sarif || true
+          # CodeQL の SARIF は ../results/ や _temp/ に生成されるため広範囲を探索
+          find /home/runner/work -type f -name '*.sarif' 2>/dev/null | while read sarif; do
+            echo "発見: $sarif"
+            cp "$sarif" codeql-sarif/ || true
+          done
+          echo "収集済みSARIF:" && ls -1 codeql-sarif || echo "⚠️ SARIF が見つかりませんでした"
 
       - name: CodeQL SARIF アップロード (artifact)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: codeql-sarif
           path: codeql-sarif/*.sarif
+          if-no-files-found: warn
 
   iac-security:
     name: IaC セキュリティ (Bicep/K8s/Secrets)

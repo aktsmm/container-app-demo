@@ -227,6 +227,10 @@ module storage './modules/storageAccount.bicep' = {
 
 module containerAppsEnv './modules/containerAppEnv.bicep' = {
   name: 'containerAppsEnv-${deploymentTimestamp}'
+  dependsOn: [
+    logAnalytics
+    vnet
+  ]
   params: {
     name: containerAppsEnvironmentName
     location: location
@@ -264,6 +268,9 @@ module aks './modules/aks.bicep' = if (!aksSkipCreate) {
 
 module vm './modules/vm.bicep' = {
   name: 'vm-${deploymentTimestamp}'
+  dependsOn: [
+    logAnalytics
+  ]
   params: {
     name: vmName
     location: location

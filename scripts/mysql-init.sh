@@ -42,7 +42,8 @@ APP_USER_ESC="$(escape_sql "$APP_USER")"
 APP_PASS_ESC="$(escape_sql "$APP_PASSWORD")"
 
 log "Updating apt cache"
-sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+# cnf-update-db のエラーを回避: APT::Update::Post-Invoke-Success を一時的に無効化
+sudo DEBIAN_FRONTEND=noninteractive apt-get update -y -o APT::Update::Post-Invoke-Success::=
 log "Installing mysql-server"
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server
 
