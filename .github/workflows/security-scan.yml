@@ -167,6 +167,55 @@ jobs:
     needs: [codeql, iac-security]
     if: always()
     steps:
+      - name: スキャン成果物取得
+        # iac-security ジョブで保存した SARIF を取得し要約抽出に利用
+        uses: actions/download-artifact@v4
+        with:
+          name: iac-scan-results
+          path: sarif
+
+      - name: 重要度上位検出抽出 (最大5件)
+        # SARIF 形式の結果から error/warning を抽出し最大5件まで要約。
+        # CodeQL の詳細結果は Security タブにあるためここでは Trivy/Gitleaks の成果物のみ。
+        # 解析方針:
+        #   - 各 SARIF の runs[].results[] を走査
+        #   - レベル (level) が error / warning を対象
+        #   - ruleId とメッセージを整形 (改行除去/先頭トリム)
+        #   - error 優先 → warning の順に並べて先頭から5件
+        #   - 件数が 0 の場合は「高優先度検出なし」を表示
+        run: |
+          set -euo pipefail
+          TOP_FILE=top-findings.md
+          echo "### 🧪 上位検出 (最大5件)" > $TOP_FILE
+          echo "" >> $TOP_FILE
+          if ls sarif/*.sarif 1> /dev/null 2>&1; then
+            # jq が存在する前提 (GitHub Hosted Runner 標準搭載)
+            # 全ファイルから error/warning を TSV で抽出
+            ALL=$(for f in sarif/*.sarif; do
+              jq -r '.runs[]? .results[]? | {rid:(.ruleId // "(rule不明)"), lvl:(.level // "note"), msg:(.message.text // "")} | select(.lvl=="error" or .lvl=="warning") | [.lvl, .rid, (.msg | gsub("\n"; " "))] | @tsv' "$f" || true;
+            done)
+            if [ -n "$ALL" ]; then
+              # error を先、次に warning。重複 ruleId は許容 (異なる場所かもしれないため)
+              TOP=$(echo "$ALL" | awk -F"\t" '{print $0}' | sort -t$'\t' -k1,1 | sed 's/^error/0\terror/' | sed 's/^warning/1\twarning/' | sort -t$'\t' -k1,1 -k2,2 | cut -f2- | head -n 5)
+              # 上記で sort 前に level を数値化 → sort 後 cut で除去するロジック
+              COUNT=0
+              while IFS=$'\t' read -r RULE MSG; do
+                COUNT=$((COUNT+1))
+                # メッセージを100文字程度にトリム（長すぎるとサマリが読みにくいため）
+                SHORT=$(echo "$MSG" | sed -E 's/ {1,}/ /g' | cut -c1-100)
+                echo "- **$RULE**: $SHORT" >> $TOP_FILE
+              done <<< "$TOP"
+              if [ "$COUNT" -eq 0 ]; then
+                echo "高優先度検出なし (error/warning 0件)" >> $TOP_FILE
+              fi
+            else
+              echo "高優先度検出なし (error/warning 0件)" >> $TOP_FILE
+            fi
+          else
+            echo "成果物が見つかりません (ARTIFACT未取得)" >> $TOP_FILE
+          fi
+          cat $TOP_FILE >> $GITHUB_STEP_SUMMARY
+
       - name: スキャン結果サマリを出力
         run: |
           echo "## 🔐 セキュリティスキャン完了" >> $GITHUB_STEP_SUMMARY
