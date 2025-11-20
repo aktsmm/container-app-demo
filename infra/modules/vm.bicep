@@ -205,3 +205,5 @@ resource mysqlInit 'Microsoft.Compute/virtualMachines/extensions@2022-11-01' = {
 output id string = vm.id
 output principalId string = vm.identity.principalId
 output name string = vm.name
+// ワークフローで DB 接続先を自動取得できるように Private IP を公開
+output privateIp string = nic.properties.ipConfigurations[0].properties.privateIPAddress

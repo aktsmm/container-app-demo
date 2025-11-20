@@ -9,6 +9,7 @@ on:
   workflow_run:
     workflows:
       - "2️⃣ Build Board App"
+      - "1️⃣ Infrastructure Deploy"
     types:
       - completed
 
@@ -24,8 +25,6 @@ env:
   ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
   BOARD_IMAGE_NAME: board-app
   BOARD_API_IMAGE_NAME: board-api
-  # DB 接続情報 (現状は Variables。パスワードは Secrets への移行を推奨)
-  DB_ENDPOINT: ${{ vars.DB_ENDPOINT }}
   DB_APP_USERNAME: ${{ vars.DB_APP_USERNAME }}
   DB_APP_PASSWORD: ${{ vars.DB_APP_PASSWORD }}
 
@@ -43,6 +42,38 @@ jobs:
         with:
           creds: >-
             {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
+      - name: インフラ出力アーティファクトから MySQL IP を取得
+        id: mysql_endpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INFRA_WORKFLOW_NAME: "1️⃣ Infrastructure Deploy"
+        run: |
+          set -euo pipefail
+          mkdir -p infra-output
+          if [ "${{ github.event_name }}" = "workflow_run" ] && [ "${{ github.event.workflow_run.name }}" = "$INFRA_WORKFLOW_NAME" ]; then
+            TARGET_RUN_ID='${{ github.event.workflow_run.id }}'
+          else
+            TARGET_RUN_ID=$(gh run list --workflow "$INFRA_WORKFLOW_NAME" --status success --json databaseId --limit 1 | jq -r '.[0].databaseId')
+          fi
+          if [ -z "$TARGET_RUN_ID" ] || [ "$TARGET_RUN_ID" = "null" ]; then
+            echo "インフラデプロイの実行履歴が見つかりません" >&2
+            exit 1
+          fi
+          echo "Using infra run: $TARGET_RUN_ID"
+          gh run download "$TARGET_RUN_ID" --name infra-outputs --dir infra-output >/dev/null
+          OUTPUT_FILE=$(find infra-output -name '*.json' | head -n1)
+          if [ -z "$OUTPUT_FILE" ]; then
+            echo "infra-outputs アーティファクトに JSON が含まれていません" >&2
+            exit 1
+          fi
+          MYSQL_IP=$(jq -r '.mysqlPrivateIp.value' "$OUTPUT_FILE")
+          if [ -z "$MYSQL_IP" ] || [ "$MYSQL_IP" = "null" ]; then
+            echo "infra 出力に mysqlPrivateIp が存在しません" >&2
+            exit 1
+          fi
+          echo "DB_ENDPOINT=${MYSQL_IP}:3306" >> "$GITHUB_ENV"
+          echo "Resolved MySQL endpoint: ${MYSQL_IP}:3306"
 
       - name: ACR 名を解決
         run: |

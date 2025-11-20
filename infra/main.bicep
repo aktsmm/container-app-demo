@@ -386,3 +386,5 @@ output containerAppsEnvironmentId string = containerAppsEnv.outputs.id
 output logAnalyticsId string = logAnalytics.outputs.id
 output virtualNetworkId string = vnet.outputs.id
 output storageAccountId string = storage.outputs.id
+// GitHub Actions から DB 接続先を解決できるように MySQL VM の Private IP を出力
+output mysqlPrivateIp string = vm.outputs.privateIp

@@ -54,7 +54,6 @@ $variableKeys = @(
     'AKS_CLUSTER_NAME',
     'ACA_ENVIRONMENT_NAME',
     'ADMIN_CONTAINER_APP_NAME',
-    'DB_ENDPOINT',
     'BACKUP_CONTAINER_NAME',
     'VM_NAME',
     'VM_ADMIN_USERNAME',
@@ -73,6 +72,8 @@ foreach ($key in $variableKeys) {
     gh variable set $key --body $value | Out-Null
     Write-Host "✅ Variable $key を設定しました"
 }
+
+Write-Host "ℹ️ DB_ENDPOINT は infra-outputs アーティファクトから自動取得するため、リポジトリ変数としては設定しません" -ForegroundColor Yellow
 
 foreach ($key in $secretKeys) {
     $value = Get-CodeValue -Key $key

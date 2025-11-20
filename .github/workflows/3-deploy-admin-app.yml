@@ -9,6 +9,7 @@ on:
   workflow_run:
     workflows:
       - "2️⃣ Build Admin App"
+      - "1️⃣ Infrastructure Deploy"
     types:
       - completed
 
@@ -24,7 +25,6 @@ env:
   STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
   ADMIN_IMAGE_NAME: admin-app
   ADMIN_TARGET_PORT: 8000
-  DB_ENDPOINT: ${{ vars.DB_ENDPOINT }}
   BACKUP_CONTAINER: ${{ vars.BACKUP_CONTAINER_NAME }}
   DB_APP_USERNAME: ${{ vars.DB_APP_USERNAME }}
   DB_APP_PASSWORD: ${{ vars.DB_APP_PASSWORD }}
@@ -79,6 +79,38 @@ jobs:
       - name: Container Apps 拡張機能を更新
         run: |
           az extension add --name containerapp --upgrade
+
+      - name: インフラ出力アーティファクトから MySQL IP を取得
+        id: mysql_endpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INFRA_WORKFLOW_NAME: "1️⃣ Infrastructure Deploy"
+        run: |
+          set -euo pipefail
+          mkdir -p infra-output
+          if [ "${{ github.event_name }}" = "workflow_run" ] && [ "${{ github.event.workflow_run.name }}" = "$INFRA_WORKFLOW_NAME" ]; then
+            TARGET_RUN_ID='${{ github.event.workflow_run.id }}'
+          else
+            TARGET_RUN_ID=$(gh run list --workflow "$INFRA_WORKFLOW_NAME" --status success --json databaseId --limit 1 | jq -r '.[0].databaseId')
+          fi
+          if [ -z "$TARGET_RUN_ID" ] || [ "$TARGET_RUN_ID" = "null" ]; then
+            echo "インフラデプロイの実行履歴が見つかりません" >&2
+            exit 1
+          fi
+          echo "Using infra run: $TARGET_RUN_ID"
+          gh run download "$TARGET_RUN_ID" --name infra-outputs --dir infra-output >/dev/null
+          OUTPUT_FILE=$(find infra-output -name '*.json' | head -n1)
+          if [ -z "$OUTPUT_FILE" ]; then
+            echo "infra-outputs アーティファクトに JSON が含まれていません" >&2
+            exit 1
+          fi
+          MYSQL_IP=$(jq -r '.mysqlPrivateIp.value' "$OUTPUT_FILE")
+          if [ -z "$MYSQL_IP" ] || [ "$MYSQL_IP" = "null" ]; then
+            echo "infra 出力に mysqlPrivateIp が存在しません" >&2
+            exit 1
+          fi
+          echo "DB_ENDPOINT_RESOLVED=${MYSQL_IP}:3306" >> "$GITHUB_ENV"
+          echo "Resolved MySQL endpoint: ${MYSQL_IP}:3306"
 
       - name: Container Apps Environment 名を動的解決
         run: |
@@ -156,15 +188,6 @@ jobs:
           ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
           echo "ACR_USERNAME=$ACR_USERNAME" >> "$GITHUB_ENV"
           echo "ACR_PASSWORD=$ACR_PASSWORD" >> "$GITHUB_ENV"
-
-      - name: MySQL VM の IP アドレスを取得
-        run: |
-          VM_IP=$(az vm list-ip-addresses \
-            --resource-group "$RESOURCE_GROUP_NAME" \
-            --name "${{ vars.VM_NAME }}" \
-            --query "[0].virtualMachine.network.privateIpAddresses[0]" -o tsv)
-          echo "DB_ENDPOINT_RESOLVED=${VM_IP}:3306" >> "$GITHUB_ENV"
-          echo "MySQL VM IP: $VM_IP"
 
       - name: Container Apps へデプロイ
         run: |
@@ -334,7 +357,7 @@ jobs:
 
           echo "### ⚙️ 環境変数" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **DB_ENDPOINT**: \`$DB_ENDPOINT\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **DB_ENDPOINT**: \`$DB_ENDPOINT_RESOLVED\`" >> $GITHUB_STEP_SUMMARY
           echo "- **BACKUP_CONTAINER**: \`$BACKUP_CONTAINER\`" >> $GITHUB_STEP_SUMMARY
           echo "- **ADMIN_USERNAME**: secretref" >> $GITHUB_STEP_SUMMARY
           echo "- **ADMIN_PASSWORD**: secretref" >> $GITHUB_STEP_SUMMARY

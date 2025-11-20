@@ -828,7 +828,7 @@ kubectl apply -f app/board-app/k8s/ingress.yaml
 
 ### ✅ 解決策
 
-`app-deploy-board.yml` に DB Secret 作成ステップを追加し、GitHub Actions Variables（`DB_ENDPOINT` / `DB_APP_USERNAME` / `DB_APP_PASSWORD`）から毎回再生成するようにした：
+`app-deploy-board.yml` に DB Secret 作成ステップを追加し、Bicep 出力アーティファクト由来の `DB_ENDPOINT` と GitHub Actions Variables（`DB_APP_USERNAME` / `DB_APP_PASSWORD`）から毎回再生成するようにした：
 
 ```yaml
 - name: DB 接続 Secret(board-db-conn) を作成/更新

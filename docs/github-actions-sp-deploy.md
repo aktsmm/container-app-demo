@@ -37,7 +37,6 @@
 | `AKS_CLUSTER_NAME`         | 掲示板アプリを載せる AKS クラスタ名。                                            |
 | `ACA_ENVIRONMENT_NAME`     | 管理アプリ用 Container Apps Environment 名。                                     |
 | `ADMIN_CONTAINER_APP_NAME` | ACA のコンテナアプリ名。                                                         |
-| `DB_ENDPOINT`              | 管理アプリへ注入する MySQL エンドポイント表示用文字列。                          |
 | `BACKUP_CONTAINER_NAME`    | Storage Account 側で MySQL バックアップを保管するコンテナ名。                    |
 
 > Note: パスワード系を Variables に置く理由は「Secrets は購読 ID のみ」というルールを守りつつ再現性を確保するためであり、必要に応じて Environment ごとに overrides 可。
