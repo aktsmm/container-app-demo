@@ -748,6 +748,7 @@ nginx
 ```
 
 **原因**:
+
 - Ingress が Host ベースルーティング (`host: board.localdemo.internal`) のみを使用
 - IP 直アクセス時は Host ヘッダーが一致しないため、NGINX がデフォルトバックエンドを返す
 - Pod 自体は正常稼働 (ヘルスチェック成功)
@@ -783,22 +784,26 @@ spec:
 ```
 
 **修正箇所**:
+
 - ファイル: `app/board-app/k8s/ingress.yaml`
 - 変更内容: `spec.rules` 配列に Host なしルールを先頭追加
 - コミット: `fix(k8s): Ingress に IP 直アクセス用ルールを追加` (14a8b17)
 
 **適用コマンド**:
+
 ```bash
 kubectl apply -f app/board-app/k8s/ingress.yaml
 ```
 
 **検証結果**:
+
 - ✅ Ingress ルール更新成功
 - ✅ `http://20.18.238.223` でアプリ表示確認
 - ✅ `http://20.18.238.223/dummy-secret.txt` アクセス可能
 - ✅ Pod ログに外部アクセス記録
 
 **教訓**:
+
 - Ingress の Host 指定はデモ環境では IP アクセスを阻害する
 - Host なしルールを先頭に配置することで、IP・DNS 両対応可能
 - 本番環境では DNS + TLS が推奨だが、デモでは柔軟性を優先
@@ -808,14 +813,16 @@ kubectl apply -f app/board-app/k8s/ingress.yaml
 ## 🌐 最終アクセス情報
 
 ### 掲示板アプリ (AKS)
+
 - **Load Balancer IP**: `20.18.238.223`
-- **アプリURL**: `http://20.18.238.223`
+- **アプリ URL**: `http://20.18.238.223`
 - **ダミーシークレット**: `http://20.18.238.223/dummy-secret.txt`
 - **認証**: なし (Public アクセス)
 
 ### 管理アプリ (Container Apps)
+
 - **FQDN**: `admin-app.mangorock-67a791ba.japaneast.azurecontainerapps.io`
-- **アクセスURL**: `https://admin-app.mangorock-67a791ba.japaneast.azurecontainerapps.io`
+- **アクセス URL**: `https://admin-app.mangorock-67a791ba.japaneast.azurecontainerapps.io`
 - **認証**: Basic 認証 (ID/Password 必要)
 - **プロトコル**: HTTPS (Container Apps 標準)
 

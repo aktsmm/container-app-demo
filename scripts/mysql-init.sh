@@ -44,8 +44,32 @@ APP_PASS_ESC="$(escape_sql "$APP_PASSWORD")"
 log "Updating apt cache"
 # cnf-update-db のエラーを回避: APT::Update::Post-Invoke-Success を一時的に無効化
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -y -o APT::Update::Post-Invoke-Success::=
-log "Installing mysql-server"
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server
+
+# MySQL パッケージが配布されていないイメージ向けに段階的なフォールバックを実装
+install_mysql_server() {
+    log "Installing mysql-server (with automatic fallback)"
+    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server; then
+        return 0
+    fi
+
+    log "mysql-server パッケージが標準リポジトリに無いため Universe を再有効化して再試行"
+    sudo apt-get install -y software-properties-common >/dev/null 2>&1 || true
+    sudo add-apt-repository -y universe >/dev/null 2>&1 || true
+    sudo DEBIAN_FRONTEND=noninteractive apt-get update -y -o APT::Update::Post-Invoke-Success::=
+    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server; then
+        return 0
+    fi
+
+    log "mysql-server メタパッケージが取得できないため mysql-server-8.0 で再試行"
+    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server-8.0 mysql-client-8.0; then
+        return 0
+    fi
+
+    log "MySQL パッケージのインストールに失敗しました"
+    return 1
+}
+
+install_mysql_server
 
 log "Enabling MySQL service"
 sudo systemctl enable --now mysql

@@ -51,13 +51,19 @@ export default function useBoardStore() {
       }
     }
     fetchPosts();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // 新規投稿: API 経由。失敗時はローカル生成で一時保持 (ユーザー通知可)
   const addPost = async (post) => {
     const tempId = crypto.randomUUID();
-    const optimistic = { id: tempId, ...post, createdAt: new Date().toISOString() };
+    const optimistic = {
+      id: tempId,
+      ...post,
+      createdAt: new Date().toISOString(),
+    };
     setPosts((prev) => [optimistic, ...prev]); // 楽観的更新
     try {
       const res = await fetch("/api/posts", {
@@ -68,7 +74,7 @@ export default function useBoardStore() {
       if (!res.ok) throw new Error(`投稿失敗: ${res.status}`);
       const created = await res.json();
       // ID/createdAt を確定レスポンスで置換
-      setPosts((prev) => prev.map(p => p.id === tempId ? created : p));
+      setPosts((prev) => prev.map((p) => (p.id === tempId ? created : p)));
       saveCache(posts);
     } catch (e) {
       console.error("API 投稿失敗。ローカルのみ保持", e);
@@ -80,7 +86,7 @@ export default function useBoardStore() {
 
   const deletePost = (id) => {
     // 現段階では削除 API 未実装: UI 上のみ除去
-    setPosts((prev) => prev.filter(p => p.id !== id));
+    setPosts((prev) => prev.filter((p) => p.id !== id));
     saveCache(posts);
   };
 

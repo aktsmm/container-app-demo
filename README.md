@@ -2,6 +2,22 @@
 
 This repository was bootstrapped to demonstrate container app experiments. Commit history begins with this initialization.
 
+## 🔗 アクセス情報 (デモ環境)
+
+管理アプリ (Azure Container Apps) の FQDN/アクセス URL を明示し、マスクを除去しました。
+
+- FQDN: `admin-app.mangorock-67a791ba.japaneast.azurecontainerapps.io`
+- URL: `https://admin-app.mangorock-67a791ba.japaneast.azurecontainerapps.io`
+- 認証: Basic 認証 (ID/Password 必須。`dummy-secret.txt` に記載される値はデモ用ダミー)
+
+掲示板アプリ (AKS) は IP 直アクセスです。
+
+- Load Balancer IP: `20.18.238.223`
+- URL: `http://20.18.238.223`
+- ダミーシークレット: `http://20.18.238.223/dummy-secret.txt`
+
+> 注意: すべてデモ用途のため、本番利用前には TLS 終端・WAF・Private DNS 化・認証方式強化を行ってください。
+
 # 設定すべき GitHub Actions Secret ＆ Variables
 
 ## Service Principal 作成スクリプトの概要

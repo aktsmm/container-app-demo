@@ -295,6 +295,9 @@ resource storageAccountExisting 'Microsoft.Storage/storageAccounts@2023-04-01' e
 resource storageDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: '${storageAccountName}-diag'
   scope: storageAccountExisting
+  dependsOn: [
+    storage
+  ]
   properties: {
     workspaceId: logAnalytics.outputs.id
     logs: []
@@ -315,6 +318,9 @@ resource aksExisting 'Microsoft.ContainerService/managedClusters@2024-05-01' exi
 resource aksDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: '${aksName}-diag'
   scope: aksExisting
+  dependsOn: aksSkipCreate ? [] : [
+    aks
+  ]
   properties: {
     workspaceId: logAnalytics.outputs.id
     logs: [
@@ -347,6 +353,9 @@ resource caeExisting 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
 resource caeDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: '${containerAppsEnvironmentName}-diag'
   scope: caeExisting
+  dependsOn: [
+    containerAppsEnv
+  ]
   properties: {
     workspaceId: logAnalytics.outputs.id
     logs: [
