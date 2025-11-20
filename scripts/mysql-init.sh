@@ -42,7 +42,16 @@ APP_USER_ESC="$(escape_sql "$APP_USER")"
 APP_PASS_ESC="$(escape_sql "$APP_PASSWORD")"
 
 log "Updating apt cache"
-# cnf-update-db のエラーを回避: APT::Update::Post-Invoke-Success を一時的に無効化
+# command-not-found が cnf-update-db を実行すると欠落ファイルで失敗するため、一時的に無効化
+disable_command_not_found_update() {
+    local cnf_conf="/etc/apt/apt.conf.d/50command-not-found"
+    if [ -f "$cnf_conf" ]; then
+        log "Disabling command-not-found apt hook"
+        sudo mv "$cnf_conf" "${cnf_conf}.disabled" || sudo truncate -s 0 "$cnf_conf"
+    fi
+}
+
+disable_command_not_found_update
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -y -o APT::Update::Post-Invoke-Success::=
 
 # MySQL パッケージが配布されていないイメージ向けに段階的なフォールバックを実装
