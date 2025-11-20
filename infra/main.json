@@ -1,11 +1,12 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
   "contentVersion": "1.0.0.0",
   "metadata": {
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "16669840170398771814"
+      "templateHash": "17973512593507693052"
     }
   },
   "parameters": {
@@ -26,6 +27,13 @@
       "defaultValue": {},
       "metadata": {
         "description": "共通タグ"
+      }
+    },
+    "deploymentTimestamp": {
+      "type": "string",
+      "defaultValue": "[utcNow('yyyyMMddHHmmss')]",
+      "metadata": {
+        "description": "デプロイメント名を一意にするためのタイムスタンプ（既定: 現在時刻）"
       }
     },
     "vnetName": {
@@ -195,6 +203,13 @@
         "description": "AKS ノード用 SSH 公開鍵"
       }
     },
+    "aksSkipCreate": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "既存 AKS がある場合は true にして再作成をスキップ (SSH 公開鍵変更禁止エラーを回避)"
+      }
+    },
     "aksServiceCidr": {
       "type": "string",
       "defaultValue": "10.10.0.0/24",
@@ -321,65 +336,48 @@
           "privateLinkServiceNetworkPolicies": "Enabled"
         }
       }
-    ],
-    "logAnalyticsWorkspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName'))]"
+    ]
   },
-  "resources": [
-    {
+  "resources": {
+    "storageAccountExisting": {
+      "existing": true,
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-04-01",
+      "name": "[parameters('storageAccountName')]"
+    },
+    "storageDiagnostics": {
       "type": "Microsoft.Insights/diagnosticSettings",
       "apiVersion": "2021-05-01-preview",
       "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('storageAccountName'))]",
       "name": "[format('{0}-diag', parameters('storageAccountName'))]",
       "properties": {
-        "workspaceId": "[reference(resourceId('Microsoft.Resources/deployments', 'logAnalytics'), '2025-04-01').outputs.id.value]",
-        "logs": [
-          {
-            "category": "StorageRead",
-            "enabled": true,
-            "retentionPolicy": {
-              "enabled": false,
-              "days": 0
-            }
-          },
-          {
-            "category": "StorageWrite",
-            "enabled": true,
-            "retentionPolicy": {
-              "enabled": false,
-              "days": 0
-            }
-          },
-          {
-            "category": "StorageDelete",
-            "enabled": true,
-            "retentionPolicy": {
-              "enabled": false,
-              "days": 0
-            }
-          }
-        ],
+        "workspaceId": "[reference('logAnalytics').outputs.id.value]",
+        "logs": [],
         "metrics": [
           {
             "category": "Transaction",
-            "enabled": true,
-            "retentionPolicy": {
-              "enabled": false,
-              "days": 0
-            }
+            "enabled": true
           }
         ]
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'logAnalytics')]"
+        "logAnalytics",
+        "storage"
       ]
     },
-    {
+    "aksExisting": {
+      "existing": true,
+      "type": "Microsoft.ContainerService/managedClusters",
+      "apiVersion": "2024-05-01",
+      "name": "[parameters('aksName')]"
+    },
+    "aksDiagnostics": {
       "type": "Microsoft.Insights/diagnosticSettings",
       "apiVersion": "2021-05-01-preview",
       "scope": "[format('Microsoft.ContainerService/managedClusters/{0}', parameters('aksName'))]",
       "name": "[format('{0}-diag', parameters('aksName'))]",
       "properties": {
-        "workspaceId": "[reference(resourceId('Microsoft.Resources/deployments', 'logAnalytics'), '2025-04-01').outputs.id.value]",
+        "workspaceId": "[reference('logAnalytics').outputs.id.value]",
         "logs": [
           {
             "category": "kube-apiserver",
@@ -401,40 +399,44 @@
         "metrics": []
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'logAnalytics')]"
+        "aks",
+        "logAnalytics"
       ]
     },
-    {
+    "caeExisting": {
+      "existing": true,
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2024-03-01",
+      "name": "[parameters('containerAppsEnvironmentName')]"
+    },
+    "caeDiagnostics": {
       "type": "Microsoft.Insights/diagnosticSettings",
       "apiVersion": "2021-05-01-preview",
       "scope": "[format('Microsoft.App/managedEnvironments/{0}', parameters('containerAppsEnvironmentName'))]",
       "name": "[format('{0}-diag', parameters('containerAppsEnvironmentName'))]",
       "properties": {
-        "workspaceId": "[reference(resourceId('Microsoft.Resources/deployments', 'logAnalytics'), '2025-04-01').outputs.id.value]",
+        "workspaceId": "[reference('logAnalytics').outputs.id.value]",
         "logs": [
           {
-            "category": "SystemLogs",
+            "category": "ContainerAppConsoleLogs",
             "enabled": true
           },
           {
-            "category": "IngressLogs",
-            "enabled": true
-          },
-          {
-            "category": "ConsoleLogs",
+            "category": "ContainerAppSystemLogs",
             "enabled": true
           }
         ],
         "metrics": []
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'logAnalytics')]"
+        "containerAppsEnv",
+        "logAnalytics"
       ]
     },
-    {
+    "logAnalytics": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "logAnalytics",
+      "name": "[format('logAnalytics-{0}', parameters('deploymentTimestamp'))]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -459,12 +461,13 @@
         },
         "template": {
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
           "contentVersion": "1.0.0.0",
           "metadata": {
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "6448586870407984063"
+              "templateHash": "14546524812688591924"
             }
           },
           "parameters": {
@@ -502,8 +505,8 @@
               }
             }
           },
-          "resources": [
-            {
+          "resources": {
+            "workspace": {
               "type": "Microsoft.OperationalInsights/workspaces",
               "apiVersion": "2022-10-01",
               "name": "[parameters('name')]",
@@ -519,7 +522,7 @@
                 }
               }
             }
-          ],
+          },
           "outputs": {
             "id": {
               "type": "string",
@@ -527,20 +530,24 @@
             },
             "customerId": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', parameters('name')), '2022-10-01').customerId]"
+              "value": "[reference('workspace').customerId]"
             },
             "location": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', parameters('name')), '2022-10-01', 'full').location]"
+              "value": "[reference('workspace', '2022-10-01', 'full').location]"
+            },
+            "sharedKey": {
+              "type": "securestring",
+              "value": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', parameters('name')), '2020-08-01').primarySharedKey]"
             }
           }
         }
       }
     },
-    {
+    "vnet": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "network",
+      "name": "[format('network-{0}', parameters('deploymentTimestamp'))]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -651,10 +658,10 @@
         }
       }
     },
-    {
+    "acr": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "acr",
+      "name": "[format('acr-{0}', parameters('deploymentTimestamp'))]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -678,7 +685,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "12562615808289668123"
+              "templateHash": "17289165102341846030"
             }
           },
           "parameters": {
@@ -736,9 +743,6 @@
                   }
                 },
                 "anonymousPullEnabled": false,
-                "encryption": {
-                  "status": "enabled"
-                },
                 "publicNetworkAccess": "Enabled"
               }
             }
@@ -752,10 +756,10 @@
         }
       }
     },
-    {
+    "storage": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "storage",
+      "name": "[format('storage-{0}', parameters('deploymentTimestamp'))]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -872,10 +876,10 @@
         }
       }
     },
-    {
+    "containerAppsEnv": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "containerAppEnv",
+      "name": "[format('containerAppsEnv-{0}', parameters('deploymentTimestamp'))]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -889,10 +893,10 @@
             "value": "[parameters('location')]"
           },
           "logAnalyticsCustomerId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logAnalytics'), '2025-04-01').outputs.customerId.value]"
+            "value": "[reference('logAnalytics').outputs.customerId.value]"
           },
           "logAnalyticsSharedKey": {
-            "value": "[listKeys(variables('logAnalyticsWorkspaceId'), '2020-08-01').primarySharedKey]"
+            "value": "[listOutputsWithSecureValues('logAnalytics', '2025-04-01').sharedKey]"
           },
           "subnetResourceId": {
             "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('containerAppSubnetName'))]"
@@ -986,13 +990,15 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'logAnalytics')]"
+        "logAnalytics",
+        "vnet"
       ]
     },
-    {
+    "aks": {
+      "condition": "[not(parameters('aksSkipCreate'))]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "aks",
+      "name": "[format('aks-{0}', parameters('deploymentTimestamp'))]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -1031,7 +1037,7 @@
             "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('aksSubnetName'))]"
           },
           "logAnalyticsWorkspaceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logAnalytics'), '2025-04-01').outputs.id.value]"
+            "value": "[reference('logAnalytics').outputs.id.value]"
           },
           "tags": {
             "value": "[variables('defaultTags')]"
@@ -1189,13 +1195,13 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'logAnalytics')]"
+        "logAnalytics"
       ]
     },
-    {
+    "vm": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
-      "name": "vm",
+      "name": "[format('vm-{0}', parameters('deploymentTimestamp'))]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -1235,12 +1241,6 @@
           "mysqlAppPassword": {
             "value": "[parameters('mysqlAppPassword')]"
           },
-          "logAnalyticsCustomerId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logAnalytics'), '2025-04-01').outputs.customerId.value]"
-          },
-          "logAnalyticsSharedKey": {
-            "value": "[listKeys(variables('logAnalyticsWorkspaceId'), '2020-08-01').primarySharedKey]"
-          },
           "tags": {
             "value": "[variables('defaultTags')]"
           }
@@ -1252,7 +1252,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "444857768296008196"
+              "templateHash": "9615721353764157521"
             }
           },
           "parameters": {
@@ -1325,18 +1325,6 @@
                 "description": "アプリケーション用 MySQL パスワード (セキュア)"
               }
             },
-            "logAnalyticsCustomerId": {
-              "type": "string",
-              "metadata": {
-                "description": "Log Analytics Workspace Customer ID"
-              }
-            },
-            "logAnalyticsSharedKey": {
-              "type": "securestring",
-              "metadata": {
-                "description": "Log Analytics Workspace Shared Key"
-              }
-            },
             "tags": {
               "type": "object",
               "defaultValue": {},
@@ -1346,8 +1334,8 @@
             }
           },
           "variables": {
-            "mysqlInitScript": "#!/usr/bin/env bash\nset -euo pipefail\n\nROOT_PASSWORD=\"${1:-}\"\nAPP_USER=\"${2:-}\"\nAPP_PASSWORD=\"${3:-}\"\n\nif [[ -z \"$ROOT_PASSWORD\" || -z \"$APP_USER\" || -z \"$APP_PASSWORD\" ]]; then\n    echo \"[mysql-init] Required arguments are missing\" >&2\n    exit 1\nfi\n\nlog() {\n    echo \"[mysql-init] $1\"\n}\n\nescape_sql() {\n    # Escapes single quotes for SQL statements\n    printf \"%s\" \"$1\" | sed \"s/'/''/g\"\n}\n\nROOT_ESC=\"$(escape_sql \"$ROOT_PASSWORD\")\"\nAPP_USER_ESC=\"$(escape_sql \"$APP_USER\")\"\nAPP_PASS_ESC=\"$(escape_sql \"$APP_PASSWORD\")\"\n\nlog \"Updating apt cache\"\nsudo DEBIAN_FRONTEND=noninteractive apt-get update -y\nlog \"Installing mysql-server\"\nsudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server\n\nlog \"Enabling MySQL service\"\nsudo systemctl enable --now mysql\n\nlog \"Applying user configuration\"\ncat <<SQL | sudo mysql\nALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${ROOT_ESC}';\nCREATE USER IF NOT EXISTS '${APP_USER_ESC}'@'%' IDENTIFIED WITH mysql_native_password BY '${APP_PASS_ESC}';\nGRANT ALL PRIVILEGES ON *.* TO '${APP_USER_ESC}'@'%' WITH GRANT OPTION;\nFLUSH PRIVILEGES;\nSQL\n\nlog \"MySQL initialization complete\"\n",
-            "mysqlInitCommand": "[format('bash -c \"cat <<''EOF'' >/tmp/mysql-init.sh\r\n{0}\r\nEOF\r\nsudo chmod +x /tmp/mysql-init.sh\r\nsudo /tmp/mysql-init.sh $(echo ''{1}'' | base64 -d) $(echo ''{2}'' | base64 -d) $(echo ''{3}'' | base64 -d)\"\r\n', variables('mysqlInitScript'), base64(parameters('mysqlRootPassword')), base64(parameters('mysqlAppUsername')), base64(parameters('mysqlAppPassword')))]"
+            "mysqlInitScript": "#!/usr/bin/env bash\nset -euo pipefail\n\n# 引数が base64 エンコードされている場合はデコード\nif [[ \"${1:-}\" =~ ^[A-Za-z0-9+/=]+$ ]]; then\n    ROOT_PASSWORD=$(echo \"$1\" | base64 -d)\n    APP_USER=$(echo \"$2\" | base64 -d)\n    APP_PASSWORD=$(echo \"$3\" | base64 -d)\nelse\n    ROOT_PASSWORD=\"${1:-}\"\n    APP_USER=\"${2:-}\"\n    APP_PASSWORD=\"${3:-}\"\nfi\n\nif [[ -z \"$ROOT_PASSWORD\" || -z \"$APP_USER\" || -z \"$APP_PASSWORD\" ]]; then\n    echo \"[mysql-init] Required arguments are missing\" >&2\n    exit 1\nfi\n\nlog() {\n    echo \"[mysql-init] $1\"\n}\n\nescape_sql() {\n    # Escapes single quotes for SQL statements\n    printf \"%s\" \"$1\" | sed \"s/'/''/g\"\n}\n\nCONFIG_FILE='/etc/mysql/mysql.conf.d/mysqld.cnf'\n\nensure_bind_address() {\n    local key=\"$1\"\n    if sudo grep -q \"^[[:space:]]*${key}[[:space:]]*=\" \"$CONFIG_FILE\"; then\n        sudo sed -i \"s/^[[:space:]]*${key}[[:space:]]*=.*/${key} = 0.0.0.0/\" \"$CONFIG_FILE\"\n    else\n        echo \"${key} = 0.0.0.0\" | sudo tee -a \"$CONFIG_FILE\" >/dev/null\n    fi\n}\n\nROOT_ESC=\"$(escape_sql \"$ROOT_PASSWORD\")\"\nAPP_USER_ESC=\"$(escape_sql \"$APP_USER\")\"\nAPP_PASS_ESC=\"$(escape_sql \"$APP_PASSWORD\")\"\n\nlog \"Updating apt cache\"\n# cnf-update-db のエラーを回避: APT::Update::Post-Invoke-Success を一時的に無効化\nsudo DEBIAN_FRONTEND=noninteractive apt-get update -y -o APT::Update::Post-Invoke-Success::=\n\n# MySQL パッケージが配布されていないイメージ向けに段階的なフォールバックを実装\ninstall_mysql_server() {\n    log \"Installing mysql-server (with automatic fallback)\"\n    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server; then\n        return 0\n    fi\n\n    log \"mysql-server パッケージが標準リポジトリに無いため Universe を再有効化して再試行\"\n    sudo apt-get install -y software-properties-common >/dev/null 2>&1 || true\n    sudo add-apt-repository -y universe >/dev/null 2>&1 || true\n    sudo DEBIAN_FRONTEND=noninteractive apt-get update -y -o APT::Update::Post-Invoke-Success::=\n    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server; then\n        return 0\n    fi\n\n    log \"mysql-server メタパッケージが取得できないため mysql-server-8.0 で再試行\"\n    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server-8.0 mysql-client-8.0; then\n        return 0\n    fi\n\n    log \"MySQL パッケージのインストールに失敗しました\"\n    return 1\n}\n\ninstall_mysql_server\n\nlog \"Enabling MySQL service\"\nsudo systemctl enable --now mysql\n\nlog \"Applying user configuration\"\ncat <<SQL | sudo mysql\nALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${ROOT_ESC}';\nCREATE USER IF NOT EXISTS '${APP_USER_ESC}'@'%' IDENTIFIED WITH mysql_native_password BY '${APP_PASS_ESC}';\nGRANT ALL PRIVILEGES ON *.* TO '${APP_USER_ESC}'@'%' WITH GRANT OPTION;\nFLUSH PRIVILEGES;\nSQL\n\nlog \"Enabling remote MySQL connections\"\nensure_bind_address 'bind-address'\nensure_bind_address 'mysqlx-bind-address'\n\nlog \"Restarting MySQL to apply configuration\"\nsudo systemctl restart mysql\n\nlog \"MySQL initialization complete\"\n",
+            "mysqlInitCommand": "[format('bash -c \"echo {0} | base64 -d > /tmp/mysql-init.sh && chmod +x /tmp/mysql-init.sh && /tmp/mysql-init.sh {1} {2} {3}\"', base64(variables('mysqlInitScript')), base64(parameters('mysqlRootPassword')), base64(parameters('mysqlAppUsername')), base64(parameters('mysqlAppPassword')))]"
           },
           "resources": [
             {
@@ -1479,27 +1467,8 @@
             {
               "type": "Microsoft.Compute/virtualMachines/extensions",
               "apiVersion": "2022-11-01",
-              "name": "[format('{0}/{1}', parameters('name'), 'AzureMonitorLinuxAgent')]",
-              "properties": {
-                "publisher": "Microsoft.Azure.Monitor",
-                "type": "AzureMonitorLinuxAgent",
-                "typeHandlerVersion": "1.0",
-                "autoUpgradeMinorVersion": true,
-                "settings": {
-                  "workspaceId": "[parameters('logAnalyticsCustomerId')]"
-                },
-                "protectedSettings": {
-                  "workspaceKey": "[parameters('logAnalyticsSharedKey')]"
-                }
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Compute/virtualMachines', parameters('name'))]"
-              ]
-            },
-            {
-              "type": "Microsoft.Compute/virtualMachines/extensions",
-              "apiVersion": "2022-11-01",
               "name": "[format('{0}/{1}', parameters('name'), 'MysqlInit')]",
+              "location": "[parameters('location')]",
               "properties": {
                 "publisher": "Microsoft.Azure.Extensions",
                 "type": "CustomScript",
@@ -1521,43 +1490,39 @@
             "id": {
               "type": "string",
               "value": "[resourceId('Microsoft.Compute/virtualMachines', parameters('name'))]"
-            },
-            "publicIpAddress": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('{0}-pip', parameters('name'))), '2023-09-01').ipAddress]"
             }
           }
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'logAnalytics')]"
+        "logAnalytics"
       ]
     }
-  ],
+  },
   "outputs": {
     "azureContainerRegistryId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.id.value]"
+      "value": "[reference('acr').outputs.id.value]"
     },
     "aksClusterId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'aks'), '2025-04-01').outputs.id.value]"
+      "value": "[resourceId('Microsoft.ContainerService/managedClusters', parameters('aksName'))]"
     },
     "containerAppsEnvironmentId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'containerAppEnv'), '2025-04-01').outputs.id.value]"
+      "value": "[reference('containerAppsEnv').outputs.id.value]"
     },
     "logAnalyticsId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'logAnalytics'), '2025-04-01').outputs.id.value]"
+      "value": "[reference('logAnalytics').outputs.id.value]"
     },
     "virtualNetworkId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2025-04-01').outputs.id.value]"
+      "value": "[reference('vnet').outputs.id.value]"
     },
     "storageAccountId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage'), '2025-04-01').outputs.id.value]"
+      "value": "[reference('storage').outputs.id.value]"
     }
   }
 }

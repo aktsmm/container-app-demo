@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function PostForm({ onSubmit }) {
+export default function PostForm({ onSubmit, disabled = false }) {
   const [author, setAuthor] = useState("");
   const [message, setMessage] = useState("");
 
@@ -21,6 +21,7 @@ export default function PostForm({ onSubmit }) {
           value={author}
           onChange={(e) => setAuthor(e.target.value)}
           placeholder="例: demo-user"
+          disabled={disabled}
         />
       </label>
       <label>
@@ -29,9 +30,12 @@ export default function PostForm({ onSubmit }) {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder="進捗や障害メモをここに書きます"
+          disabled={disabled}
         />
       </label>
-      <button type="submit">投稿する</button>
+      <button type="submit" disabled={disabled}>
+        {disabled ? "同期待ち" : "投稿する"}
+      </button>
     </form>
   );
 }

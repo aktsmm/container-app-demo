@@ -191,9 +191,6 @@ module logAnalytics './modules/logAnalytics.bicep' = {
   }
 }
 
-var logAnalyticsWorkspaceId = resourceId('Microsoft.OperationalInsights/workspaces', logAnalyticsName)
-var logAnalyticsSharedKey = listKeys(logAnalyticsWorkspaceId, '2020-08-01').primarySharedKey
-
 module vnet './modules/vnet.bicep' = {
   name: 'network-${deploymentTimestamp}'
   params: {
@@ -228,14 +225,13 @@ module storage './modules/storageAccount.bicep' = {
 module containerAppsEnv './modules/containerAppEnv.bicep' = {
   name: 'containerAppsEnv-${deploymentTimestamp}'
   dependsOn: [
-    logAnalytics
     vnet
   ]
   params: {
     name: containerAppsEnvironmentName
     location: location
     logAnalyticsCustomerId: logAnalytics.outputs.customerId
-    logAnalyticsSharedKey: logAnalyticsSharedKey
+    logAnalyticsSharedKey: logAnalytics.outputs.sharedKey
     subnetResourceId: resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, containerAppSubnetName)
     tags: defaultTags
   }

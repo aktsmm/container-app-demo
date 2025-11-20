@@ -34,6 +34,38 @@ header {
   margin-right: 0.5rem;
 }
 
+.status-bar {
+  min-height: 1.5rem;
+  margin-bottom: 1rem;
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.status-message {
+  background: #1e293b;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-message.error {
+  border: 1px solid #f87171;
+  color: #fecaca;
+}
+
+.status-message button {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: inherit;
+  padding: 0.1rem 0.75rem;
+  cursor: pointer;
+}
+
 .post-form {
   display: flex;
   flex-direction: column;
@@ -47,6 +79,13 @@ header {
   padding: 0.5rem;
   border-radius: 0.5rem;
   border: 1px solid #334155;
+}
+
+.post-form button[disabled],
+.post-form input[disabled],
+.post-form textarea[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .post-list {
@@ -63,9 +102,23 @@ header {
   padding: 1rem;
 }
 
+.post-list li.pending {
+  border: 1px dashed #fbbf24;
+}
+
 .post-header {
   display: flex;
   justify-content: space-between;
+}
+
+.post-badge {
+  display: inline-block;
+  background: #fbbf24;
+  color: #0f172a;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.6rem;
+  margin-bottom: 0.5rem;
 }
 
 .empty-state {

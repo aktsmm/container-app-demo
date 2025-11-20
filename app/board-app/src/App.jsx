@@ -10,7 +10,8 @@ const filters = {
 };
 
 export default function App() {
-  const { posts, addPost, deletePost } = useBoardStore();
+  const { posts, addPost, deletePost, loading, error, refresh } =
+    useBoardStore();
   const [filter, setFilter] = useState("all");
 
   const filteredPosts = useMemo(() => {
@@ -28,8 +29,9 @@ export default function App() {
       <header>
         <h1>低コスト掲示板デモ</h1>
         <p>
-          AKS 上でホストされる簡易掲示板。投稿はブラウザの LocalStorage
-          に保存されるためデータベース不要です。
+          AKS 上でホストされる簡易掲示板。投稿は Azure VM 上の MySQL
+          に永続化され、ネットワーク障害時のみブラウザの LocalStorage
+          キャッシュへフォールバックします。
         </p>
         <a
           className="secret-link"
@@ -54,15 +56,29 @@ export default function App() {
         ))}
       </section>
 
+      <section className="status-bar" aria-live="polite">
+        {loading && (
+          <span className="status-message">MySQL から投稿を同期中...</span>
+        )}
+        {error && (
+          <span className="status-message error">
+            {error}
+            <button type="button" onClick={refresh}>
+              再読み込み
+            </button>
+          </span>
+        )}
+      </section>
+
       <main>
-        <PostForm onSubmit={addPost} />
+        <PostForm onSubmit={addPost} disabled={loading} />
         <PostList posts={filteredPosts} onDelete={deletePost} />
       </main>
 
       <footer>
         <small>
-          ログは Log Analytics
-          に転送されます。ブラウザを閉じると投稿は残りますが、別の端末とは共有されません。
+          ログは Log Analytics に転送されます。ブラウザを閉じても MySQL
+          へ保存された投稿は残りますが、API 障害中に追加した投稿は端末内キャッシュのみです。
         </small>
       </footer>
     </div>

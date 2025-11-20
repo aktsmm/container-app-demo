@@ -33,3 +33,6 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
 output id string = workspace.id
 output customerId string = workspace.properties.customerId
 output location string = workspace.location
+// Bicep の親モジュールから listKeys を呼ぶと作成前参照になるため、ここで共有キーを返す
+@secure()
+output sharedKey string = listKeys(workspace.id, '2020-08-01').primarySharedKey

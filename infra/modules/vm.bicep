@@ -200,4 +200,3 @@ resource mysqlInit 'Microsoft.Compute/virtualMachines/extensions@2022-11-01' = {
 }
 
 output id string = vm.id
-output publicIpAddress string = publicIp.properties.ipAddress
