@@ -17,6 +17,7 @@ env:
   POLICY_PARAM_FILE: infra/parameters/policy-dev.parameters.json
   ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
   STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
+  BACKUP_CONTAINER_NAME: ${{ vars.BACKUP_CONTAINER_NAME }}
   VM_ADMIN_USERNAME: ${{ vars.VM_ADMIN_USERNAME }}
   VM_ADMIN_PASSWORD: ${{ vars.VM_ADMIN_PASSWORD }}
   MYSQL_ROOT_PASSWORD: ${{ vars.MYSQL_ROOT_PASSWORD }}
@@ -235,6 +236,7 @@ jobs:
             --template-file infra/main.bicep \
             --parameters "@${{ env.PARAM_FILE }}" \
             --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
+            --parameters backupContainerName="${BACKUP_CONTAINER_NAME:-mysql-backups}" \
             --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
             --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
             --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE" aksNodeResourceGroup="$AKS_NODE_RESOURCE_GROUP" \
