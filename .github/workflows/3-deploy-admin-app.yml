@@ -143,6 +143,15 @@ jobs:
           echo "ACR_USERNAME=$ACR_USERNAME" >> "$GITHUB_ENV"
           echo "ACR_PASSWORD=$ACR_PASSWORD" >> "$GITHUB_ENV"
 
+      - name: MySQL VM の IP アドレスを取得
+        run: |
+          VM_IP=$(az vm list-ip-addresses \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --name "${{ vars.VM_NAME }}" \
+            --query "[0].virtualMachine.network.privateIpAddresses[0]" -o tsv)
+          echo "DB_ENDPOINT_RESOLVED=${VM_IP}:3306" >> "$GITHUB_ENV"
+          echo "MySQL VM IP: $VM_IP"
+
       - name: Container Apps へデプロイ
         run: |
           # Container App が存在するか確認
@@ -172,10 +181,10 @@ jobs:
               --set-env-vars \
                 ADMIN_USERNAME=secretref:admin-username \
                 ADMIN_PASSWORD=secretref:admin-password \
-                DB_ENDPOINT="$DB_ENDPOINT" \
+                DB_ENDPOINT="$DB_ENDPOINT_RESOLVED" \
                 DB_APP_USERNAME="$DB_APP_USERNAME" \
                 DB_APP_PASSWORD="$DB_APP_PASSWORD" \
-                DB_NAME="boarddb" \
+                DB_NAME="boardapp" \
                 BACKUP_CONTAINER="$BACKUP_CONTAINER" \
                 STORAGE_ACCOUNT_NAME="$STORAGE_ACCOUNT_NAME"
           else
@@ -209,10 +218,10 @@ jobs:
               --set-env-vars \
                 ADMIN_USERNAME=secretref:admin-username \
                 ADMIN_PASSWORD=secretref:admin-password \
-                DB_ENDPOINT="$DB_ENDPOINT" \
+                DB_ENDPOINT="$DB_ENDPOINT_RESOLVED" \
                 DB_APP_USERNAME="$DB_APP_USERNAME" \
                 DB_APP_PASSWORD="$DB_APP_PASSWORD" \
-                DB_NAME="boarddb" \
+                DB_NAME="boardapp" \
                 BACKUP_CONTAINER="$BACKUP_CONTAINER" \
                 STORAGE_ACCOUNT_NAME="$STORAGE_ACCOUNT_NAME"
           fi
