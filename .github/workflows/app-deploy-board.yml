@@ -89,6 +89,22 @@ jobs:
                     --resource-group "$RESOURCE_GROUP_NAME" \
                     --overwrite-existing
 
+            - name: ACR 認証情報で Secret を作成
+              run: |
+                  BOARD_NS=$(grep kubernetesNamespace "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
+                  # namespace が存在しない場合は作成
+                  kubectl create namespace "$BOARD_NS" --dry-run=client -o yaml | kubectl apply -f -
+                  # ACR 認証情報を取得
+                  ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
+                  ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+                  # Secret を作成または更新
+                  kubectl create secret docker-registry acr-secret \
+                    --docker-server="$ACR_LOGIN_SERVER" \
+                    --docker-username="$ACR_USERNAME" \
+                    --docker-password="$ACR_PASSWORD" \
+                    -n "$BOARD_NS" \
+                    --dry-run=client -o yaml | kubectl apply -f -
+
             - name: デプロイに使用するイメージを決定
               id: image_meta
               run: |
