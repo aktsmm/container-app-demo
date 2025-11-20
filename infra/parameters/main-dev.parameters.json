@@ -60,7 +60,7 @@
       "value": "Cool"
     },
     "containerAppsEnvironmentName": {
-      "value": "cae-demo-dev"
+      "value": "__PIPELINE_OVERRIDDEN__"
     },
     "aksName": {
       "value": "aks-demo-dev"
