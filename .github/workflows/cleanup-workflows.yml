@@ -111,3 +111,29 @@ jobs:
           fi
 
           echo "🎉 Cleanup complete (kept current + 7 human + 3 dependabot + 1 failed runs)"
+
+      - name: クリーンアップサマリを出力
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.tok.outputs.token }}
+        run: |
+          REPO="${{ github.repository }}"
+          TOTAL_RUNS=$(gh run list --limit 100 --json databaseId | jq 'length')
+
+          echo "## 🧹 ワークフロー クリーンアップ完了" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 クリーンアップ結果" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **リポジトリ**: \`$REPO\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **現在の総ワークフロー実行数**: \`$TOTAL_RUNS\` 件" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🎯 保持ポリシー" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ 成功（Human）: 最新 **7件** 保持" >> $GITHUB_STEP_SUMMARY
+          echo "- 🤖 成功（Dependabot）: 最新 **3件** 保持" >> $GITHUB_STEP_SUMMARY
+          echo "- ⚠️ 失敗: 最新 **1件** 保持" >> $GITHUB_STEP_SUMMARY
+          echo "- 🗑️ 上記以外: **削除済み**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "✅ クリーンアップ実行日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY
+          echo "🔄 次回定期実行: 12時間ごと" >> $GITHUB_STEP_SUMMARY

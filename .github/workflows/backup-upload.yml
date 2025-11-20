@@ -88,3 +88,28 @@ jobs:
             --command-id RunShellScript \
             --scripts "$SCRIPT" \
             --parameters "$STORAGE_ACCOUNT_NAME" "$BACKUP_CONTAINER_NAME" "$SAS_TOKEN" "$MYSQL_ROOT_PASSWORD"
+
+      - name: バックアップサマリを出力
+        if: success()
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
+          BACKUP_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${BACKUP_CONTAINER_NAME}/backup-${TIMESTAMP}.sql"
+
+          echo "## 🔄 MySQL バックアップ完了" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 バックアップ情報" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **VM 名**: \`$VM_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **ストレージアカウント**: \`$STORAGE_ACCOUNT_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **コンテナ**: \`$BACKUP_CONTAINER_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **バックアップファイル**: \`backup-${TIMESTAMP}.sql\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📍 アクセス情報" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Blob URL**: \`$BACKUP_URL\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> 💡 Azure Portal の Storage Account から確認できます" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "✅ バックアップ実行日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY
+          echo "🔄 次回定期実行: 1時間ごと" >> $GITHUB_STEP_SUMMARY
