@@ -99,8 +99,48 @@ function New-ServicePrincipalWithSecret {
     }
 }
 
+function Set-RoleAssignmentIfMissing {
+    param(
+        [string]$AssigneeObjectId,
+        [string]$RoleDefinitionName,
+        [string]$Scope
+    )
+
+    $existing = az role assignment list `
+        --assignee-object-id $AssigneeObjectId `
+        --scope $Scope `
+        --role $RoleDefinitionName `
+        --only-show-errors | ConvertFrom-Json
+
+    if (-not $existing -or $existing.Count -eq 0) {
+        Write-Host "追加ロール '$RoleDefinitionName' を $Scope に割り当てます..."
+        az role assignment create `
+            --assignee-object-id $AssigneeObjectId `
+            --scope $Scope `
+            --role $RoleDefinitionName `
+            --only-show-errors | Out-Null
+    }
+    else {
+        Write-Verbose "ロール $RoleDefinitionName は既に $Scope に割り当て済みです。"
+    }
+}
+
 Test-AzCliReady
 $scopeValue = Resolve-Scope -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -Scope $Scope
+
+# ポリシー配備を CI/CD から実行できるよう Resource Policy Contributor を自動付与する
+$policyRoleDefinitionName = 'Resource Policy Contributor'
+if ($ResourceGroupName) {
+    $policyScopeValue = Resolve-Scope -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -Scope $null
+}
+elseif ($Scope -and $Scope -match '/resourceGroups/') {
+    # Scope にリソースグループが含まれる場合はそのスコープを流用
+    $policyScopeValue = $scopeValue
+}
+else {
+    # RG 情報がない場合はサブスクリプションスコープで付与しておく
+    $policyScopeValue = $scopeValue
+}
 
 if ($PSCmdlet.ShouldProcess("Service Principal $DisplayName", '作成とロール割り当て')) {
     $result = New-ServicePrincipalWithSecret `
@@ -109,6 +149,11 @@ if ($PSCmdlet.ShouldProcess("Service Principal $DisplayName", '作成とロー�
         -DisplayName $DisplayName `
         -RoleDefinitionName $RoleDefinitionName `
         -SecretDurationYears $SecretDurationYears
+
+    Set-RoleAssignmentIfMissing `
+        -AssigneeObjectId $result.ServicePrincipalId `
+        -RoleDefinitionName $policyRoleDefinitionName `
+        -Scope $policyScopeValue
 
     Write-Host '--- GitHub Actions に設定するシークレット ---'
     Write-Host "AZURE_CLIENT_ID = $($result.AzureClientId)"
