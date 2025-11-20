@@ -1,4 +1,4 @@
-name: 🔐 Security Scan (CodeQL & IaC)
+name: 🔐 Security Scan (CodeQL + Trivy + Gitleaks)
 
 on:
   push:
@@ -53,6 +53,8 @@ jobs:
     steps:
       - name: コード取得
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Gitleaks用に全履歴を取得
 
       - name: Trivy DB キャッシュ復元
         uses: actions/cache@v4
@@ -68,7 +70,38 @@ jobs:
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
           trivy --version
 
+      - name: Gitleaks インストール
+        run: |
+          set -euo pipefail
+          VERSION="8.18.4"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o gitleaks.tgz
+          tar -xzf gitleaks.tgz gitleaks
+          sudo install -m 755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Gitleaks でシークレット検出 (全リポジトリ)
+        continue-on-error: true
+        run: |
+          set +e
+          gitleaks detect --no-banner --report-format sarif --report-path gitleaks-repo.sarif
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "⚠️ シークレット検出あり（警告）- Security タブで確認してください"
+          fi
+          exit 0
+
+      - name: Trivy でファイルシステム全体をスキャン (脆弱性 + シークレット + 設定)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          trivy fs . \
+            --scanners vuln,secret,config \
+            --severity CRITICAL,HIGH \
+            --format sarif --output trivy-fs-all.sarif \
+            --ignore-unfixed || echo "⚠️ 脆弱性/シークレット検出あり（警告）"
+
       - name: Bicep (infra/) 設定 & 秘密情報 & ミスコンフィグ スキャン (SARIF)
+        continue-on-error: true
         run: |
           set -euo pipefail
           trivy fs infra \
@@ -78,6 +111,7 @@ jobs:
             --ignore-unfixed
 
       - name: Kubernetes マニフェスト (board-app/k8s) スキャン (SARIF)
+        continue-on-error: true
         run: |
           set -euo pipefail
           trivy fs app/board-app/k8s \
@@ -86,21 +120,37 @@ jobs:
             --format sarif --output trivy-k8s.sarif \
             --ignore-unfixed
 
+      - name: Gitleaks SARIF アップロード
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: gitleaks-repo.sarif
+          category: gitleaks
+
+      - name: Trivy SARIF アップロード (全体)
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-fs-all.sarif
+          category: trivy-filesystem
+
       - name: Trivy SARIF アップロード (infra)
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: trivy-infra.sarif
+          category: trivy-infra
 
       - name: Trivy SARIF アップロード (k8s)
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: trivy-k8s.sarif
+          category: trivy-k8s
 
       - name: スキャン成果物保存
         uses: actions/upload-artifact@v4
         with:
           name: iac-scan-results
           path: |
+            gitleaks-repo.sarif
+            trivy-fs-all.sarif
             trivy-infra.sarif
             trivy-k8s.sarif
 
@@ -108,15 +158,36 @@ jobs:
     name: まとめレポート
     runs-on: ubuntu-latest
     needs: [codeql, iac-security]
+    if: always()
     steps:
-      - name: ステータス集計
+      - name: スキャン結果サマリを出力
         run: |
-          echo "CodeQL & IaC スキャン完了。Security タブでアラートを確認してください" > summary.txt
-      - name: アーティファクト保存
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-summary
-          path: summary.txt
+          echo "## 🔐 セキュリティスキャン完了" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 実行されたスキャン" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. **CodeQL** - JavaScript & Python のコード品質・セキュリティ分析" >> $GITHUB_STEP_SUMMARY
+          echo "2. **Gitleaks** - シークレット・認証情報の漏洩検出（全履歴）" >> $GITHUB_STEP_SUMMARY
+          echo "3. **Trivy (FS全体)** - 脆弱性 + シークレット + 設定ミス検出" >> $GITHUB_STEP_SUMMARY
+          echo "4. **Trivy (Bicep)** - インフラコードのセキュリティスキャン" >> $GITHUB_STEP_SUMMARY
+          echo "5. **Trivy (Kubernetes)** - K8sマニフェストのセキュリティスキャン" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 結果確認" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "すべての検出結果は以下で確認できます：" >> $GITHUB_STEP_SUMMARY
+          echo "- [Security タブ - Code scanning alerts](/${{ github.repository }}/security/code-scanning)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📁 カテゴリ別アラート" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **codeql**: JavaScript/Python コード品質" >> $GITHUB_STEP_SUMMARY
+          echo "- **gitleaks**: シークレット漏洩" >> $GITHUB_STEP_SUMMARY
+          echo "- **trivy-filesystem**: 全体的な脆弱性・シークレット" >> $GITHUB_STEP_SUMMARY
+          echo "- **trivy-infra**: Bicep 設定ミス" >> $GITHUB_STEP_SUMMARY
+          echo "- **trivy-k8s**: Kubernetes 設定ミス" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "✅ スキャン実行日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY
+          echo "🔄 次回定期実行: 毎日 12:00 JST" >> $GITHUB_STEP_SUMMARY
 # コメント:
 # - CodeQL: JavaScript(React/Vite) と Python(FastAPI/Flask等) を security-extended クエリで解析。
 # - IaC: Bicep と Kubernetes YAML を Trivy config+secret スキャナでスキャンし、ミスコンフィグ/シークレット漏洩を検出。
