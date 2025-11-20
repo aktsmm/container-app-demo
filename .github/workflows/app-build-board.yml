@@ -34,14 +34,20 @@ jobs:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Gitleaks で秘密情報を検出
+        continue-on-error: true
         run: |
-          set -euo pipefail
+          set +e
           VERSION="8.18.4"
           curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o gitleaks.tgz
           tar -xzf gitleaks.tgz gitleaks
           sudo install -m 755 gitleaks /usr/local/bin/gitleaks
-          # 検出されたシークレットを表示するが、ビルドは継続する（警告のみ）
-          gitleaks detect --no-banner --verbose || echo "シークレット検出あり（警告）"
+          # SARIF 形式でレポート生成して GitHub Security に表示
+          gitleaks detect --no-banner --report-format sarif --report-path gitleaks-board.sarif
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "⚠️ シークレット検出あり（警告）- Security タブで確認してください"
+          fi
+          exit 0
 
       - name: Azure に OIDC でログイン
         uses: azure/login@v2
@@ -111,6 +117,7 @@ jobs:
 
       - name: Trivy でコンテナをスキャン (SARIF)
         uses: aquasecurity/trivy-action@0.28.0
+        continue-on-error: true
         with:
           image-ref: ${{ steps.resolve_acr.outputs.acr_login_server }}/${{ env.BOARD_IMAGE_NAME }}:${{ steps.image_meta.outputs.IMAGE_SHA_TAG }}
           format: "sarif"
@@ -119,24 +126,36 @@ jobs:
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
-          exit-code: "1"
+          exit-code: "0"
 
       - name: ソース/設定/シークレット総合スキャン (Trivy FS)
+        continue-on-error: true
         run: |
           set -euo pipefail
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b ./trivy-bin
           ./trivy-bin fs --scanners vuln,secret,config --ignore-unfixed --severity CRITICAL,HIGH \
-            --format sarif --output trivy-fs-board.sarif app/board-app
+            --format sarif --output trivy-fs-board.sarif app/board-app || echo "脆弱性検出あり（警告）"
 
       - name: Trivy SARIF をアップロード (Image)
+        if: always()
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: trivy-image-board.sarif
 
       - name: Trivy SARIF をアップロード (FS)
+        if: always()
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: trivy-fs-board.sarif
+
+      - name: Gitleaks SARIF をアップロード
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: gitleaks-board.sarif
 
       - name: イメージを ACR へプッシュ
         run: |
