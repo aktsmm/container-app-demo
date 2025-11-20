@@ -76,10 +76,14 @@ pwsh ./scripts/create-github-actions-sp.ps1 `
 ### パラメータ説明
 
 - **SubscriptionId** (必須) – Azure サブスクリプション ID
-- **ResourceGroupName** (オプション) – 指定するとリソースグループスコープで権限付与（推奨）。省略するとサブスクリプション全体に付与
-- **DisplayName** (オプション) – Service Principal の表示名（デフォルト: `gha-sp-secret`）
-- **RoleDefinitionName** (オプション) – 基本ロール（デフォルト: `Contributor`）
-- **SecretDurationYears** (オプション) – シークレット有効期限（デフォルト: `2` 年、範囲: 1-5 年）
+- **ResourceGroupName** (オプション) – 指定するとリソースグループスコープで権限付与（推奨）  
+  💡 省略時: サブスクリプション全体に権限付与
+- **DisplayName** (オプション) – Service Principal の表示名  
+  💡 省略時: `gha-sp-secret`
+- **RoleDefinitionName** (オプション) – 基本ロール  
+  💡 省略時: `Contributor`
+- **SecretDurationYears** (オプション) – シークレット有効期限（範囲: 1-5 年）  
+  💡 省略時: `2` 年
 
 ### 出力例
 
