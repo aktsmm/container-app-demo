@@ -16,7 +16,7 @@ on:
 permissions:
   contents: read
   id-token: write
-  actions: read  # アーティファクトダウンロードに必要
+  actions: read  # アーティファクトダウンロードと workflow リスト取得に必要
 
 env:
   RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
@@ -91,14 +91,18 @@ jobs:
           mkdir -p infra-output
           if [ "${{ github.event_name }}" = "workflow_run" ] && [ "${{ github.event.workflow_run.name }}" = "$INFRA_WORKFLOW_NAME" ]; then
             TARGET_RUN_ID='${{ github.event.workflow_run.id }}'
+            echo "workflow_run トリガー: run_id=$TARGET_RUN_ID"
           else
-            TARGET_RUN_ID=$(gh run list --workflow "$INFRA_WORKFLOW_NAME" --status success --json databaseId --limit 1 | jq -r '.[0].databaseId')
+            # 手動実行時は GitHub REST API 経由で検索（gh run list が workflow 権限不足で失敗する場合の回避策）
+            TARGET_RUN_ID=$(curl -s -H "Authorization: token $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/1-infra-deploy.yml/runs?status=success&per_page=1" \
+              | jq -r '.workflow_runs[0].id')
+            echo "手動実行: 最新の成功した Infrastructure Deploy run_id=$TARGET_RUN_ID"
           fi
           if [ -z "$TARGET_RUN_ID" ] || [ "$TARGET_RUN_ID" = "null" ]; then
             echo "インフラデプロイの実行履歴が見つかりません" >&2
             exit 1
           fi
-          echo "Using infra run: $TARGET_RUN_ID"
           gh run download "$TARGET_RUN_ID" --name infra-outputs --dir infra-output >/dev/null
           OUTPUT_FILE=$(find infra-output -name '*.json' | head -n1)
           if [ -z "$OUTPUT_FILE" ]; then
