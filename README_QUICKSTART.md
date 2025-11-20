@@ -44,12 +44,18 @@ pwsh ./scripts/create-github-actions-sp.ps1 `
 
 ### 5.1 GitHub CLI を利用する場合
 
-規定値は `scripts/setup-github-secrets_variables.ps1` で一括反映できます。
-＊GitHub CLI を利用している場合前提
+規定値は `scripts/setup-github-secrets_variables.ps1` で一括反映できます。GitHub CLI で認証済みであることが前提です。
 
 ```powershell
-pwsh ./scripts/setup-github-secrets_variables.ps1 -EnvFilePath "ignore/環境情報.md"
+pwsh ./scripts/setup-github-secrets_variables.ps1             # $DefaultRepo に設定したリポジトリへ適用
+pwsh ./scripts/setup-github-secrets_variables.ps1 -Repo "owner/repo"  # 別リポジトリへ適用
+pwsh ./scripts/setup-github-secrets_variables.ps1 -DryRun     # 設定内容のみ確認
 ```
+
+- スクリプト冒頭の `$DefaultRepo`, `$GitHubVariables`, `$GitHubSecrets` を編集するだけで既定値を切り替え可能。
+- `AZURE_CLIENT_ID / SECRET / TENANT_ID / AZURE_SUBSCRIPTION_ID` は **手順 4** の `scripts/create-github-actions-sp.ps1` 実行結果をそのまま転記する。（ダミー値はデモ向け）
+- `-Repo` を省略し `$DefaultRepo` も空の場合、git remote から自動取得し、それでも不明な場合は対話入力を促します。
+- `-DryRun` は gh CLI を呼ばず実行プランだけを表示します。実際に反映する前の確認に使用してください。
 
 ### 5.2 手動で設定する場合
 

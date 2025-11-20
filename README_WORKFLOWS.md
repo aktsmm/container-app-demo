@@ -4,6 +4,7 @@
 
 - すべてのワークフローは **Service Principal + クライアントシークレット** 認証で Azure にログインします。
 - `vars.AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID` と `secrets.AZURE_SUBSCRIPTION_ID` が未設定の場合は早期に失敗します。
+- これらの資格情報は `scripts/create-github-actions-sp.ps1` を実行して生成し、`scripts/setup-github-secrets_variables.ps1` の `$GitHubVariables/$GitHubSecrets` へ転記してから `gh variable`/`gh secret` で登録します。
 - セキュリティスキャン (Trivy, Gitleaks, CodeQL) は可能な限り **SARIF** を生成して Security タブへアップロードします (公開リポジトリ、または GitHub Advanced Security 契約済みプライベートリポジトリが対象)。
 - ビルド系ワークフローは成果物 (SBOM, SARIF, image metadata) を `actions/upload-artifact` で保存し、後続のデプロイ/セキュリティワークフローが参照できるようにしています。
 

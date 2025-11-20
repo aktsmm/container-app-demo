@@ -4,7 +4,8 @@
 
 - **Secrets** は GitHub Actions からもマスクされるため、クレデンシャルや Subscription ID を格納します。
 - **Variables** は値がログに出力される可能性があるため、低機密情報またはクロスワークフローで共通のパラメーターに使用します。
-- 値の一括投入: `scripts/setup-github-secrets_variables.ps1 -EnvFilePath "ignore/環境情報.md"`
+- 値の一括投入: `scripts/setup-github-secrets_variables.ps1`（`-Repo` 省略時は `$DefaultRepo` → git remote → 対話入力の順で解決）
+- `AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID` は `scripts/create-github-actions-sp.ps1` で発行した Service Principal 情報を転記する。ダミー値はデモ確認用であり、本番では必ず再生成する。
 
 ## 2. GitHub Secrets 一覧
 
@@ -49,7 +50,10 @@
 ## 5. 推奨運用
 
 1. 新しい環境値を追加する場合は、まず `ignore/環境情報.md` に記述し、Pull Request でコンテキストを共有する。
-2. `scripts/setup-github-secrets_variables.ps1` で GitHub CLI を通して変数/シークレットを一括設定。
+2. `scripts/setup-github-secrets_variables.ps1` で GitHub CLI を通して変数/シークレットを一括設定。以下の仕様を満たすため、値の更新はスクリプト冒頭の設定ブロックのみを修正すればよい。
+   - `$DefaultRepo` に既定の `owner/repo` を宣言。`-Repo` 未指定かつ git remote が解決できない場合は `Read-Host` で入力を促す。
+   - `$GitHubVariables` / `$GitHubSecrets` のハッシュテーブルを編集すると、同じ順で `gh variable set` / `gh secret set` を実行。
+   - `-DryRun` スイッチで gh CLI を呼ばずに適用内容のみ確認可能。
 3. クリティカルな値 (DB パスワード、Client Secret 等) はできるだけ Secret 側へ移し、YAML で `secrets.*` を参照するように更新。
 4. 変更後は `gh variable list` / `gh secret list` で実際に登録されているかを確認。
 

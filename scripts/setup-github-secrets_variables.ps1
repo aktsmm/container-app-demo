@@ -1,82 +1,132 @@
-# 初回セットアップ用: ignore/環境情報.md の値を GitHub Actions の Variables/Secrets に一括設定するスクリプト
+# 初回セットアップ用: GitHub Actions の Variables/Secrets に一括設定するスクリプト
 # 用途: プロジェクト初回構築時や環境変数の全体リセット時に使用
+# NOTE: デモ環境の利便性を優先するため平文の資格情報をハードコードしているが、本番では必ず Key Vault や GitHub Secrets などで安全に管理すること。
 
-Param (
-    [string]$EnvFilePath = "ignore/環境情報.md"
+param(
+	[string]$Repo,
+	[switch]$DryRun
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
-if (-not (Test-Path -Path $EnvFilePath)) {
-    throw "環境情報ファイル $EnvFilePath が見つかりません"
+# --- 設定値（必要に応じて編集） ---
+$DefaultRepo = 'aktsmm/container-app-demo'
+
+$GitHubVariables = @{
+	RESOURCE_GROUP_NAME      = 'RG-bbs-app-demo'
+	# scripts/create-github-actions-sp.ps1 の出力値を転記する
+	AZURE_CLIENT_ID          = '23ec2e1f-a7d0-4996-b102-8ecf2c789730'
+	AZURE_CLIENT_SECRET      = 'P348Q~xWkqHB8.5iSN0s1jo2X3vBvzbvIoMXqbp9'
+	AZURE_TENANT_ID          = '892fd90b-434b-42d0-bd82-41f9e1ba23f3'
+
+	LOCATION                 = 'japaneast'
+	ACR_NAME_PREFIX          = 'acrdemo'
+	STORAGE_ACCOUNT_PREFIX   = 'demo'
+	AKS_CLUSTER_NAME         = 'aks-demo-dev'
+	ACA_ENVIRONMENT_NAME     = 'cae-demo-dev'
+	ADMIN_CONTAINER_APP_NAME = 'admin-app'
+	ACA_ADMIN_USERNAME       = 'test-admin'
+	ACA_ADMIN_PASSWORD       = 'P@ssw0rd!2025'
+	BACKUP_CONTAINER_NAME    = 'mysql-backups'
+	VM_NAME                  = 'vm-mysql-demo'
+	VM_ADMIN_USERNAME        = 'test-admin'
+	DB_APP_USERNAME          = 'test-admin'
+	VM_ADMIN_PASSWORD        = 'P@ssw0rd!2025'
+	MYSQL_ROOT_PASSWORD      = 'P@ssw0rd!2025'
+	DB_APP_PASSWORD          = 'P@ssw0rd!2025'
 }
 
-if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-    throw "GitHub CLI (gh) が見つかりません。インストール後に再実行してください"
+$GitHubSecrets = @{
+	# scripts/create-github-actions-sp.ps1 の出力値を転記する
+	AZURE_SUBSCRIPTION_ID = '7134d7ae-2fe3-4eec-8f0b-5ffad8355907'
 }
 
-$content = Get-Content -Path $EnvFilePath
-
-function Get-CodeValue {
-    Param (
-        [Parameter(Mandatory = $true)]
-        [string]$Key
-    )
-
-    $line = $content | Where-Object { $_ -match [Regex]::Escape($Key) } | Select-Object -First 1
-    if (-not $line) {
-        throw "キー $Key が $EnvFilePath に見つかりません"
-    }
-
-    $plain = ($line -replace '[`]', '').Trim()
-    $plain = $plain.TrimStart('-').Trim()
-    $parts = $plain.Split('=', 2)
-    if ($parts.Count -lt 2) {
-        throw "キー $Key の値を解析できません"
-    }
-
-    $rawValue = $parts[1].Trim()
-    # 日本語/英語の括弧以降(説明コメント)を除去し純粋な値のみを取得
-    $rawValue = ($rawValue -replace '（.*$', '')
-    $rawValue = ($rawValue -replace '\(.*$', '')
-    return $rawValue.Trim()
+function Test-Command {
+	param([string]$Name)
+	return [bool](Get-Command -Name $Name -ErrorAction SilentlyContinue)
 }
 
-$variableKeys = @(
-    'AZURE_CLIENT_ID',
-    'AZURE_CLIENT_SECRET',
-    'AZURE_TENANT_ID',
-    'RESOURCE_GROUP_NAME',
-    'LOCATION',
-    'ACR_NAME_PREFIX',
-    'STORAGE_ACCOUNT_PREFIX',
-    'AKS_CLUSTER_NAME',
-    'ACA_ENVIRONMENT_NAME',
-    'ADMIN_CONTAINER_APP_NAME',
-    'BACKUP_CONTAINER_NAME',
-    'VM_NAME',
-    'VM_ADMIN_USERNAME',
-    'VM_ADMIN_PASSWORD',
-    'DB_APP_USERNAME',
-    'DB_APP_PASSWORD',
-    'MYSQL_ROOT_PASSWORD'
-)
+function Get-GitHubRepoFromGit {
+	if (-not (Test-Command -Name 'git')) {
+		return $null
+	}
 
-$secretKeys = @(
-    'AZURE_SUBSCRIPTION_ID'
-)
+	$remoteUrl = git config --get remote.origin.url
+	if (-not $remoteUrl) {
+		return $null
+	}
 
-foreach ($key in $variableKeys) {
-    $value = Get-CodeValue -Key $key
-    gh variable set $key --body $value | Out-Null
-    Write-Host "✅ Variable $key を設定しました"
+	# HTTPS(e.g. https://github.com/owner/repo.git) または SSH(e.g. git@github.com:owner/repo.git) をサポート
+	if ($remoteUrl -match 'github\.com[:/](?<owner>[^/]+)/(?<repo>[^/.]+)') {
+		return "$($Matches.owner)/$($Matches.repo)"
+	}
+
+	return $null
 }
 
-Write-Host "ℹ️ DB_ENDPOINT は infra-outputs アーティファクトから自動取得するため、リポジトリ変数としては設定しません" -ForegroundColor Yellow
-
-foreach ($key in $secretKeys) {
-    $value = Get-CodeValue -Key $key
-    gh secret set $key --body $value | Out-Null
-    Write-Host "✅ Secret $key を設定しました"
+if (-not (Test-Command -Name 'gh')) {
+	throw 'GitHub CLI (gh) が見つかりません。https://cli.github.com/ を参照してインストールしてください。'
 }
+
+if (-not $Repo -and $DefaultRepo) {
+	$Repo = $DefaultRepo
+}
+
+if (-not $Repo) {
+	$Repo = Get-GitHubRepoFromGit
+}
+
+if (-not $Repo) {
+	$Repo = Read-Host '適用対象の GitHub リポジトリ (owner/repo) を入力してください'
+}
+
+if (-not $Repo) {
+	throw '対象リポジトリが特定できませんでした。-Repo "owner/repo" を指定するか、$DefaultRepo に既定値を設定してください。'
+}
+
+Write-Host "対象リポジトリ: $Repo"
+if ($DryRun) {
+	Write-Host '[DRY-RUN] gh CLI には適用せず、設定内容のみを表示します。' -ForegroundColor Yellow
+}
+
+function Set-GitHubVariable {
+	param(
+		[string]$Name,
+		[string]$Value
+	)
+
+	if ($DryRun) {
+		Write-Host "[DRY-RUN] gh variable set $Name --body ***" -ForegroundColor Yellow
+		return
+	}
+
+	gh variable set $Name --repo $Repo --body $Value | Out-Null
+	Write-Host "Variable $Name を設定しました。"
+}
+
+function Set-GitHubSecret {
+	param(
+		[string]$Name,
+		[string]$Value
+	)
+
+	if ($DryRun) {
+		Write-Host "[DRY-RUN] gh secret set $Name --body ***" -ForegroundColor Yellow
+		return
+	}
+
+	gh secret set $Name --repo $Repo --body $Value | Out-Null
+	Write-Host "Secret $Name を設定しました。"
+}
+
+Write-Host '--- Repository Variables ---'
+foreach ($entry in $GitHubVariables.GetEnumerator()) {
+	Set-GitHubVariable -Name $entry.Key -Value $entry.Value
+}
+
+Write-Host '--- Repository Secrets ---'
+foreach ($entry in $GitHubSecrets.GetEnumerator()) {
+	Set-GitHubSecret -Name $entry.Key -Value $entry.Value
+}
+
+Write-Host 'GitHub Actions の初期設定が完了しました。値を変更する場合は本スクリプトのテーブルを更新してください。'

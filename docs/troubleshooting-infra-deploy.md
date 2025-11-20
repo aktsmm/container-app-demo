@@ -21,8 +21,8 @@ MySQL の認証情報が未設定です。GitHub Actions で MYSQL_ROOT_PASSWORD
 
 **解決策**:
 
-1. `scripts/setup-github-secrets_variables.ps1` スクリプトを作成（初回セットアップ用）
-2. `ignore/環境情報.md` から認証情報を読み取り、GitHub CLI で Variables/Secrets を一括設定
+1. `scripts/setup-github-secrets_variables.ps1` スクリプトを作成（初回セットアップ用）。現在はスクリプト冒頭で `$DefaultRepo`, `$GitHubVariables`, `$GitHubSecrets` を定義し、GitHub CLI で直接登録する方式へ移行済み。`AZURE_*` 系の値は `scripts/create-github-actions-sp.ps1` が出力した Service Principal 情報を転記する。
+2. `$DefaultRepo` が空の場合は git remote → 対話入力の順でリポジトリを特定し、`-DryRun` で事前確認も可能にした。
 3. コメント除去処理を追加（括弧付き日本語コメントが環境変数に混入する問題を予防）
 
 ```powershell
