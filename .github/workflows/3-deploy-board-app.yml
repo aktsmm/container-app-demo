@@ -1,20 +1,20 @@
 name: 3️⃣ Deploy Board App (AKS)
 
 on:
-    workflow_dispatch:
-        inputs:
-            imageTag:
-                description: "ACR にプッシュ済みのイメージタグ (未指定時は latest)"
-                required: false
-    workflow_run:
-        workflows:
-            - "2️⃣ Build Board App"
-        types:
-            - completed
+  workflow_dispatch:
+    inputs:
+      imageTag:
+        description: "ACR にプッシュ済みのイメージタグ (未指定時は latest)"
+        required: false
+  workflow_run:
+    workflows:
+      - "2️⃣ Build Board App"
+    types:
+      - completed
 
 permissions:
-    contents: read
-    id-token: write
+  contents: read
+  id-token: write
 
 env:
   RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
@@ -139,10 +139,10 @@ jobs:
         run: |
           BOARD_NS=$(grep kubernetesNamespace "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
           INGRESS_HOST=$(grep ingressHost "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
-          
+
           # Load Balancer の Public IP を取得（NGINX Ingress Controller のサービスから）
           LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-          
+
           # IP が取得できない場合は LoadBalancer Service を探す
           if [ -z "$LB_IP" ]; then
             LB_IP=$(kubectl get svc -A -o json | jq -r '.items[] | select(.spec.type=="LoadBalancer") | .status.loadBalancer.ingress[0].ip' | head -n1 2>/dev/null || echo "")

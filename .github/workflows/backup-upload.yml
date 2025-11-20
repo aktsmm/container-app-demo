@@ -1,115 +1,115 @@
 name: 🔄 MySQL Backup Upload (Scheduled)
 
 on:
-  schedule:
-    - cron: "0 * * * *"
-  workflow_dispatch:
+    schedule:
+        - cron: "0 * * * *"
+    workflow_dispatch:
 
 permissions:
-  contents: read
-  id-token: write
+    contents: read
+    id-token: write
 
 env:
-  RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
-  VM_NAME: ${{ vars.VM_NAME }}
-  STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
-  BACKUP_CONTAINER_NAME: ${{ vars.BACKUP_CONTAINER_NAME }}
+    RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+    VM_NAME: ${{ vars.VM_NAME }}
+    STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
+    BACKUP_CONTAINER_NAME: ${{ vars.BACKUP_CONTAINER_NAME }}
 
 jobs:
-  backup:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Azure に OIDC でログイン
-        uses: azure/login@v2
-        with:
-          creds: >-
-            {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+    backup:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Azure に OIDC でログイン
+              uses: azure/login@v2
+              with:
+                  creds: >-
+                      {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
 
-      - name: ストレージアカウント名を解決
-        run: |
-          set -euo pipefail
-          if [ -z "$STORAGE_ACCOUNT_PREFIX" ] || [ -z "$RESOURCE_GROUP_NAME" ]; then
-            echo "ストレージアカウント名を決定するための変数が不足しています" >&2
-            exit 1
-          fi
-          STORAGE_ACCOUNT_NAME=$(az storage account list \
-            --resource-group "$RESOURCE_GROUP_NAME" \
-            --query "[?starts_with(name, '${STORAGE_ACCOUNT_PREFIX}')].name | [0]" \
-            -o tsv)
-          if [ -z "$STORAGE_ACCOUNT_NAME" ]; then
-            echo "指定プレフィックスのストレージアカウントが存在しません。infra-deploy を先に実行してください" >&2
-            exit 1
-          fi
-          echo "STORAGE_ACCOUNT_NAME=$STORAGE_ACCOUNT_NAME" >> "$GITHUB_ENV"
+            - name: ストレージアカウント名を解決
+              run: |
+                  set -euo pipefail
+                  if [ -z "$STORAGE_ACCOUNT_PREFIX" ] || [ -z "$RESOURCE_GROUP_NAME" ]; then
+                    echo "ストレージアカウント名を決定するための変数が不足しています" >&2
+                    exit 1
+                  fi
+                  STORAGE_ACCOUNT_NAME=$(az storage account list \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --query "[?starts_with(name, '${STORAGE_ACCOUNT_PREFIX}')].name | [0]" \
+                    -o tsv)
+                  if [ -z "$STORAGE_ACCOUNT_NAME" ]; then
+                    echo "指定プレフィックスのストレージアカウントが存在しません。infra-deploy を先に実行してください" >&2
+                    exit 1
+                  fi
+                  echo "STORAGE_ACCOUNT_NAME=$STORAGE_ACCOUNT_NAME" >> "$GITHUB_ENV"
 
-      - name: Storage 用 SAS を発行
-        id: sas
-        run: |
-          EXPIRY=$(date -u -d '+90 minutes' +%Y-%m-%dT%H:%MZ)
-          SAS=$(az storage account generate-sas \
-            --permissions acdlpu \
-            --account-name "$STORAGE_ACCOUNT_NAME" \
-            --services b \
-            --resource-types co \
-            --expiry "$EXPIRY" \
-            -o tsv)
-          echo "SAS_TOKEN=$SAS" >> "$GITHUB_ENV"
+            - name: Storage 用 SAS を発行
+              id: sas
+              run: |
+                  EXPIRY=$(date -u -d '+90 minutes' +%Y-%m-%dT%H:%MZ)
+                  SAS=$(az storage account generate-sas \
+                    --permissions acdlpu \
+                    --account-name "$STORAGE_ACCOUNT_NAME" \
+                    --services b \
+                    --resource-types co \
+                    --expiry "$EXPIRY" \
+                    -o tsv)
+                  echo "SAS_TOKEN=$SAS" >> "$GITHUB_ENV"
 
-      - name: VM 上でバックアップを実行しアップロード
-        env:
-          MYSQL_ROOT_PASSWORD: ${{ vars.MYSQL_ROOT_PASSWORD }}
-        run: |
-          SCRIPT=$(cat <<'EOF'
-          set -euo pipefail
-          STORAGE_ACCOUNT_NAME="$1"
-          BACKUP_CONTAINER_NAME="$2"
-          SAS_TOKEN="$3"
-          MYSQL_ROOT_PASSWORD="$4"
-          TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
-          BACKUP_DIR=/tmp/mysql-backups
-          mkdir -p "$BACKUP_DIR"
-          BACKUP_FILE="$BACKUP_DIR/backup-$TIMESTAMP.sql"
-          mysqldump --all-databases --single-transaction --quick --lock-tables=false -u root -p"$MYSQL_ROOT_PASSWORD" > "$BACKUP_FILE"
-          if ! command -v azcopy >/dev/null 2>&1; then
-            TMPDIR=$(mktemp -d)
-            curl -sSL https://aka.ms/downloadazcopy-v10-linux | tar -xz -C "$TMPDIR"
-            AZCOPY_PATH=$(find "$TMPDIR" -name azcopy -type f | head -n 1)
-            sudo install -m 755 "$AZCOPY_PATH" /usr/local/bin/azcopy
-          fi
-          DEST_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${BACKUP_CONTAINER_NAME}/backup-${TIMESTAMP}.sql?${SAS_TOKEN}"
-          azcopy copy "$BACKUP_FILE" "$DEST_URL" --from-to=LocalBlob --overwrite ifSourceNewer --log-level WARNING
-          logger "mysql-backup-upload success $TIMESTAMP"
-          EOF
-          )
+            - name: VM 上でバックアップを実行しアップロード
+              env:
+                  MYSQL_ROOT_PASSWORD: ${{ vars.MYSQL_ROOT_PASSWORD }}
+              run: |
+                  SCRIPT=$(cat <<'EOF'
+                  set -euo pipefail
+                  STORAGE_ACCOUNT_NAME="$1"
+                  BACKUP_CONTAINER_NAME="$2"
+                  SAS_TOKEN="$3"
+                  MYSQL_ROOT_PASSWORD="$4"
+                  TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
+                  BACKUP_DIR=/tmp/mysql-backups
+                  mkdir -p "$BACKUP_DIR"
+                  BACKUP_FILE="$BACKUP_DIR/backup-$TIMESTAMP.sql"
+                  mysqldump --all-databases --single-transaction --quick --lock-tables=false -u root -p"$MYSQL_ROOT_PASSWORD" > "$BACKUP_FILE"
+                  if ! command -v azcopy >/dev/null 2>&1; then
+                    TMPDIR=$(mktemp -d)
+                    curl -sSL https://aka.ms/downloadazcopy-v10-linux | tar -xz -C "$TMPDIR"
+                    AZCOPY_PATH=$(find "$TMPDIR" -name azcopy -type f | head -n 1)
+                    sudo install -m 755 "$AZCOPY_PATH" /usr/local/bin/azcopy
+                  fi
+                  DEST_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${BACKUP_CONTAINER_NAME}/backup-${TIMESTAMP}.sql?${SAS_TOKEN}"
+                  azcopy copy "$BACKUP_FILE" "$DEST_URL" --from-to=LocalBlob --overwrite ifSourceNewer --log-level WARNING
+                  logger "mysql-backup-upload success $TIMESTAMP"
+                  EOF
+                  )
 
-          az vm run-command invoke \
-            --resource-group "$RESOURCE_GROUP_NAME" \
-            --name "$VM_NAME" \
-            --command-id RunShellScript \
-            --scripts "$SCRIPT" \
-            --parameters "$STORAGE_ACCOUNT_NAME" "$BACKUP_CONTAINER_NAME" "$SAS_TOKEN" "$MYSQL_ROOT_PASSWORD"
+                  az vm run-command invoke \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --name "$VM_NAME" \
+                    --command-id RunShellScript \
+                    --scripts "$SCRIPT" \
+                    --parameters "$STORAGE_ACCOUNT_NAME" "$BACKUP_CONTAINER_NAME" "$SAS_TOKEN" "$MYSQL_ROOT_PASSWORD"
 
-      - name: バックアップサマリを出力
-        if: success()
-        run: |
-          TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
-          BACKUP_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${BACKUP_CONTAINER_NAME}/backup-${TIMESTAMP}.sql"
+            - name: バックアップサマリを出力
+              if: success()
+              run: |
+                  TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
+                  BACKUP_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${BACKUP_CONTAINER_NAME}/backup-${TIMESTAMP}.sql"
 
-          echo "## 🔄 MySQL バックアップ完了" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📦 バックアップ情報" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **VM 名**: \`$VM_NAME\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **ストレージアカウント**: \`$STORAGE_ACCOUNT_NAME\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **コンテナ**: \`$BACKUP_CONTAINER_NAME\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **バックアップファイル**: \`backup-${TIMESTAMP}.sql\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📍 アクセス情報" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Blob URL**: \`$BACKUP_URL\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> 💡 Azure Portal の Storage Account から確認できます" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "✅ バックアップ実行日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY
-          echo "🔄 次回定期実行: 1時間ごと" >> $GITHUB_STEP_SUMMARY
+                  echo "## 🔄 MySQL バックアップ完了" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "### 📦 バックアップ情報" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "- **VM 名**: \`$VM_NAME\`" >> $GITHUB_STEP_SUMMARY
+                  echo "- **ストレージアカウント**: \`$STORAGE_ACCOUNT_NAME\`" >> $GITHUB_STEP_SUMMARY
+                  echo "- **コンテナ**: \`$BACKUP_CONTAINER_NAME\`" >> $GITHUB_STEP_SUMMARY
+                  echo "- **バックアップファイル**: \`backup-${TIMESTAMP}.sql\`" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "### 📍 アクセス情報" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "- **Blob URL**: \`$BACKUP_URL\`" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "> 💡 Azure Portal の Storage Account から確認できます" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "---" >> $GITHUB_STEP_SUMMARY
+                  echo "✅ バックアップ実行日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY
+                  echo "🔄 次回定期実行: 1時間ごと" >> $GITHUB_STEP_SUMMARY
