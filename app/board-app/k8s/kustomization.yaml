@@ -12,39 +12,5 @@ configMapGenerator:
       - vars.env
 generatorOptions:
   disableNameSuffixHash: true
-replacements:
-  - source:
-      kind: ConfigMap
-      name: board-app-vars
-      fieldPath: data.ingressHost
-    targets:
-      - select:
-          kind: Ingress
-          name: board-app
-        fieldPaths:
-          - spec.rules.0.host
-  - source:
-      kind: ConfigMap
-      name: board-app-vars
-      fieldPath: data.kubernetesNamespace
-    targets:
-      - select:
-          kind: Namespace
-          name: board-app
-        fieldPaths:
-          - metadata.name
-      - select:
-          kind: Deployment
-          name: board-app
-        fieldPaths:
-          - metadata.namespace
-      - select:
-          kind: Service
-          name: board-app
-        fieldPaths:
-          - metadata.namespace
-      - select:
-          kind: Ingress
-          name: board-app
-        fieldPaths:
-          - metadata.namespace
+# replacements は削除: IP 直アクセスを使用するため Host ベースルーティング不要
+# Ingress に Host なしルールを追加したため、動的な Host 置換は不要
