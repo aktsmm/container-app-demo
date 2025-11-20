@@ -253,6 +253,7 @@ jobs:
           echo '{"categorizedFindings":{' > $JSON_FILE
           FIRST_CAT=1
 
+          MAX_MSG_LEN=400
           for PATTERN in codeql gitleaks trivy-image trivy-fs trivy-infra trivy-k8s; do
             CAT_NAME="${CATEGORIES[$PATTERN]}"
             
@@ -300,8 +301,11 @@ jobs:
               COUNT=0
               while IFS=$'\t' read -r SEV_RANK LVL_RANK SEV RULE MSG; do
                 COUNT=$((COUNT+1))
-                SHORT=$(echo "$MSG" | cut -c1-200)
-                echo "$COUNT. **$SEV** / \`$RULE\`: $SHORT" >> $TOP_FILE
+                DISPLAY_MSG="$MSG"
+                if [ ${#DISPLAY_MSG} -gt $MAX_MSG_LEN ]; then
+                  DISPLAY_MSG="${DISPLAY_MSG:0:MAX_MSG_LEN}..."
+                fi
+                echo "$COUNT. **$SEV** / \`$RULE\`: $DISPLAY_MSG" >> $TOP_FILE
                 
                 ESC_MSG=$(echo "$MSG" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
                 SEP=','; [ $COUNT -eq 1 ] && SEP=''

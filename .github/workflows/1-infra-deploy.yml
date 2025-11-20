@@ -5,7 +5,7 @@ on:
   push:
     paths:
       - "infra/**"
-      - ".github/workflows/infra-deploy.yml"
+      - ".github/workflows/1-infra-deploy.yml"
 
 permissions:
   contents: read
@@ -24,8 +24,15 @@ env:
   DB_APP_PASSWORD: ${{ vars.DB_APP_PASSWORD }}
 
 jobs:
-  deploy:
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      acr_name: ${{ steps.name_resolution.outputs.acr_name }}
+      storage_name: ${{ steps.name_resolution.outputs.storage_name }}
+      aks_node_rg: ${{ steps.name_resolution.outputs.aks_node_rg }}
+      cae_name: ${{ steps.name_resolution.outputs.cae_name }}
+      aks_skip_create: ${{ steps.aks_check.outputs.skip_create }}
+      aks_ssh_public_key: ${{ steps.aks_ssh.outputs.public_key }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,22 +44,17 @@ jobs:
             {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
 
       - name: ユニーク名を決定
+        id: name_resolution
         run: |
           set -euo pipefail
           if [ -z "$ACR_NAME_PREFIX" ] || [ -z "$STORAGE_ACCOUNT_PREFIX" ]; then
             echo "Prefix 変数が未設定です" >&2
             exit 1
           fi
-          # NodeResourceGroup 名をリソースグループ名から生成（再利用可能性を保つ）
           NODE_RG="mc-${RESOURCE_GROUP_NAME}"
-          echo "AKS_NODE_RESOURCE_GROUP=$NODE_RG" >> "$GITHUB_ENV"
-          # Container Apps Environment 名もリソースグループ名から生成
           CAE_NAME="cae-${RESOURCE_GROUP_NAME}"
-          echo "CONTAINER_APPS_ENV_NAME=$CAE_NAME" >> "$GITHUB_ENV"
-          # 既存リソースを参照する前にRGの有無を判定し、初回デプロイでの404を防ぐ
           RG_EXISTS=$(az group exists --name "$RESOURCE_GROUP_NAME" || echo false)
           if [ "$RG_EXISTS" != "true" ]; then
-            echo "Resource group $RESOURCE_GROUP_NAME は未作成のため新規作成として処理します"
             RG_EXISTS=false
           fi
           generate_suffix() {
@@ -101,9 +103,10 @@ jobs:
               fi
             done
           fi
-          echo "ACR_NAME=$ACR_NAME" >> "$GITHUB_ENV"
-          echo "ACR_LOGIN_SERVER=${ACR_NAME}.azurecr.io" >> "$GITHUB_ENV"
-          echo "STORAGE_ACCOUNT_NAME=$STORAGE_NAME" >> "$GITHUB_ENV"
+          echo "acr_name=$ACR_NAME" >> "$GITHUB_OUTPUT"
+          echo "storage_name=$STORAGE_NAME" >> "$GITHUB_OUTPUT"
+          echo "aks_node_rg=$NODE_RG" >> "$GITHUB_OUTPUT"
+          echo "cae_name=$CAE_NAME" >> "$GITHUB_OUTPUT"
 
       - name: 入力値を検証
         run: |
@@ -124,26 +127,52 @@ jobs:
             --location "$LOCATION"
 
       - name: AKS 存在判定とスキップフラグ設定
+        id: aks_check
         run: |
           set -euo pipefail
           AKS_NAME=$(jq -r '.parameters.aksName.value' "${PARAM_FILE}")
           if az aks show -g "$RESOURCE_GROUP_NAME" -n "$AKS_NAME" >/dev/null 2>&1; then
-              echo "既存 AKS クラスター $AKS_NAME が見つかったため再作成をスキップします"
-              echo "AKS_SKIP_CREATE=true" >> "$GITHUB_ENV"
+            echo "既存 AKS クラスター $AKS_NAME が見つかったため再作成をスキップします"
+            echo "skip_create=true" >> "$GITHUB_OUTPUT"
           else
-              echo "AKS クラスター $AKS_NAME は存在しないため新規作成します"
-              echo "AKS_SKIP_CREATE=false" >> "$GITHUB_ENV"
+            echo "AKS クラスター $AKS_NAME は存在しないため新規作成します"
+            echo "skip_create=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: AKS 用一時 SSH 鍵生成
-        if: env.AKS_SKIP_CREATE == 'false'
+        if: ${{ steps.aks_check.outputs.skip_create == 'false' }}
+        id: aks_ssh
         run: |
           set -euo pipefail
           ssh-keygen -t rsa -b 4096 -f aks_temp_key -N '' -C "aks-demo-dev" >/dev/null 2>&1
           PUB_KEY=$(cat aks_temp_key.pub | tr -d '\n')
-          echo "AKS_SSH_PUBLIC_KEY=$PUB_KEY" >> "$GITHUB_ENV"
-          rm -f aks_temp_key
+          echo "public_key=$PUB_KEY" >> "$GITHUB_OUTPUT"
+          rm -f aks_temp_key aks_temp_key.pub
         shell: bash
+
+      - name: Azure logout
+        if: always()
+        run: az logout
+
+  bicep-deploy:
+    runs-on: ubuntu-latest
+    needs: prepare
+    env:
+      ACR_NAME: ${{ needs.prepare.outputs.acr_name }}
+      STORAGE_ACCOUNT_NAME: ${{ needs.prepare.outputs.storage_name }}
+      AKS_NODE_RESOURCE_GROUP: ${{ needs.prepare.outputs.aks_node_rg }}
+      CONTAINER_APPS_ENV_NAME: ${{ needs.prepare.outputs.cae_name }}
+      AKS_SKIP_CREATE: ${{ needs.prepare.outputs.aks_skip_create }}
+      AKS_SSH_PUBLIC_KEY: ${{ needs.prepare.outputs.aks_ssh_public_key }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (Service Principal)
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
 
       - name: Bicep Validate
         run: |
@@ -185,6 +214,23 @@ jobs:
             --parameters containerAppsEnvironmentName="$CONTAINER_APPS_ENV_NAME" \
             --only-show-errors
 
+      - name: Azure logout
+        if: always()
+        run: az logout
+
+  policy-deploy:
+    runs-on: ubuntu-latest
+    needs: bicep-deploy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (Service Principal)
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
       - name: Azure Policy Validate (subscription scope)
         run: |
           az deployment sub validate \
@@ -210,6 +256,24 @@ jobs:
             --parameters "@${{ env.POLICY_PARAM_FILE }}" \
             --only-show-errors
 
+      - name: Azure logout
+        if: always()
+        run: az logout
+
+  summarize:
+    runs-on: ubuntu-latest
+    needs:
+      - policy-deploy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (Service Principal)
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
       - name: デプロイサマリを出力
         if: success()
         run: |
@@ -218,7 +282,6 @@ jobs:
           echo "### 📦 デプロイされたリソース" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # リソース一覧を取得
           echo "| リソース種別 | リソース名 | 場所 |" >> $GITHUB_STEP_SUMMARY
           echo "|-------------|-----------|------|" >> $GITHUB_STEP_SUMMARY
           az resource list --resource-group "$RESOURCE_GROUP_NAME" \
@@ -229,7 +292,6 @@ jobs:
           echo "### 🔗 主要リソース情報" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # ACR情報
           ACR_NAME=$(az acr list --resource-group "$RESOURCE_GROUP_NAME" --query "[?starts_with(name, '${ACR_NAME_PREFIX}')].name | [0]" -o tsv)
           if [ -n "$ACR_NAME" ]; then
             ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query loginServer -o tsv)
@@ -239,7 +301,6 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
-          # AKS情報
           AKS_NAME=$(az aks list --resource-group "$RESOURCE_GROUP_NAME" --query "[0].name" -o tsv)
           if [ -n "$AKS_NAME" ]; then
             AKS_FQDN=$(az aks show --name "$AKS_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query fqdn -o tsv)
@@ -251,7 +312,6 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
-          # Container Apps Environment情報
           CAE_NAME=$(az containerapp env list --resource-group "$RESOURCE_GROUP_NAME" --query "[0].name" -o tsv)
           if [ -n "$CAE_NAME" ]; then
             CAE_DEFAULT_DOMAIN=$(az containerapp env show --name "$CAE_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query properties.defaultDomain -o tsv)
@@ -261,7 +321,6 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
-          # VM情報
           VM_NAME=$(az vm list --resource-group "$RESOURCE_GROUP_NAME" --query "[0].name" -o tsv)
           if [ -n "$VM_NAME" ]; then
             VM_SIZE=$(az vm show --name "$VM_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query hardwareProfile.vmSize -o tsv)
@@ -271,7 +330,6 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
-          # Storage Account情報
           STORAGE_NAME=$(az storage account list --resource-group "$RESOURCE_GROUP_NAME" --query "[?starts_with(name, '${STORAGE_ACCOUNT_PREFIX}')].name | [0]" -o tsv)
           if [ -n "$STORAGE_NAME" ]; then
             echo "**Storage Account (Backups)**" >> $GITHUB_STEP_SUMMARY
@@ -279,7 +337,6 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
-          # Log Analytics Workspace情報
           LAW_NAME=$(az monitor log-analytics workspace list --resource-group "$RESOURCE_GROUP_NAME" --query "[0].name" -o tsv)
           if [ -n "$LAW_NAME" ]; then
             LAW_ID=$(az monitor log-analytics workspace show --workspace-name "$LAW_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query customerId -o tsv)
