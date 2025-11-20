@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
 
 # 引数が base64 エンコードされている場合はデコード
 if [[ "${1:-}" =~ ^[A-Za-z0-9+/=]+$ ]]; then
@@ -26,6 +27,29 @@ escape_sql() {
     printf "%s" "$1" | sed "s/'/''/g"
 }
 
+# apt リポジトリの問題に対する耐性を強化
+log "Fixing potentially broken apt lists"
+sudo rm -rf /var/lib/apt/lists/*
+sudo mkdir -p /var/lib/apt/lists/partial
+sudo apt-get clean
+
+retry_apt_update() {
+    for i in {1..5}; do
+        log "apt-get update (try $i)..."
+        if sudo apt-get update -y; then
+            log "apt-get update succeeded"
+            return 0
+        fi
+        log "apt-get update failed. Sleeping 10s and retrying..."
+        sleep 10
+    done
+    log "apt-get update failed after 5 attempts" >&2
+    return 1
+}
+
+log "Updating apt cache with retry logic"
+retry_apt_update
+
 CONFIG_FILE='/etc/mysql/mysql.conf.d/mysqld.cnf'
 
 ensure_bind_address() {
@@ -41,7 +65,6 @@ ROOT_ESC="$(escape_sql "$ROOT_PASSWORD")"
 APP_USER_ESC="$(escape_sql "$APP_USER")"
 APP_PASS_ESC="$(escape_sql "$APP_PASSWORD")"
 
-log "Updating apt cache"
 # command-not-found が cnf-update-db を実行すると欠落ファイルで失敗するため、一時的に無効化
 # command-not-found の Post-Invoke を全パターン無効化
 disable_command_not_found_update() {
@@ -59,7 +82,6 @@ disable_command_not_found_update() {
 }
 
 disable_command_not_found_update
-sudo DEBIAN_FRONTEND=noninteractive apt-get update -y -o APT::Update::Post-Invoke-Success::=
 
 # MySQL パッケージが配布されていないイメージ向けに段階的なフォールバックを実装
 install_mysql_server() {
