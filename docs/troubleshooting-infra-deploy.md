@@ -21,7 +21,7 @@ MySQL の認証情報が未設定です。GitHub Actions で MYSQL_ROOT_PASSWORD
 
 **解決策**:
 
-1. `scripts/sync-gh-actions-config.ps1` スクリプトを作成
+1. `scripts/setup-github-secrets.ps1` スクリプトを作成（初回セットアップ用）
 2. `ignore/環境情報.md` から認証情報を読み取り、GitHub CLI で Variables/Secrets を一括設定
 3. コメント除去処理を追加（括弧付き日本語コメントが環境変数に混入する問題を予防）
 

@@ -1,4 +1,5 @@
-# ignore/環境情報.md の値を GitHub Actions の Variables/Secrets に同期するスクリプト
+# 初回セットアップ用: ignore/環境情報.md の値を GitHub Actions の Variables/Secrets に一括設定するスクリプト
+# 用途: プロジェクト初回構築時や環境変数の全体リセット時に使用
 
 Param (
     [string]$EnvFilePath = "ignore/環境情報.md"
