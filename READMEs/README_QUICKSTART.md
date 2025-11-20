@@ -82,19 +82,53 @@ pwsh ./scripts/setup-github-secrets_variables.ps1 -DryRun     # 設定内容の�
 このスクリプトで以下の全項目を一括登録できます：
 
 **GitHub Secrets（機密情報）**:
-- `AZURE_SUBSCRIPTION_ID` – Azure サブスクリプション ID
+
+- `AZURE_SUBSCRIPTION_ID` – Azure サブスクリプション ID  
+  ⚠️ **必須編集**: 手順 4 の `create-github-actions-sp.ps1` 出力値を転記
 
 **GitHub Variables（非機密の設定値）**:
-- `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID` – Service Principal 認証情報（手順 4 の出力を転記）
-- `RESOURCE_GROUP_NAME` – リソースグループ名（例: `RG-bbs-app-demo`）
-- `LOCATION` – Azure リージョン（例: `japaneast`）
-- `ACR_NAME_PREFIX`, `STORAGE_ACCOUNT_PREFIX` – ACR/Storage の名前プレフィックス
-- `AKS_CLUSTER_NAME`, `ACA_ENVIRONMENT_NAME`, `ADMIN_CONTAINER_APP_NAME` – AKS/ACA リソース名
-- `VM_NAME`, `VM_ADMIN_USERNAME`, `VM_ADMIN_PASSWORD` – MySQL VM の設定
-- `DB_APP_USERNAME`, `DB_APP_PASSWORD`, `MYSQL_ROOT_PASSWORD` – データベース認証情報
-- `ACA_ADMIN_USERNAME`, `ACA_ADMIN_PASSWORD` – 管理アプリの Basic 認証
-- `BACKUP_CONTAINER_NAME` – バックアップ用 Blob コンテナ名
-- `INGRESS_PUBLIC_IP` – Ingress 用 Static IP（Bicep デプロイ後に自動設定されるため、初回は空でOK）
+
+**Azure 認証関連（必須編集）**:
+
+- `AZURE_CLIENT_ID` – Service Principal のクライアント ID  
+  ⚠️ **必須編集**: 手順 4 の出力値を転記（デフォルト: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`）
+- `AZURE_CLIENT_SECRET` – Service Principal のクライアントシークレット  
+  ⚠️ **必須編集**: 手順 4 の出力値を転記（デフォルト: `xxx~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`）
+- `AZURE_TENANT_ID` – Azure テナント ID  
+  ⚠️ **必須編集**: 手順 4 の出力値を転記（デフォルト: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`）
+
+**インフラ設定（環境に応じて編集推奨）**:
+
+- `RESOURCE_GROUP_NAME` – リソースグループ名（デフォルト: `RG-bbs-app-demo`）
+- `LOCATION` – Azure リージョン（デフォルト: `japaneast`）
+- `ACR_NAME_PREFIX` – ACR 名のプレフィックス（デフォルト: `acrdemo`、後ろに 4 桁乱数が自動付与）
+- `STORAGE_ACCOUNT_PREFIX` – Storage Account 名のプレフィックス（デフォルト: `demo`、後ろに 4 桁乱数が自動付与）
+- `AKS_CLUSTER_NAME` – AKS クラスタ名（デフォルト: `aks-demo-dev`）
+- `ACA_ENVIRONMENT_NAME` – Container Apps Environment 名（デフォルト: `cae-demo-dev`）
+- `ADMIN_CONTAINER_APP_NAME` – 管理アプリ名（デフォルト: `admin-app`）
+- `VM_NAME` – MySQL VM 名（デフォルト: `vm-mysql-demo`）
+- `BACKUP_CONTAINER_NAME` – バックアップ用 Blob コンテナ名（デフォルト: `mysql-backups`）
+
+**データベース/アプリ認証（本番環境では必ず変更）**:
+
+- `VM_ADMIN_USERNAME` – VM 管理者ユーザー名（デフォルト: `test-admin`）
+- `VM_ADMIN_PASSWORD` – VM 管理者パスワード（デフォルト: `P@ssw0rd!2025`）  
+  ⚠️ **セキュリティ注意**: 本番環境では強固なパスワードに変更してください
+- `MYSQL_ROOT_PASSWORD` – MySQL root パスワード（デフォルト: `P@ssw0rd!2025`）  
+  ⚠️ **セキュリティ注意**: 本番環境では強固なパスワードに変更してください
+- `DB_APP_USERNAME` – アプリ用 DB ユーザー名（デフォルト: `test-admin`）
+- `DB_APP_PASSWORD` – アプリ用 DB パスワード（デフォルト: `P@ssw0rd!2025`）  
+  ⚠️ **セキュリティ注意**: 本番環境では強固なパスワードに変更してください
+- `ACA_ADMIN_USERNAME` – 管理アプリの Basic 認証ユーザー名（デフォルト: `test-admin`）
+- `ACA_ADMIN_PASSWORD` – 管理アプリの Basic 認証パスワード（デフォルト: `P@ssw0rd!2025`）  
+  ⚠️ **セキュリティ注意**: 本番環境では強固なパスワードに変更してください
+
+**自動設定項目（編集不要）**:
+
+- `INGRESS_PUBLIC_IP` – Ingress 用 Static IP（デフォルト: 空文字列）  
+  📝 Bicep デプロイ後、`3️⃣ Deploy Board App (AKS)` ワークフローが自動設定します
+
+> **💡 ヒント**: スクリプト実行前に `scripts/setup-github-secrets_variables.ps1` 冒頭の `$GitHubVariables` / `$GitHubSecrets` ハッシュテーブルを編集してください。実行後は GitHub リポジトリの Settings → Secrets and variables → Actions で確認できます。
 
 スクリプト内の `$GitHubVariables` / `$GitHubSecrets` ハッシュテーブルを編集することで、プロジェクト固有の値を一括管理できます。
 
