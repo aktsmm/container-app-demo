@@ -24,6 +24,10 @@ env:
   ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
   BOARD_IMAGE_NAME: board-app
   BOARD_API_IMAGE_NAME: board-api
+  # DB 接続情報 (現状は Variables。パスワードは Secrets への移行を推奨)
+  DB_ENDPOINT: ${{ vars.DB_ENDPOINT }}
+  DB_APP_USERNAME: ${{ vars.DB_APP_USERNAME }}
+  DB_APP_PASSWORD: ${{ vars.DB_APP_PASSWORD }}
 
 jobs:
   deploy:
@@ -172,6 +176,26 @@ jobs:
           echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
           echo "IMAGE_FULL=$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
           echo "BOARD_API_IMAGE_FULL=$ACR_LOGIN_SERVER/$BOARD_API_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: DB 接続 Secret(board-db-conn) を作成/更新
+        run: |
+          set -euo pipefail
+          BOARD_NS=$(grep kubernetesNamespace "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
+          kubectl create namespace "$BOARD_NS" --dry-run=client -o yaml | kubectl apply -f -
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: board-db-conn
+            namespace: ${BOARD_NS}
+          type: Opaque
+          stringData:
+            db-endpoint: "${DB_ENDPOINT}"
+            db-username: "${DB_APP_USERNAME}"
+            db-password: "${DB_APP_PASSWORD}"
+          EOF
+          echo "board-db-conn Secret 作成/更新完了 (DB_ENDPOINT=${DB_ENDPOINT})"
+          echo "⚠️ セキュリティ: DB_APP_PASSWORD は GitHub Secrets への移行を推奨します" >> $GITHUB_STEP_SUMMARY
 
       - name: Kustomize を適用
         run: |
