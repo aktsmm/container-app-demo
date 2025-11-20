@@ -9,7 +9,6 @@ on:
   workflow_run:
     workflows:
       - "2️⃣ Build Board App"
-      - "1️⃣ Infrastructure Deploy"
     types:
       - completed
 
@@ -135,18 +134,30 @@ jobs:
           set -euo pipefail
           # 目的: ClusterIP のアプリ Service を外部公開するため nginx Ingress Controller を Helm で導入し、LoadBalancer IP を取得する
           # なぜ必要か: 現在 board-app の Service は ClusterIP。Ingress Controller が存在しないと外部 LB IP は割り当てられないため
-          
+
           # Helm リポジトリを追加・更新（upgrade/install 両パスで必要）
           helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx || true
           helm repo update
-          
+
+          # Helm ロック状態を事前にチェック・解除（CI/CD の中断やタイムアウトで残ることがある）
+          if kubectl get secret -n ingress-nginx | grep -q 'sh\.helm\.release\.v1\.ingress-nginx'; then
+            echo "Helm リリースの状態を確認します"
+            HELM_STATUS=$(helm status ingress-nginx -n ingress-nginx -o json 2>/dev/null | jq -r '.info.status' || echo "unknown")
+            if [[ "$HELM_STATUS" == "pending-install" || "$HELM_STATUS" == "pending-upgrade" || "$HELM_STATUS" == "pending-rollback" ]]; then
+              echo "⚠️  Helm リリースがロック状態（$HELM_STATUS）です。ロックを解除します"
+              helm rollback ingress-nginx 0 -n ingress-nginx --wait=false || kubectl delete secret -n ingress-nginx -l owner=helm,name=ingress-nginx,status=pending-install || true
+              sleep 5
+            fi
+          fi
+
           if kubectl get ns ingress-nginx >/dev/null 2>&1; then
             echo "既に ingress-nginx Namespace が存在します。Service を再作成して LoadBalancer 設定を修正します";
             helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
               --namespace ingress-nginx \
               --reuse-values \
               --set controller.service.externalTrafficPolicy=Local \
-              --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz
+              --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+              --wait --timeout=5m
           else
             echo "ingress-nginx を Helm でインストールします"
             # 低コスト & シンプル構成: externalTrafficPolicy=Local で Azure LB が正しい NodePort を使用
@@ -155,7 +166,8 @@ jobs:
               --create-namespace \
               --set controller.replicaCount=1 \
               --set controller.service.externalTrafficPolicy=Local \
-              --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz
+              --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+              --wait --timeout=5m
           fi
 
           echo "LoadBalancer IP の割り当てを待機します (最大 ~5分)";
