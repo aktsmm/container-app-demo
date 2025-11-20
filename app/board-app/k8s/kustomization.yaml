@@ -5,10 +5,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
-images:
-  - name: acr-placeholder.azurecr.io/board-app
-    newName: ${BOARD_APP_IMAGE:-acrdemodev.azurecr.io/board-app}
-    newTag: ${BOARD_APP_TAG:-latest}
+# イメージの置換はワークフロー側の sed で実行するため、ここでは指定しない
 configMapGenerator:
   - name: board-app-vars
     envs:
