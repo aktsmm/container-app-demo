@@ -77,6 +77,27 @@ pwsh ./scripts/setup-github-secrets_variables.ps1 -DryRun     # 設定内容の�
 - `-Repo` を省略し `$DefaultRepo` も空の場合、git remote から自動取得し、それでも不明な場合は対話入力を促します。
 - `-DryRun` は gh CLI を呼ばず実行プランだけを表示します。実際に反映する前の確認に使用してください。
 
+#### 自動設定される項目一覧
+
+このスクリプトで以下の全項目を一括登録できます：
+
+**GitHub Secrets（機密情報）**:
+- `AZURE_SUBSCRIPTION_ID` – Azure サブスクリプション ID
+
+**GitHub Variables（非機密の設定値）**:
+- `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID` – Service Principal 認証情報（手順 4 の出力を転記）
+- `RESOURCE_GROUP_NAME` – リソースグループ名（例: `RG-bbs-app-demo`）
+- `LOCATION` – Azure リージョン（例: `japaneast`）
+- `ACR_NAME_PREFIX`, `STORAGE_ACCOUNT_PREFIX` – ACR/Storage の名前プレフィックス
+- `AKS_CLUSTER_NAME`, `ACA_ENVIRONMENT_NAME`, `ADMIN_CONTAINER_APP_NAME` – AKS/ACA リソース名
+- `VM_NAME`, `VM_ADMIN_USERNAME`, `VM_ADMIN_PASSWORD` – MySQL VM の設定
+- `DB_APP_USERNAME`, `DB_APP_PASSWORD`, `MYSQL_ROOT_PASSWORD` – データベース認証情報
+- `ACA_ADMIN_USERNAME`, `ACA_ADMIN_PASSWORD` – 管理アプリの Basic 認証
+- `BACKUP_CONTAINER_NAME` – バックアップ用 Blob コンテナ名
+- `INGRESS_PUBLIC_IP` – Ingress 用 Static IP（Bicep デプロイ後に自動設定されるため、初回は空でOK）
+
+スクリプト内の `$GitHubVariables` / `$GitHubSecrets` ハッシュテーブルを編集することで、プロジェクト固有の値を一括管理できます。
+
 ### 5.2 手動で設定する場合
 
 最低限必要な項目:
