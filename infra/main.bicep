@@ -288,6 +288,17 @@ resource storageAccountExisting 'Microsoft.Storage/storageAccounts@2023-04-01' e
   name: storageAccountName
 }
 
+// VM Managed Identity に Storage Blob Data Contributor ロールを付与
+resource vmStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccountExisting.id, vmName, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+  scope: storageAccountExisting
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor
+    principalId: vm.outputs.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 resource storageDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: '${storageAccountName}-diag'
   scope: storageAccountExisting

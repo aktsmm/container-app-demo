@@ -65,22 +65,7 @@ jobs:
             echo "コンテナ $BACKUP_CONTAINER_NAME は既に存在しています"
           fi
 
-      - name: Storage 用 SAS を発行
-        id: sas
-        run: |
-          EXPIRY=$(date -u -d '+90 minutes' +%Y-%m-%dT%H:%MZ)
-          SAS=$(az storage account generate-sas \
-            --permissions acdlrw \
-            --account-name "$STORAGE_ACCOUNT_NAME" \
-            --services b \
-            --resource-types o \
-            --expiry "$EXPIRY" \
-            -o tsv)
-          echo "SAS_TOKEN=$SAS" >> "$GITHUB_ENV"
-          SAS_B64=$(printf '%s' "$SAS" | base64 -w0)
-          echo "SAS_TOKEN_BASE64=$SAS_B64" >> "$GITHUB_ENV"
-
-      - name: VM 上でバックアップを実行しアップロード
+      - name: VM 上でバックアップを実行しアップロード (Managed Identity)
         env:
           MYSQL_ROOT_PASSWORD: ${{ vars.MYSQL_ROOT_PASSWORD }}
         run: |
@@ -93,12 +78,10 @@ jobs:
 
           : "${storageAccountName:?storageAccountName is required}"
           : "${backupContainerName:?backupContainerName is required}"
-          : "${sasTokenB64:?sasTokenB64 is required}"
           : "${mysqlPasswordB64:?mysqlPasswordB64 is required}"
 
           STORAGE_ACCOUNT_NAME="$storageAccountName"
           BACKUP_CONTAINER_NAME="$backupContainerName"
-          SAS_TOKEN=$(printf '%s' "$sasTokenB64" | base64 -d)
           MYSQL_ROOT_PASSWORD=$(printf '%s' "$mysqlPasswordB64" | base64 -d)
 
           TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
@@ -115,13 +98,15 @@ jobs:
             sudo install -m 755 "$AZCOPY_PATH" /usr/local/bin/azcopy
           fi
 
-          DEST_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${BACKUP_CONTAINER_NAME}/backup-${TIMESTAMP}.sql?${SAS_TOKEN}"
+          # Managed Identity で認証（VM の System Assigned Identity を使用）
+          export AZCOPY_AUTO_LOGIN_TYPE=MSI
+          DEST_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${BACKUP_CONTAINER_NAME}/backup-${TIMESTAMP}.sql"
           azcopy copy "$BACKUP_FILE" "$DEST_URL" --from-to=LocalBlob --overwrite ifSourceNewer --log-level INFO
           if [ $? -eq 0 ]; then
-            logger "mysql-backup-upload success $TIMESTAMP"
+            logger "mysql-backup-upload success $TIMESTAMP (Managed Identity)"
           else
             logger "mysql-backup-upload failed $TIMESTAMP"
-            cat .azcopy/*.log | tail -n 50 >&2
+            cat ~/.azcopy/*.log 2>/dev/null | tail -n 50 >&2 || true
             exit 1
           fi
           SCRIPT
@@ -134,7 +119,6 @@ jobs:
             --scripts @"$SCRIPT_PATH" \
             --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" \
                          backupContainerName="$BACKUP_CONTAINER_NAME" \
-                         sasTokenB64="$SAS_TOKEN_BASE64" \
                          mysqlPasswordB64="$MYSQL_PASSWORD_B64"
 
       - name: バックアップサマリを出力

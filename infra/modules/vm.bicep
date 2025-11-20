@@ -120,6 +120,9 @@ resource vm 'Microsoft.Compute/virtualMachines@2023-09-01' = {
   name: name
   location: location
   tags: tags
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     hardwareProfile: {
       vmSize: vmSize
@@ -200,3 +203,5 @@ resource mysqlInit 'Microsoft.Compute/virtualMachines/extensions@2022-11-01' = {
 }
 
 output id string = vm.id
+output principalId string = vm.identity.principalId
+output name string = vm.name
