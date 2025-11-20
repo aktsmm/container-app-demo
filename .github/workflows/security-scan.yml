@@ -59,7 +59,7 @@ jobs:
           # 標準的な出力先: codeql-results/ を再帰探索
           find . -maxdepth 5 -type f -name '*.sarif' -print -exec cp {} codeql-sarif/ \;
           echo "収集済みSARIF:" && ls -1 codeql-sarif || true
-        
+
       - name: CodeQL SARIF アップロード (artifact)
         uses: actions/upload-artifact@v4
         with:

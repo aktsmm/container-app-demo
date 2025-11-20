@@ -1,0 +1,268 @@
+﻿2025-11-20T01:30:06.5866910Z Current runner version: '2.329.0'
+2025-11-20T01:30:06.5902389Z ##[group]Runner Image Provisioner
+2025-11-20T01:30:06.5903608Z Hosted Compute Agent
+2025-11-20T01:30:06.5904541Z Version: 20251016.436
+2025-11-20T01:30:06.5905436Z Commit: 8ab8ac8bfd662a3739dab9fe09456aba92132568
+2025-11-20T01:30:06.5906552Z Build Date: 2025-10-15T20:44:12Z
+2025-11-20T01:30:06.5907428Z ##[endgroup]
+2025-11-20T01:30:06.5908202Z ##[group]Operating System
+2025-11-20T01:30:06.5909307Z Ubuntu
+2025-11-20T01:30:06.5910046Z 24.04.3
+2025-11-20T01:30:06.5911216Z LTS
+2025-11-20T01:30:06.5912060Z ##[endgroup]
+2025-11-20T01:30:06.5912933Z ##[group]Runner Image
+2025-11-20T01:30:06.5913900Z Image: ubuntu-24.04
+2025-11-20T01:30:06.5914775Z Version: 20251112.124.1
+2025-11-20T01:30:06.5916567Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20251112.124/images/ubuntu/Ubuntu2404-Readme.md
+2025-11-20T01:30:06.5919239Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20251112.124
+2025-11-20T01:30:06.5921418Z ##[endgroup]
+2025-11-20T01:30:06.5923522Z ##[group]GITHUB_TOKEN Permissions
+2025-11-20T01:30:06.5926568Z Actions: read
+2025-11-20T01:30:06.5927449Z Contents: read
+2025-11-20T01:30:06.5928227Z Metadata: read
+2025-11-20T01:30:06.5929282Z SecurityEvents: write
+2025-11-20T01:30:06.5930141Z ##[endgroup]
+2025-11-20T01:30:06.5941581Z Secret source: Actions
+2025-11-20T01:30:06.5943366Z Prepare workflow directory
+2025-11-20T01:30:06.6916011Z Prepare all required actions
+2025-11-20T01:30:06.7036775Z Getting action download info
+2025-11-20T01:30:07.1668302Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+2025-11-20T01:30:07.6891557Z Download action repository 'actions/cache@v4' (SHA:0057852bfaa89a56745cba8c7296529d2fc39830)
+2025-11-20T01:30:07.8007912Z Download action repository 'github/codeql-action@v3' (SHA:c3d42c5d08633d8b33635fbd94b000a0e2585b3c)
+2025-11-20T01:30:08.6844880Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2025-11-20T01:30:08.9376445Z Complete job name: IaC セキュリティ (Bicep/K8s/Secrets)
+2025-11-20T01:30:09.0192551Z ##[group]Run actions/checkout@v4
+2025-11-20T01:30:09.0193780Z with:
+2025-11-20T01:30:09.0194409Z   fetch-depth: 0
+2025-11-20T01:30:09.0195150Z   repository: aktsmm/container-app-demo
+2025-11-20T01:30:09.0196370Z   token: ***
+2025-11-20T01:30:09.0197006Z   ssh-strict: true
+2025-11-20T01:30:09.0197656Z   ssh-user: git
+2025-11-20T01:30:09.0198324Z   persist-credentials: true
+2025-11-20T01:30:09.0199088Z   clean: true
+2025-11-20T01:30:09.0199760Z   sparse-checkout-cone-mode: true
+2025-11-20T01:30:09.0200846Z   fetch-tags: false
+2025-11-20T01:30:09.0201538Z   show-progress: true
+2025-11-20T01:30:09.0202237Z   lfs: false
+2025-11-20T01:30:09.0202872Z   submodules: false
+2025-11-20T01:30:09.0203562Z   set-safe-directory: true
+2025-11-20T01:30:09.0204611Z env:
+2025-11-20T01:30:09.0205261Z   CODEQL_LANGUAGES: javascript,python
+2025-11-20T01:30:09.0206126Z ##[endgroup]
+2025-11-20T01:30:09.1409834Z Syncing repository: aktsmm/container-app-demo
+2025-11-20T01:30:09.1414180Z ##[group]Getting Git version info
+2025-11-20T01:30:09.1418140Z Working directory is '/home/runner/work/container-app-demo/container-app-demo'
+2025-11-20T01:30:09.1421656Z [command]/usr/bin/git version
+2025-11-20T01:30:09.1512192Z git version 2.51.2
+2025-11-20T01:30:09.1545683Z ##[endgroup]
+2025-11-20T01:30:09.1561799Z Temporarily overriding HOME='/home/runner/work/_temp/2d962d97-3122-4c15-a882-8e0c167bf1dd' before making global git config changes
+2025-11-20T01:30:09.1568050Z Adding repository directory to the temporary git global config as a safe directory
+2025-11-20T01:30:09.1573160Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/container-app-demo/container-app-demo
+2025-11-20T01:30:09.1619870Z Deleting the contents of '/home/runner/work/container-app-demo/container-app-demo'
+2025-11-20T01:30:09.1625814Z ##[group]Initializing the repository
+2025-11-20T01:30:09.1629482Z [command]/usr/bin/git init /home/runner/work/container-app-demo/container-app-demo
+2025-11-20T01:30:09.1746613Z hint: Using 'master' as the name for the initial branch. This default branch name
+2025-11-20T01:30:09.1801342Z hint: is subject to change. To configure the initial branch name to use in all
+2025-11-20T01:30:09.1803746Z hint: of your new repositories, which will suppress this warning, call:
+2025-11-20T01:30:09.1806088Z hint:
+2025-11-20T01:30:09.1809475Z hint: 	git config --global init.defaultBranch <name>
+2025-11-20T01:30:09.1811585Z hint:
+2025-11-20T01:30:09.1813165Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2025-11-20T01:30:09.1816118Z hint: 'development'. The just-created branch can be renamed via this command:
+2025-11-20T01:30:09.1818419Z hint:
+2025-11-20T01:30:09.1819543Z hint: 	git branch -m <name>
+2025-11-20T01:30:09.1821218Z hint:
+2025-11-20T01:30:09.1823004Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2025-11-20T01:30:09.1826781Z Initialized empty Git repository in /home/runner/work/container-app-demo/container-app-demo/.git/
+2025-11-20T01:30:09.1832468Z [command]/usr/bin/git remote add origin https://github.com/aktsmm/container-app-demo
+2025-11-20T01:30:09.1837900Z ##[endgroup]
+2025-11-20T01:30:09.1839818Z ##[group]Disabling automatic garbage collection
+2025-11-20T01:30:09.1842188Z [command]/usr/bin/git config --local gc.auto 0
+2025-11-20T01:30:09.1871322Z ##[endgroup]
+2025-11-20T01:30:09.1873353Z ##[group]Setting up auth
+2025-11-20T01:30:09.1877010Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-11-20T01:30:09.1915236Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-11-20T01:30:09.2312958Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-11-20T01:30:09.2345643Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-11-20T01:30:09.2590210Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2025-11-20T01:30:09.2629116Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2025-11-20T01:30:09.2872613Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2025-11-20T01:30:09.2918448Z ##[endgroup]
+2025-11-20T01:30:09.2922685Z ##[group]Fetching the repository
+2025-11-20T01:30:09.2931287Z [command]/usr/bin/git -c protocol.version=2 fetch --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+2025-11-20T01:30:09.7891445Z From https://github.com/aktsmm/container-app-demo
+2025-11-20T01:30:09.7921511Z  * [new branch]      master     -> origin/master
+2025-11-20T01:30:09.7931718Z  * [new tag]         v1.0.0     -> v1.0.0
+2025-11-20T01:30:09.7943144Z [command]/usr/bin/git branch --list --remote origin/master
+2025-11-20T01:30:09.8001446Z   origin/master
+2025-11-20T01:30:09.8003731Z [command]/usr/bin/git rev-parse refs/remotes/origin/master
+2025-11-20T01:30:09.8031510Z 5cc8ddcab45885f858fbb75a4014e0f4b325250e
+2025-11-20T01:30:09.8042275Z ##[endgroup]
+2025-11-20T01:30:09.8044031Z ##[group]Determining the checkout info
+2025-11-20T01:30:09.8047193Z ##[endgroup]
+2025-11-20T01:30:09.8052950Z [command]/usr/bin/git sparse-checkout disable
+2025-11-20T01:30:09.8097732Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2025-11-20T01:30:09.8127461Z ##[group]Checking out the ref
+2025-11-20T01:30:09.8134436Z [command]/usr/bin/git checkout --progress --force -B master refs/remotes/origin/master
+2025-11-20T01:30:09.8220749Z Reset branch 'master'
+2025-11-20T01:30:09.8225577Z branch 'master' set up to track 'origin/master'.
+2025-11-20T01:30:09.8231934Z ##[endgroup]
+2025-11-20T01:30:09.8271667Z [command]/usr/bin/git log -1 --format=%H
+2025-11-20T01:30:09.8303694Z 5cc8ddcab45885f858fbb75a4014e0f4b325250e
+2025-11-20T01:30:09.9567013Z ##[group]Run actions/cache@v4
+2025-11-20T01:30:09.9567392Z with:
+2025-11-20T01:30:09.9567660Z   path: ~/.cache/trivy
+2025-11-20T01:30:09.9568166Z   key: trivy-db-Linux-b6edfd048dca3e8ca2bc9965669179309aad7d62f8c1874bab250d09795fe58f
+2025-11-20T01:30:09.9568720Z   restore-keys: trivy-db-Linux-
+
+2025-11-20T01:30:09.9569072Z   enableCrossOsArchive: false
+2025-11-20T01:30:09.9569403Z   fail-on-cache-miss: false
+2025-11-20T01:30:09.9569712Z   lookup-only: false
+2025-11-20T01:30:09.9569989Z   save-always: false
+2025-11-20T01:30:09.9570263Z env:
+2025-11-20T01:30:09.9570831Z   CODEQL_LANGUAGES: javascript,python
+2025-11-20T01:30:09.9571203Z ##[endgroup]
+2025-11-20T01:30:10.2842825Z Cache not found for input keys: trivy-db-Linux-b6edfd048dca3e8ca2bc9965669179309aad7d62f8c1874bab250d09795fe58f, trivy-db-Linux-
+2025-11-20T01:30:10.2961966Z ##[group]Run set -euo pipefail
+2025-11-20T01:30:10.2962483Z [36;1mset -euo pipefail[0m
+2025-11-20T01:30:10.2963205Z [36;1mcurl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin[0m
+2025-11-20T01:30:10.2963905Z [36;1mtrivy --version[0m
+2025-11-20T01:30:10.3002761Z shell: /usr/bin/bash -e {0}
+2025-11-20T01:30:10.3003120Z env:
+2025-11-20T01:30:10.3003416Z   CODEQL_LANGUAGES: javascript,python
+2025-11-20T01:30:10.3003778Z ##[endgroup]
+2025-11-20T01:30:10.3822406Z aquasecurity/trivy info checking GitHub for latest tag
+2025-11-20T01:30:10.4999016Z aquasecurity/trivy info found version: 0.67.2 for v0.67.2/Linux/64bit
+2025-11-20T01:30:12.3199254Z aquasecurity/trivy info installed /usr/local/bin/trivy
+2025-11-20T01:30:12.4200279Z Version: 0.67.2
+2025-11-20T01:30:12.4271972Z ##[group]Run set -euo pipefail
+2025-11-20T01:30:12.4272321Z [36;1mset -euo pipefail[0m
+2025-11-20T01:30:12.4272563Z [36;1mVERSION="8.18.4"[0m
+2025-11-20T01:30:12.4273123Z [36;1mcurl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o gitleaks.tgz[0m
+2025-11-20T01:30:12.4273745Z [36;1mtar -xzf gitleaks.tgz gitleaks[0m
+2025-11-20T01:30:12.4274056Z [36;1msudo install -m 755 gitleaks /usr/local/bin/gitleaks[0m
+2025-11-20T01:30:12.4274352Z [36;1mgitleaks version[0m
+2025-11-20T01:30:12.4306527Z shell: /usr/bin/bash -e {0}
+2025-11-20T01:30:12.4306764Z env:
+2025-11-20T01:30:12.4306975Z   CODEQL_LANGUAGES: javascript,python
+2025-11-20T01:30:12.4307244Z ##[endgroup]
+2025-11-20T01:30:12.8377638Z 8.18.4
+2025-11-20T01:30:12.8417230Z ##[group]Run set +e
+2025-11-20T01:30:12.8417690Z [36;1mset +e[0m
+2025-11-20T01:30:12.8418338Z [36;1mgitleaks detect --no-banner --report-format sarif --report-path gitleaks-repo.sarif[0m
+2025-11-20T01:30:12.8419080Z [36;1mEXIT_CODE=$?[0m
+2025-11-20T01:30:12.8419460Z [36;1mif [ $EXIT_CODE -ne 0 ]; then[0m
+2025-11-20T01:30:12.8420049Z [36;1m  echo "⚠️ シークレット検出あり（警告）- Security タブで確認してください"[0m
+2025-11-20T01:30:12.8420904Z [36;1mfi[0m
+2025-11-20T01:30:12.8421218Z [36;1mexit 0[0m
+2025-11-20T01:30:12.8469358Z shell: /usr/bin/bash -e {0}
+2025-11-20T01:30:12.8469783Z env:
+2025-11-20T01:30:12.8470116Z   CODEQL_LANGUAGES: javascript,python
+2025-11-20T01:30:12.8470775Z ##[endgroup]
+2025-11-20T01:30:12.9742453Z [90m1:30AM[0m [32mINF[0m 51 commits scanned.
+2025-11-20T01:30:12.9743815Z [90m1:30AM[0m [32mINF[0m scan completed in 98.5ms
+2025-11-20T01:30:12.9746260Z [90m1:30AM[0m [31mWRN[0m leaks found: 1
+2025-11-20T01:30:12.9761951Z ⚠️ シークレット検出あり（警告）- Security タブで確認してください
+2025-11-20T01:30:12.9804331Z ##[group]Run set -euo pipefail
+2025-11-20T01:30:12.9804805Z [36;1mset -euo pipefail[0m
+2025-11-20T01:30:12.9805168Z [36;1mtrivy fs . \[0m
+2025-11-20T01:30:12.9805546Z [36;1m  --scanners vuln,secret,config \[0m
+2025-11-20T01:30:12.9806060Z [36;1m  --severity CRITICAL,HIGH \[0m
+2025-11-20T01:30:12.9806506Z [36;1m  --format sarif --output trivy-fs-all.sarif \[0m
+2025-11-20T01:30:12.9806860Z [36;1m  --ignore-unfixed || echo "⚠️ 脆弱性/シークレット検出あり（警告）"[0m
+2025-11-20T01:30:12.9840134Z shell: /usr/bin/bash -e {0}
+2025-11-20T01:30:12.9840358Z env:
+2025-11-20T01:30:12.9840804Z   CODEQL_LANGUAGES: javascript,python
+2025-11-20T01:30:12.9841054Z ##[endgroup]
+2025-11-20T01:30:13.0500652Z 2025-11-20T01:30:13Z	WARN	'--scanners config' is deprecated. Use '--scanners misconfig' instead. See https://github.com/aquasecurity/trivy/discussions/5586 for the detail.
+2025-11-20T01:30:13.0521199Z 2025-11-20T01:30:13Z	INFO	[vulndb] Need to update DB
+2025-11-20T01:30:13.0524992Z 2025-11-20T01:30:13Z	INFO	[vulndb] Downloading vulnerability DB...
+2025-11-20T01:30:13.0527636Z 2025-11-20T01:30:13Z	INFO	[vulndb] Downloading artifact...	repo="mirror.gcr.io/aquasec/trivy-db:2"
+2025-11-20T01:30:16.4854444Z 11.73 MiB / 75.47 MiB [--------->___________________________________________________] 15.54% ? p/s ?42.85 MiB / 75.47 MiB [---------------------------------->__________________________] 56.78% ? p/s ?75.47 MiB / 75.47 MiB [----------------------------------------------------------->] 100.00% ? p/s ?75.47 MiB / 75.47 MiB [--------------------------------------------->] 100.00% 106.23 MiB p/s ETA 0s75.47 MiB / 75.47 MiB [--------------------------------------------->] 100.00% 106.23 MiB p/s ETA 0s75.47 MiB / 75.47 MiB [--------------------------------------------->] 100.00% 106.23 MiB p/s ETA 0s75.47 MiB / 75.47 MiB [---------------------------------------------->] 100.00% 99.38 MiB p/s ETA 0s75.47 MiB / 75.47 MiB [---------------------------------------------->] 100.00% 99.38 MiB p/s ETA 0s75.47 MiB / 75.47 MiB [---------------------------------------------->] 100.00% 99.38 MiB p/s ETA 0s75.47 MiB / 75.47 MiB [---------------------------------------------->] 100.00% 92.97 MiB p/s ETA 0s75.47 MiB / 75.47 MiB [---------------------------------------------->] 100.00% 92.97 MiB p/s ETA 0s75.47 MiB / 75.47 MiB [---------------------------------------------->] 100.00% 92.97 MiB p/s ETA 0s75.47 MiB / 75.47 MiB [---------------------------------------------->] 100.00% 86.97 MiB p/s ETA 0s75.47 MiB / 75.47 MiB [---------------------------------------------->] 100.00% 86.97 MiB p/s ETA 0s75.47 MiB / 75.47 MiB [-------------------------------------------------] 100.00% 28.08 MiB p/s 2.9s2025-11-20T01:30:16Z	INFO	[vulndb] Artifact successfully downloaded	repo="mirror.gcr.io/aquasec/trivy-db:2"
+2025-11-20T01:30:16.4963568Z 2025-11-20T01:30:16Z	INFO	[vuln] Vulnerability scanning is enabled
+2025-11-20T01:30:16.4980015Z 2025-11-20T01:30:16Z	INFO	[misconfig] Misconfiguration scanning is enabled
+2025-11-20T01:30:16.4980879Z 2025-11-20T01:30:16Z	INFO	[misconfig] Need to update the checks bundle
+2025-11-20T01:30:16.4981498Z 2025-11-20T01:30:16Z	INFO	[misconfig] Downloading the checks bundle...
+2025-11-20T01:30:18.0141431Z 165.46 KiB / 165.46 KiB [---------------------------------------------------------] 100.00% ? p/s 0s2025-11-20T01:30:18Z	INFO	[secret] Secret scanning is enabled
+2025-11-20T01:30:18.0143169Z 2025-11-20T01:30:18Z	INFO	[secret] If your scanning is slow, please try '--scanners vuln,misconfig' to disable secret scanning
+2025-11-20T01:30:18.0145641Z 2025-11-20T01:30:18Z	INFO	[secret] Please see https://trivy.dev/v0.67/docs/scanner/secret#recommendation for faster secret detection
+2025-11-20T01:30:18.3174338Z 2025-11-20T01:30:18Z	WARN	[pip] Unable to find python `site-packages` directory. License detection is skipped.	err="site-packages directory not found"
+2025-11-20T01:30:18.4138067Z 2025-11-20T01:30:18Z	INFO	[npm] To collect the license information of packages, "npm install" needs to be performed beforehand	dir="app/board-app/node_modules"
+2025-11-20T01:30:18.4192809Z 2025-11-20T01:30:18Z	INFO	Suppressing dependencies for development and testing. To display them, try the '--include-dev-deps' flag.
+2025-11-20T01:30:18.4197731Z 2025-11-20T01:30:18Z	INFO	Number of language-specific files	num=2
+2025-11-20T01:30:18.4202383Z 2025-11-20T01:30:18Z	INFO	[npm] Detecting vulnerabilities...
+2025-11-20T01:30:18.4205256Z 2025-11-20T01:30:18Z	INFO	[pip] Detecting vulnerabilities...
+2025-11-20T01:30:18.4207875Z 2025-11-20T01:30:18Z	INFO	Detected config files	num=6
+2025-11-20T01:30:18.4426379Z ##[group]Run set -euo pipefail
+2025-11-20T01:30:18.4426884Z [36;1mset -euo pipefail[0m
+2025-11-20T01:30:18.4427273Z [36;1mtrivy fs infra \[0m
+2025-11-20T01:30:18.4427685Z [36;1m  --scanners config,secret \[0m
+2025-11-20T01:30:18.4428123Z [36;1m  --severity CRITICAL,HIGH,MEDIUM \[0m
+2025-11-20T01:30:18.4428646Z [36;1m  --format sarif --output trivy-infra.sarif \[0m
+2025-11-20T01:30:18.4429160Z [36;1m  --ignore-unfixed[0m
+2025-11-20T01:30:18.4487250Z shell: /usr/bin/bash -e {0}
+2025-11-20T01:30:18.4487632Z env:
+2025-11-20T01:30:18.4487978Z   CODEQL_LANGUAGES: javascript,python
+2025-11-20T01:30:18.4488409Z ##[endgroup]
+2025-11-20T01:30:18.6101770Z 2025-11-20T01:30:18Z	WARN	'--scanners config' is deprecated. Use '--scanners misconfig' instead. See https://github.com/aquasecurity/trivy/discussions/5586 for the detail.
+2025-11-20T01:30:18.6122756Z 2025-11-20T01:30:18Z	INFO	[misconfig] Misconfiguration scanning is enabled
+2025-11-20T01:30:19.7386748Z 2025-11-20T01:30:19Z	INFO	[secret] Secret scanning is enabled
+2025-11-20T01:30:19.7392072Z 2025-11-20T01:30:19Z	INFO	[secret] If your scanning is slow, please try '--scanners misconfig' to disable secret scanning
+2025-11-20T01:30:19.7411724Z 2025-11-20T01:30:19Z	INFO	[secret] Please see https://trivy.dev/v0.67/docs/scanner/secret#recommendation for faster secret detection
+2025-11-20T01:30:19.7716390Z 2025-11-20T01:30:19Z	INFO	Number of language-specific files	num=0
+2025-11-20T01:30:19.7718246Z 2025-11-20T01:30:19Z	INFO	Detected config files	num=0
+2025-11-20T01:30:19.7812260Z ##[group]Run set -euo pipefail
+2025-11-20T01:30:19.7812588Z [36;1mset -euo pipefail[0m
+2025-11-20T01:30:19.7812832Z [36;1mtrivy fs app/board-app/k8s \[0m
+2025-11-20T01:30:19.7813087Z [36;1m  --scanners config,secret \[0m
+2025-11-20T01:30:19.7813353Z [36;1m  --severity CRITICAL,HIGH,MEDIUM \[0m
+2025-11-20T01:30:19.7813632Z [36;1m  --format sarif --output trivy-k8s.sarif \[0m
+2025-11-20T01:30:19.7813930Z [36;1m  --ignore-unfixed[0m
+2025-11-20T01:30:19.7847017Z shell: /usr/bin/bash -e {0}
+2025-11-20T01:30:19.7847237Z env:
+2025-11-20T01:30:19.7847429Z   CODEQL_LANGUAGES: javascript,python
+2025-11-20T01:30:19.7847674Z ##[endgroup]
+2025-11-20T01:30:19.8537227Z 2025-11-20T01:30:19Z	WARN	'--scanners config' is deprecated. Use '--scanners misconfig' instead. See https://github.com/aquasecurity/trivy/discussions/5586 for the detail.
+2025-11-20T01:30:19.8561318Z 2025-11-20T01:30:19Z	INFO	[misconfig] Misconfiguration scanning is enabled
+2025-11-20T01:30:20.9692432Z 2025-11-20T01:30:20Z	INFO	[secret] Secret scanning is enabled
+2025-11-20T01:30:20.9695581Z 2025-11-20T01:30:20Z	INFO	[secret] If your scanning is slow, please try '--scanners misconfig' to disable secret scanning
+2025-11-20T01:30:20.9706928Z 2025-11-20T01:30:20Z	INFO	[secret] Please see https://trivy.dev/v0.67/docs/scanner/secret#recommendation for faster secret detection
+2025-11-20T01:30:21.0524748Z 2025-11-20T01:30:21Z	INFO	Number of language-specific files	num=0
+2025-11-20T01:30:21.0527745Z 2025-11-20T01:30:21Z	INFO	Detected config files	num=4
+2025-11-20T01:30:21.0684437Z ##[group]Run github/codeql-action/upload-sarif@v3
+2025-11-20T01:30:21.0684748Z with:
+2025-11-20T01:30:21.0684947Z   sarif_file: gitleaks-repo.sarif
+2025-11-20T01:30:21.0685180Z   category: gitleaks
+2025-11-20T01:30:21.0685484Z   checkout_path: /home/runner/work/container-app-demo/container-app-demo
+2025-11-20T01:30:21.0685971Z   token: ***
+2025-11-20T01:30:21.0686154Z   matrix: null
+2025-11-20T01:30:21.0686356Z   wait-for-processing: true
+2025-11-20T01:30:21.0686567Z env:
+2025-11-20T01:30:21.0686745Z   CODEQL_LANGUAGES: javascript,python
+2025-11-20T01:30:21.0686983Z ##[endgroup]
+2025-11-20T01:30:21.2337246Z ##[warning]CodeQL Action v3 will be deprecated in December 2026. Please update all occurrences of the CodeQL Action in your workflow files to v4. For more information, see https://github.blog/changelog/2025-10-28-upcoming-deprecation-of-codeql-action-v3/
+2025-11-20T01:30:21.8238648Z Post-processing sarif files: ["gitleaks-repo.sarif"]
+2025-11-20T01:30:21.8246901Z Validating gitleaks-repo.sarif
+2025-11-20T01:30:21.9511227Z Adding fingerprints to SARIF file. See https://docs.github.com/en/enterprise-cloud@latest/code-security/code-scanning/integrating-with-code-scanning/sarif-support-for-code-scanning#providing-data-to-track-code-scanning-alerts-across-runs for more information.
+2025-11-20T01:30:21.9670107Z ##[group]Uploading code scanning results
+2025-11-20T01:30:21.9815134Z Uploading results
+2025-11-20T01:30:22.1706911Z ##[warning]Code scanning is not enabled for this repository. Please enable code scanning in the repository settings. - https://docs.github.com/rest
+2025-11-20T01:30:22.1714360Z ##[error]Please verify that the necessary features are enabled: Code scanning is not enabled for this repository. Please enable code scanning in the repository settings. - https://docs.github.com/rest
+2025-11-20T01:30:22.3928820Z Post job cleanup.
+2025-11-20T01:30:22.5937891Z ##[group]Uploading combined SARIF debug artifact
+2025-11-20T01:30:22.5938878Z ##[endgroup]
+2025-11-20T01:30:22.6114389Z Post job cleanup.
+2025-11-20T01:30:22.7302287Z [command]/usr/bin/git version
+2025-11-20T01:30:22.7344713Z git version 2.51.2
+2025-11-20T01:30:22.7393258Z Temporarily overriding HOME='/home/runner/work/_temp/db054ded-7a7a-4088-8290-7568f3fb9dd4' before making global git config changes
+2025-11-20T01:30:22.7395161Z Adding repository directory to the temporary git global config as a safe directory
+2025-11-20T01:30:22.7401313Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/container-app-demo/container-app-demo
+2025-11-20T01:30:22.7448458Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-11-20T01:30:22.7486965Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-11-20T01:30:22.7740794Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-11-20T01:30:22.7769757Z http.https://github.com/.extraheader
+2025-11-20T01:30:22.7784046Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2025-11-20T01:30:22.7819621Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-11-20T01:30:22.8066790Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2025-11-20T01:30:22.8106265Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2025-11-20T01:30:22.8502251Z Cleaning up orphan processes
