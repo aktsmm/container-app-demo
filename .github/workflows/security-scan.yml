@@ -201,56 +201,91 @@ jobs:
           name: codeql-sarif
           path: sarif-codeql
 
-      - name: 重要度上位検出抽出 (最大5件)
+      - name: カテゴリ別上位検出抽出 (各カテゴリ上位3件)
         run: |
           set -euo pipefail
           TOP_FILE=top-findings.md
           JSON_FILE=top-findings.json
-          echo "### 🧪 上位検出 (最大5件)" > $TOP_FILE
+          echo "### 📁 カテゴリ別アラート (各上位3件)" > $TOP_FILE
           echo "" >> $TOP_FILE
-          FILE_LIST=$(ls sarif/*.sarif 2>/dev/null || true; ls sarif-codeql/*.sarif 2>/dev/null || true)
-          if [ -z "$FILE_LIST" ]; then
-            echo "成果物が見つかりません (ARTIFACT未取得)" >> $TOP_FILE
-            echo '{"topFindings":[],"error":"no artifacts"}' > $JSON_FILE
-          else
-            ALL=$(for f in $FILE_LIST; do
+          
+          # カテゴリ定義: ファイル名パターン → カテゴリ名 → アイコン
+          declare -A CATEGORIES=(
+            ["codeql"]="🔍 CodeQL (JS/Python コード品質)"
+            ["gitleaks"]="🔑 Gitleaks (シークレット漏洩)"
+            ["trivy-fs"]="🛡️ Trivy FileSystem (脆弱性・シークレット)"
+            ["trivy-infra"]="🏗️ Trivy Infra (Bicep 設定ミス)"
+            ["trivy-k8s"]="☸️ Trivy K8s (Kubernetes 設定)"
+          )
+          
+          echo '{"categorizedFindings":{' > $JSON_FILE
+          FIRST_CAT=1
+          
+          for PATTERN in codeql gitleaks trivy-fs trivy-infra trivy-k8s; do
+            CAT_NAME="${CATEGORIES[$PATTERN]}"
+            
+            # ファイルリスト取得
+            if [ "$PATTERN" = "codeql" ]; then
+              FILES=$(ls sarif-codeql/*.sarif 2>/dev/null || true)
+            elif [ "$PATTERN" = "trivy-fs" ]; then
+              FILES=$(ls sarif/trivy-fs-all.sarif 2>/dev/null || true)
+            else
+              FILES=$(ls sarif/${PATTERN}*.sarif 2>/dev/null || true)
+            fi
+            
+            if [ -z "$FILES" ]; then
+              continue
+            fi
+            
+            # カテゴリごとに検出抽出
+            ALL=$(for f in $FILES; do
               jq -r --arg SRC "$f" '
                 .runs[]? .results[]? | {
                   rid:(.ruleId // "(rule不明)"),
                   lvl:(.level // "note"),
                   sev:(.properties.severity // .properties["security-severity"] // .rule.properties.severity // "UNSPECIFIED"),
-                  msg:(.message.text // ""),
-                  src:$SRC
+                  msg:(.message.text // "")
                 } | select(.lvl=="error" or .lvl=="warning") | [
                   (if (.sev|ascii_upcase)=="CRITICAL" then 0 elif (.sev|ascii_upcase)=="HIGH" then 1 elif (.sev|ascii_upcase)=="MEDIUM" then 2 elif (.sev|ascii_upcase)=="LOW" then 3 else 4 end),
                   (if .lvl=="error" then 0 else 1 end),
                   (.sev|ascii_upcase),
                   .rid,
-                  (.msg | gsub("\n"; " ") | gsub(" {2,}"; " ")),
-                  .src
-                ] | @tsv' "$f" || true;
+                  (.msg | gsub("\n"; " ") | gsub(" {2,}"; " "))
+                ] | @tsv' "$f" 2>/dev/null || true
             done)
-            if [ -z "$ALL" ]; then
-              echo "高優先度検出なし (error/warning 0件)" >> $TOP_FILE
-              echo '{"topFindings":[],"error":"no error/warning"}' > $JSON_FILE
-            else
-              TOP=$(echo "$ALL" | sort -t$'\t' -k1,1n -k2,2n | head -n 5)
-              echo '{"topFindings":[' > $JSON_FILE
+            
+            if [ -n "$ALL" ]; then
+              TOP3=$(echo "$ALL" | sort -t$'\t' -k1,1n -k2,2n | head -n 3)
+              echo "#### $CAT_NAME" >> $TOP_FILE
+              echo "" >> $TOP_FILE
+              
+              [ $FIRST_CAT -eq 0 ] && echo "," >> $JSON_FILE
+              echo "\"$PATTERN\":[" >> $JSON_FILE
+              FIRST_CAT=0
+              
               COUNT=0
-              while IFS=$'\t' read -r SEV_RANK LVL_RANK SEV RULE MSG SRC; do
+              while IFS=$'\t' read -r SEV_RANK LVL_RANK SEV RULE MSG; do
                 COUNT=$((COUNT+1))
-                SHORT=$(echo "$MSG" | cut -c1-100)
-                echo "- **$SEV** / $RULE: $SHORT" >> $TOP_FILE
+                SHORT=$(echo "$MSG" | cut -c1-80)
+                echo "$COUNT. **$SEV** / \`$RULE\`: $SHORT" >> $TOP_FILE
+                
                 ESC_MSG=$(echo "$MSG" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
                 SEP=','; [ $COUNT -eq 1 ] && SEP=''
-                echo "${SEP}{\"severity\":\"$SEV\",\"ruleId\":\"$RULE\",\"message\":\"$ESC_MSG\",\"sourceFile\":\"$SRC\"}" >> $JSON_FILE
-              done <<< "$TOP"
-              echo '],"generatedAt":"'$(date -u +'%Y-%m-%dT%H:%M:%SZ')'"}' >> $JSON_FILE
-              if [ $COUNT -eq 0 ]; then
-                sed -i '1i高優先度検出なし (error/warning 0件)' $TOP_FILE
-              fi
+                echo "${SEP}{\"severity\":\"$SEV\",\"ruleId\":\"$RULE\",\"message\":\"$ESC_MSG\"}" >> $JSON_FILE
+              done <<< "$TOP3"
+              
+              echo "]" >> $JSON_FILE
+              echo "" >> $TOP_FILE
             fi
+          done
+          
+          echo '},"generatedAt":"'$(date -u +'%Y-%m-%dT%H:%M:%SZ')'"}' >> $JSON_FILE
+          
+          # サマリがない場合
+          if [ $FIRST_CAT -eq 1 ]; then
+            echo "高優先度検出なし (error/warning 0件)" >> $TOP_FILE
           fi
+          
           cat $TOP_FILE >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "(機械可読JSON: top-findings.json を artifact として保存)" >> $GITHUB_STEP_SUMMARY
