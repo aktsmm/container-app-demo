@@ -51,7 +51,7 @@ az account set --subscription "<SUBSCRIPTION_ID>"
 
 ### 自動付与されるロール
 
-このスクリプトは以下の3つのロールを自動で付与します：
+このスクリプトは以下の 3 つのロールを自動で付与します：
 
 1. **Contributor** (指定したロール) – リソースの作成・更新・削除
 2. **Resource Policy Contributor** (自動追加) – Azure Policy の割り当て・管理（`infra/policy.bicep` デプロイに必要）
@@ -59,18 +59,40 @@ az account set --subscription "<SUBSCRIPTION_ID>"
 
 ### 実行例
 
+**最低限の実行（サブスクリプションスコープ）**:
+
+```powershell
+pwsh ./scripts/create-github-actions-sp.ps1 -SubscriptionId "<SUBSCRIPTION_ID>"
+```
+
+**リソースグループスコープで実行（推奨）**:
+
 ```powershell
 pwsh ./scripts/create-github-actions-sp.ps1 `
     -SubscriptionId "<SUBSCRIPTION_ID>" `
-    -ResourceGroupName "RG-bbs-app-demo" `
-    -DisplayName "gha-container-app-demo" `
-    -RoleDefinitionName "Contributor" `
-    -SecretDurationYears 2
+    -ResourceGroupName "RG-bbs-app-demo"
 ```
 
-- **ResourceGroupName を指定した場合**: 3つのロールすべてがリソースグループスコープで付与されます（推奨）
-- **ResourceGroupName を省略した場合**: サブスクリプションスコープで付与されます（権限範囲が広いため注意）
-- 出力される `AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_CLIENT_SECRET / AZURE_SUBSCRIPTION_ID` をメモします。
+### パラメータ説明
+
+- **SubscriptionId** (必須) – Azure サブスクリプション ID
+- **ResourceGroupName** (オプション) – 指定するとリソースグループスコープで権限付与（推奨）。省略するとサブスクリプション全体に付与
+- **DisplayName** (オプション) – Service Principal の表示名（デフォルト: `gha-sp-secret`）
+- **RoleDefinitionName** (オプション) – 基本ロール（デフォルト: `Contributor`）
+- **SecretDurationYears** (オプション) – シークレット有効期限（デフォルト: `2` 年、範囲: 1-5 年）
+
+### 出力例
+
+```
+--- GitHub Actions に設定するシークレット ---
+AZURE_CLIENT_ID = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+AZURE_TENANT_ID = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+AZURE_SUBSCRIPTION_ID = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+AZURE_CLIENT_SECRET = xxx~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+----------------------------------------
+```
+
+この 4 つの値を **手順 5** で使用するため、メモしてください。
 
 ## 5. GitHub Secrets / Variables の登録
 
