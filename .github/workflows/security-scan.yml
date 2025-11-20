@@ -19,7 +19,9 @@ on:
   workflow_dispatch:
 
 permissions:
+  # CodeQL と SARIF アップロードで必要な最低権限
   contents: read
+  actions: read # CodeQL がワークフロー実行情報取得時に "Resource not accessible by integration" を避けるため追加
   security-events: write
 
 env:
@@ -54,7 +56,7 @@ jobs:
       - name: コード取得
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Gitleaks用に全履歴を取得
+          fetch-depth: 0 # Gitleaks用に全履歴を取得
 
       - name: Trivy DB キャッシュ復元
         uses: actions/cache@v4
@@ -121,25 +123,25 @@ jobs:
             --ignore-unfixed
 
       - name: Gitleaks SARIF アップロード
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: gitleaks-repo.sarif
           category: gitleaks
 
       - name: Trivy SARIF アップロード (全体)
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-fs-all.sarif
           category: trivy-filesystem
 
       - name: Trivy SARIF アップロード (infra)
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-infra.sarif
           category: trivy-infra
 
       - name: Trivy SARIF アップロード (k8s)
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-k8s.sarif
           category: trivy-k8s
@@ -188,6 +190,7 @@ jobs:
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "✅ スキャン実行日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY
           echo "🔄 次回定期実行: 毎日 12:00 JST" >> $GITHUB_STEP_SUMMARY
+
 # コメント:
 # - CodeQL: JavaScript(React/Vite) と Python(FastAPI/Flask等) を security-extended クエリで解析。
 # - IaC: Bicep と Kubernetes YAML を Trivy config+secret スキャナでスキャンし、ミスコンフィグ/シークレット漏洩を検出。
