@@ -20,21 +20,21 @@
 | `AZURE_CLIENT_ID`                           | 全ワークフローの `azure/login@v2`                                        |
 | `AZURE_CLIENT_SECRET`                       | 同上 (現在は Variable。秘匿度を高めたい場合は Secret へ移行してください) |
 | `AZURE_TENANT_ID`                           | 同上                                                                     |
-| `RESOURCE_GROUP_NAME`                       | 全ワークフロー (ACR/Storage 解決、`az group create`) - 実際: `RG-bbs-app10000` |
+| `RESOURCE_GROUP_NAME`                       | 全ワークフロー (ACR/Storage 解決、`az group create`)                     |
 | `LOCATION`                                  | `1-infra-deploy.yml` (RG 作成、Policy パラメーター)                      |
-| `ACR_NAME_PREFIX`                           | ビルド/デプロイ/バックアップ全般 (ACR 名解決) - 実際: `acrdemo8548`      |
-| `STORAGE_ACCOUNT_PREFIX`                    | `1-infra`, `3-deploy-admin`, `backup-upload` - 実際: `demo8990`         |
+| `ACR_NAME_PREFIX`                           | ビルド/デプロイ/バックアップ全般 (ACR 名解決)                            |
+| `STORAGE_ACCOUNT_PREFIX`                    | `1-infra`, `3-deploy-admin`, `backup-upload`                             |
 | `AKS_CLUSTER_NAME`                          | `3-deploy-board-app` (AKS 認証)                                          |
 | `ACA_ENVIRONMENT_NAME`                      | `3-deploy-admin-app` (初期値。実際は RG から再解決)                      |
 | `ADMIN_CONTAINER_APP_NAME`                  | `3-deploy-admin-app`                                                     |
 | `BOARD_IMAGE_NAME` / `BOARD_API_IMAGE_NAME` | Build/Deploy Board ワークフロー内の `env` で定義済み                     |
 | `ADMIN_IMAGE_NAME`                          | Build/Admin ワークフロー内                                               |
 | `VM_NAME`                                   | `3-deploy-admin-app` (DB IP 取得), `backup-upload`                       |
-| `VM_ADMIN_USERNAME` / `VM_ADMIN_PASSWORD`   | `1-infra-deploy.yml` (Bicep パラメーター) - 実際: `test-admin` / `P@ssw0rd!2025` |
-| `MYSQL_ROOT_PASSWORD`                       | `1-infra-deploy.yml`, `backup-upload.yml` - 実際: `P@ssw0rd!2025`        |
-| `DB_APP_USERNAME` / `DB_APP_PASSWORD`       | `1-infra-deploy.yml`, `3-deploy-board-app`, `3-deploy-admin-app` - 実際: `test-admin` / `P@ssw0rd!2025` |
-| `BACKUP_CONTAINER_NAME`                     | `3-deploy-admin-app`, `backup-upload.yml` - 実際: `mysql-backups`       |
-| `ACA_ADMIN_USERNAME` / `ACA_ADMIN_PASSWORD` | `3-deploy-admin-app` の Basic 認証シークレット - 実際: `test-admin` / `P@ssw0rd!2025` |
+| `VM_ADMIN_USERNAME` / `VM_ADMIN_PASSWORD`   | `1-infra-deploy.yml` (Bicep パラメーター)                                |
+| `MYSQL_ROOT_PASSWORD`                       | `1-infra-deploy.yml`, `backup-upload.yml`                                |
+| `DB_APP_USERNAME` / `DB_APP_PASSWORD`       | `1-infra-deploy.yml`, `3-deploy-board-app`, `3-deploy-admin-app`         |
+| `BACKUP_CONTAINER_NAME`                     | `3-deploy-admin-app`, `backup-upload.yml`                                |
+| `ACA_ADMIN_USERNAME` / `ACA_ADMIN_PASSWORD` | `3-deploy-admin-app` の Basic 認証シークレット                           |
 
 `DB_ENDPOINT` は Bicep デプロイの出力 (`infra-outputs` アーティファクト) から `3️⃣ Deploy Board/Admin` が自動で解決し、`DB_ENDPOINT_RESOLVED` として利用します。GitHub Variables で管理する必要はありません。
 

@@ -104,6 +104,9 @@
     "aksPodCidr": {
       "value": "10.244.0.0/16"
     },
+    "ingressPublicIpName": {
+      "value": "pip-aks-ingress-dev"
+    },
     "vmName": {
       "value": "vm-mysql-demo"
     },

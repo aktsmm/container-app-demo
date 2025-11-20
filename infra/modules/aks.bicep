@@ -24,8 +24,25 @@ param subnetId string
 @description('Log Analytics Workspace Resource ID')
 param logAnalyticsWorkspaceId string
 
+@description('Ingress用Static Public IP名')
+param ingressPublicIpName string
+
 @description('共通タグ')
 param tags object = {}
+
+// Ingress Controller用のStatic Public IP（Standard SKU必須）
+resource ingressPublicIp 'Microsoft.Network/publicIPAddresses@2023-09-01' = {
+  name: ingressPublicIpName
+  location: location
+  sku: {
+    name: 'Standard'  // AKS Standard Load Balancerに必須
+  }
+  properties: {
+    publicIPAllocationMethod: 'Static'  // Standard SKUではStaticのみ可
+    publicIPAddressVersion: 'IPv4'
+  }
+  tags: tags
+}
 
 resource cluster 'Microsoft.ContainerService/managedClusters@2024-05-01' = {
   name: name
@@ -94,3 +111,6 @@ resource cluster 'Microsoft.ContainerService/managedClusters@2024-05-01' = {
 output id string = cluster.id
 output principalId string = cluster.identity.principalId
 output kubeletIdentity object = cluster.properties.identityProfile.kubeletidentity
+output nodeResourceGroup string = cluster.properties.nodeResourceGroup
+output ingressPublicIpAddress string = ingressPublicIp.properties.ipAddress
+output ingressPublicIpId string = ingressPublicIp.id

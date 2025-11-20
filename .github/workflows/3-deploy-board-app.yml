@@ -135,6 +135,18 @@ jobs:
           # 目的: ClusterIP のアプリ Service を外部公開するため nginx Ingress Controller を Helm で導入し、LoadBalancer IP を取得する
           # なぜ必要か: 現在 board-app の Service は ClusterIP。Ingress Controller が存在しないと外部 LB IP は割り当てられないため
 
+          # Bicep でデプロイした Static Public IP を取得
+          STATIC_IP=$(az network public-ip show \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --name pip-aks-ingress-dev \
+            --query ipAddress -o tsv 2>/dev/null || echo "")
+
+          # AKS の Managed Resource Group 名を取得（アノテーション用）
+          NODE_RG=$(az aks show \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --name "$AKS_CLUSTER_NAME" \
+            --query nodeResourceGroup -o tsv)
+
           # Helm リポジトリを追加・更新（upgrade/install 両パスで必要）
           helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx || true
           helm repo update
@@ -150,6 +162,19 @@ jobs:
             fi
           fi
 
+          # Static IP 設定の準備
+          STATIC_IP_ARGS=""
+          if [ -n "$STATIC_IP" ]; then
+            echo "✅ Static Public IP を使用: $STATIC_IP (Resource Group: $NODE_RG)"
+            STATIC_IP_ARGS="--set controller.service.loadBalancerIP=$STATIC_IP --set controller.service.annotations.\"service\.beta\.kubernetes\.io/azure-load-balancer-resource-group\"=$NODE_RG"
+            # GitHub Variables に INGRESS_PUBLIC_IP を自動設定（次回以降のワークフローで使用可能）
+            if command -v gh &> /dev/null; then
+              gh variable set INGRESS_PUBLIC_IP --body "$STATIC_IP" || echo "⚠️ gh variable set に失敗（権限不足の可能性）"
+            fi
+          else
+            echo "⚠️ Static Public IP が見つかりません。Dynamic IP が割り当てられます"
+          fi
+
           if kubectl get ns ingress-nginx >/dev/null 2>&1; then
             echo "既に ingress-nginx Namespace が存在します。Service を再作成して LoadBalancer 設定を修正します";
             helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
@@ -157,6 +182,7 @@ jobs:
               --reuse-values \
               --set controller.service.externalTrafficPolicy=Local \
               --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+              $STATIC_IP_ARGS \
               --wait --timeout=5m
           else
             echo "ingress-nginx を Helm でインストールします"
@@ -167,6 +193,7 @@ jobs:
               --set controller.replicaCount=1 \
               --set controller.service.externalTrafficPolicy=Local \
               --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+              $STATIC_IP_ARGS \
               --wait --timeout=5m
           fi
 

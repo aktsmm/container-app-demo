@@ -2,9 +2,29 @@
 
 ## 1. 前提条件
 
-- **Azure CLI** (v2.60+): Windows では `winget install Microsoft.AzureCLI`。公式手順: <https://learn.microsoft.com/cli/azure/install-azure-cli-windows>
-- **GitHub CLI (gh)**: リポジトリ変数/シークレット登録に利用。公式手順: <https://learn.microsoft.com/cli/github/get-started>
-- **PowerShell 7 以降**: すべての補助スクリプト (`scripts/*.ps1`) はクロスプラットフォームな PowerShell で動作。
+### 1.1 必須ツール
+
+- **Visual Studio Code**: コード編集・IaC 管理・k8s 操作の統合環境。Windows: `winget install Microsoft.VisualStudioCode`
+- **Git**: リポジトリクローンに必要。`git --version` で確認。Windows: `winget install Git.Git`
+- **Azure CLI** (v2.60+): `az --version` で確認。Windows: `winget install Microsoft.AzureCLI`。公式手順: <https://learn.microsoft.com/cli/azure/install-azure-cli-windows>
+- **kubectl**: AKS 操作に必須。`kubectl version --client` で確認。インストール: `az aks install-cli` または `winget install Kubernetes.kubectl`
+- **kubelogin**: AKS 認証プラグイン。kubectl と同時に `az aks install-cli` でインストール済み
+- **GitHub CLI (gh)**: リポジトリ変数/シークレット登録に利用。`gh --version` で確認。Windows: `winget install GitHub.cli`。初回: `gh auth login` で認証。公式手順: <https://cli.github.com/manual/installation>
+- **PowerShell 7 以降**: すべての補助スクリプト (`scripts/*.ps1`) で使用。`$PSVersionTable.PSVersion` で確認。Windows: `winget install Microsoft.PowerShell`
+
+### 1.2 推奨 VS Code 拡張機能
+
+- **GitHub Pull Requests and Issues** (`GitHub.vscode-pull-request-github`): GitHub 統合・PR/Issue 管理
+- **GitLens** (`eamodio.gitlens`): Git 履歴・blame・差分表示
+- **Azure Account** (`ms-vscode.azure-account`): Azure へのサインイン
+- **Azure Resources** (`ms-azuretools.vscode-azureresourcegroups`): リソース管理
+- **Bicep** (`ms-azuretools.vscode-bicep`): IaC 編集・検証
+- **Kubernetes** (`ms-kubernetes-tools.vscode-kubernetes-tools`): AKS 管理
+- **YAML** (`redhat.vscode-yaml`): k8s manifest 編集
+- **Docker** (`ms-azuretools.vscode-docker`): コンテナ管理
+
+### 1.3 Azure / GitHub 権限
+
 - **Azure サブスクリプションの Contributor 以上の権限**: Resource Group 作成、AKS/ACA/VM/Storage のデプロイ、Policy 割り当てが可能であること。
 - **GitHub リポジトリ管理権限**: Actions の設定変更、Secrets/Variables 作成、ワークフロー実行を行うため。
 
@@ -63,7 +83,6 @@ pwsh ./scripts/setup-github-secrets_variables.ps1 -DryRun     # 設定内容の�
 
 - **Secrets**: `AZURE_SUBSCRIPTION_ID`
 - **Variables**: `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `RESOURCE_GROUP_NAME`, `LOCATION`, `ACR_NAME_PREFIX`, `STORAGE_ACCOUNT_PREFIX`, `AKS_CLUSTER_NAME`, `ACA_ENVIRONMENT_NAME`, `ADMIN_CONTAINER_APP_NAME`, `VM_NAME`, `VM_ADMIN_USERNAME`, `VM_ADMIN_PASSWORD`, `DB_APP_USERNAME`, `DB_APP_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `BACKUP_CONTAINER_NAME`, `ACA_ADMIN_USERNAME`, `ACA_ADMIN_PASSWORD` など。
-- `DB_ENDPOINT` は Bicep デプロイの出力 (`infra-outputs` アーティファクト) からワークフローが自動算出するため、リポジトリ変数としては不要です。
 
 ## 6. IaC (インフラ) デプロイ
 
