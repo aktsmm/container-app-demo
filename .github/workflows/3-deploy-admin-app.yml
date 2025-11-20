@@ -227,21 +227,21 @@ jobs:
         run: |
           set -euo pipefail
           echo "Container App に System Assigned Managed Identity を有効化します"
-          
+
           # Managed Identity を有効化
           az containerapp identity assign \
             --name "$CONTAINER_APP_NAME" \
             --resource-group "$RESOURCE_GROUP_NAME" \
             --system-assigned
-          
+
           # Managed Identity の Principal ID を取得
           PRINCIPAL_ID=$(az containerapp identity show \
             --name "$CONTAINER_APP_NAME" \
             --resource-group "$RESOURCE_GROUP_NAME" \
             --query principalId -o tsv)
-          
+
           echo "Managed Identity Principal ID: $PRINCIPAL_ID"
-          
+
           # ⚠️ デモ用：意図的に過剰な権限を付与（本番環境では非推奨）
           # Subscription スコープで Contributor ロールを付与
           echo "⚠️ 【デモ用】Subscription スコープで Contributor ロールを付与します（過剰な権限）"
@@ -249,22 +249,22 @@ jobs:
             --assignee "$PRINCIPAL_ID" \
             --role "Contributor" \
             --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          
+
           # Storage Account への Storage Blob Data Contributor ロールも付与（冗長だが明示的に）
           STORAGE_ID=$(az storage account show \
             --name "$STORAGE_ACCOUNT_NAME" \
             --resource-group "$RESOURCE_GROUP_NAME" \
             --query id -o tsv)
-          
+
           echo "Storage Account に対して Storage Blob Data Contributor ロールも付与します"
           az role assignment create \
             --assignee "$PRINCIPAL_ID" \
             --role "Storage Blob Data Contributor" \
             --scope "$STORAGE_ID" || echo "既に割り当て済みまたはエラー（継続）"
-          
+
           echo "⚠️ 【警告】Managed Identity に Subscription レベルの Contributor が付与されました"
           echo "本番環境では最小権限の原則に従い、必要最小限のロールのみを付与してください"
-      
+
       - name: デプロイサマリを出力
         if: success()
         run: |
