@@ -16,7 +16,7 @@ on:
 permissions:
   contents: read
   id-token: write
-  actions: read  # アーティファクトダウンロードと workflow リスト取得に必要
+  actions: read # アーティファクトダウンロードと workflow リスト取得に必要
 
 env:
   RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
@@ -136,16 +136,22 @@ jobs:
           # 目的: ClusterIP のアプリ Service を外部公開するため nginx Ingress Controller を Helm で導入し、LoadBalancer IP を取得する
           # なぜ必要か: 現在 board-app の Service は ClusterIP。Ingress Controller が存在しないと外部 LB IP は割り当てられないため
           if kubectl get ns ingress-nginx >/dev/null 2>&1; then
-            echo "既に ingress-nginx Namespace が存在します。再インストールはスキップします";
+            echo "既に ingress-nginx Namespace が存在します。Service を再作成して LoadBalancer 設定を修正します";
+            helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
+              --namespace ingress-nginx \
+              --reuse-values \
+              --set controller.service.externalTrafficPolicy=Local \
+              --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz
           else
             echo "ingress-nginx を Helm でインストールします";
             helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
             helm repo update
-            # 低コスト & シンプル構成: 追加リソース最小限。Azure LB のヘルスプローブパスのみ注釈設定
+            # 低コスト & シンプル構成: externalTrafficPolicy=Local で Azure LB が正しい NodePort を使用
             helm install ingress-nginx ingress-nginx/ingress-nginx \
               --namespace ingress-nginx \
               --create-namespace \
               --set controller.replicaCount=1 \
+              --set controller.service.externalTrafficPolicy=Local \
               --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz
           fi
 
