@@ -116,8 +116,14 @@ jobs:
           fi
 
           DEST_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${BACKUP_CONTAINER_NAME}/backup-${TIMESTAMP}.sql?${SAS_TOKEN}"
-          azcopy copy "$BACKUP_FILE" "$DEST_URL" --from-to=LocalBlob --overwrite ifSourceNewer --log-level WARNING
-          logger "mysql-backup-upload success $TIMESTAMP"
+          azcopy copy "$BACKUP_FILE" "$DEST_URL" --from-to=LocalBlob --overwrite ifSourceNewer --log-level INFO
+          if [ $? -eq 0 ]; then
+            logger "mysql-backup-upload success $TIMESTAMP"
+          else
+            logger "mysql-backup-upload failed $TIMESTAMP"
+            cat .azcopy/*.log | tail -n 50 >&2
+            exit 1
+          fi
           SCRIPT
           chmod +x "$SCRIPT_PATH"
 
