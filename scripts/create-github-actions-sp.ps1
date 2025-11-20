@@ -89,12 +89,15 @@ function New-ServicePrincipalWithSecret {
         throw 'Service Principal の作成に失敗しました。権限と名前の重複を確認してください。'
     }
 
+    # Service Principal の Object ID を取得
+    $spObjectId = az ad sp show --id $result.appId --query id -o tsv
+
     return [pscustomobject]@{
         AzureClientId       = $result.appId
         AzureTenantId       = $result.tenant
         AzureSubscriptionId = $SubscriptionId
         AzureClientSecret   = $result.password
-        ServicePrincipalId  = $result.objectId
+        ServicePrincipalId  = $spObjectId
         RoleScope           = $Scope
     }
 }
@@ -153,6 +156,13 @@ if ($PSCmdlet.ShouldProcess("Service Principal $DisplayName", '作成とロー�
     Set-RoleAssignmentIfMissing `
         -AssigneeObjectId $result.ServicePrincipalId `
         -RoleDefinitionName $policyRoleDefinitionName `
+        -Scope $policyScopeValue
+
+    # Managed Identity へのロール割り当てを CI/CD から実行できるよう User Access Administrator を付与する
+    $userAccessAdminRoleName = 'User Access Administrator'
+    Set-RoleAssignmentIfMissing `
+        -AssigneeObjectId $result.ServicePrincipalId `
+        -RoleDefinitionName $userAccessAdminRoleName `
         -Scope $policyScopeValue
 
     Write-Host '--- GitHub Actions に設定するシークレット ---'
