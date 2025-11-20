@@ -43,12 +43,19 @@ APP_PASS_ESC="$(escape_sql "$APP_PASSWORD")"
 
 log "Updating apt cache"
 # command-not-found が cnf-update-db を実行すると欠落ファイルで失敗するため、一時的に無効化
+# command-not-found の Post-Invoke を全パターン無効化
 disable_command_not_found_update() {
-    local cnf_conf="/etc/apt/apt.conf.d/50command-not-found"
-    if [ -f "$cnf_conf" ]; then
-        log "Disabling command-not-found apt hook"
-        sudo mv "$cnf_conf" "${cnf_conf}.disabled" || sudo truncate -s 0 "$cnf_conf"
+    log "Disabling command-not-found apt hooks"
+    local targets
+    targets=$(sudo find /etc/apt/apt.conf.d -maxdepth 1 -type f -name '*command-not-found*' 2>/dev/null || true)
+    if [[ -n "$targets" ]]; then
+        while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+                sudo mv "$file" "${file}.disabled" || sudo truncate -s 0 "$file"
+            fi
+        done <<< "$targets"
     fi
+    sudo rm -f /var/lib/apt/lists/*command-not-found* 2>/dev/null || true
 }
 
 disable_command_not_found_update
