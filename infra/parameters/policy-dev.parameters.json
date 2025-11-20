@@ -12,8 +12,8 @@
           "nonComplianceMessage": "デモ環境のガードレールに従って設定を修正してください。",
           "policyParameters": {},
           "policyOverrides": [],
-          "enableManagedIdentity": false,
-          "managedIdentityLocation": ""
+          "enableManagedIdentity": true,
+          "managedIdentityLocation": "japaneast"
         }
       ]
     }
