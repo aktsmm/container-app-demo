@@ -16,6 +16,9 @@ param sku string = 'Standard_LRS'
 ])
 param accessTier string = 'Cool'
 
+@description('バックアップコンテナ名')
+param backupContainerName string = 'mysql-backups'
+
 @description('共通タグ')
 param tags object = {}
 
@@ -48,5 +51,21 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-04-01' = {
   }
 }
 
+// Blob Service（コンテナ作成に必要）
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-04-01' = {
+  name: 'default'
+  parent: storageAccount
+}
+
+// MySQL バックアップ用コンテナ
+resource backupContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-04-01' = {
+  name: backupContainerName
+  parent: blobService
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
 output id string = storageAccount.id
 output primaryEndpoints object = storageAccount.properties.primaryEndpoints
+output backupContainerName string = backupContainer.name

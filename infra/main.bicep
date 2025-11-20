@@ -57,6 +57,9 @@ param storageSku string = 'Standard_LRS'
 @description('Storage アクセス層')
 param storageAccessTier string = 'Cool'
 
+@description('バックアップコンテナ名')
+param backupContainerName string = 'mysql-backups'
+
 @description('Container Apps Environment 名')
 param containerAppsEnvironmentName string
 
@@ -218,6 +221,7 @@ module storage './modules/storageAccount.bicep' = {
     location: location
     sku: storageSku
     accessTier: storageAccessTier
+    backupContainerName: backupContainerName
     tags: defaultTags
   }
 }

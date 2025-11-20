@@ -59,6 +59,9 @@
     "storageAccessTier": {
       "value": "Cool"
     },
+    "backupContainerName": {
+      "value": "mysql-backups"
+    },
     "containerAppsEnvironmentName": {
       "value": "__PIPELINE_OVERRIDDEN__"
     },
