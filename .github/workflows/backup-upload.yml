@@ -77,6 +77,8 @@ jobs:
             --expiry "$EXPIRY" \
             -o tsv)
           echo "SAS_TOKEN=$SAS" >> "$GITHUB_ENV"
+          SAS_B64=$(printf '%s' "$SAS" | base64 -w0)
+          echo "SAS_TOKEN_BASE64=$SAS_B64" >> "$GITHUB_ENV"
 
       - name: VM 上でバックアップを実行しアップロード
         env:
@@ -84,19 +86,20 @@ jobs:
         run: |
           set -euo pipefail
           SCRIPT_PATH="$RUNNER_TEMP/mysql-backup.sh"
+          MYSQL_PASSWORD_B64=$(printf '%s' "$MYSQL_ROOT_PASSWORD" | base64 -w0)
           cat <<'SCRIPT' > "$SCRIPT_PATH"
           #!/bin/bash
           set -euo pipefail
 
           : "${storageAccountName:?storageAccountName is required}"
           : "${backupContainerName:?backupContainerName is required}"
-          : "${sasToken:?sasToken is required}"
-          : "${mysqlPassword:?mysqlPassword is required}"
+          : "${sasTokenB64:?sasTokenB64 is required}"
+          : "${mysqlPasswordB64:?mysqlPasswordB64 is required}"
 
           STORAGE_ACCOUNT_NAME="$storageAccountName"
           BACKUP_CONTAINER_NAME="$backupContainerName"
-          SAS_TOKEN="$sasToken"
-          MYSQL_ROOT_PASSWORD="$mysqlPassword"
+          SAS_TOKEN=$(printf '%s' "$sasTokenB64" | base64 -d)
+          MYSQL_ROOT_PASSWORD=$(printf '%s' "$mysqlPasswordB64" | base64 -d)
 
           TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
           BACKUP_DIR=/tmp/mysql-backups
@@ -125,8 +128,8 @@ jobs:
             --scripts @"$SCRIPT_PATH" \
             --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" \
                          backupContainerName="$BACKUP_CONTAINER_NAME" \
-                         sasToken="$SAS_TOKEN" \
-                         mysqlPassword="$MYSQL_ROOT_PASSWORD"
+                         sasTokenB64="$SAS_TOKEN_BASE64" \
+                         mysqlPasswordB64="$MYSQL_PASSWORD_B64"
 
       - name: バックアップサマリを出力
         if: success()
