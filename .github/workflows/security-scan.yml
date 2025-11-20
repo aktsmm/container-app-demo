@@ -36,16 +36,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: CodeQL 初期化
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ env.CODEQL_LANGUAGES }}
           queries: security-extended # 追加のセキュリティ拡張クエリ
 
       - name: 自動ビルド
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@v4
 
       - name: CodeQL 解析
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         continue-on-error: true # Code scanning 未有効時のアップロード失敗を許容
         with:
           category: "codeql"
@@ -145,28 +145,28 @@ jobs:
             --ignore-unfixed
 
       - name: Gitleaks SARIF アップロード
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         continue-on-error: true # Code scanning 未有効時は失敗を許容
         with:
           sarif_file: gitleaks-repo.sarif
           category: gitleaks
 
       - name: Trivy SARIF アップロード (全体)
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         continue-on-error: true
         with:
           sarif_file: trivy-fs-all.sarif
           category: trivy-filesystem
 
       - name: Trivy SARIF アップロード (infra)
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         continue-on-error: true
         with:
           sarif_file: trivy-infra.sarif
           category: trivy-infra
 
       - name: Trivy SARIF アップロード (k8s)
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         continue-on-error: true
         with:
           sarif_file: trivy-k8s.sarif
@@ -234,7 +234,7 @@ jobs:
               echo '{"topFindings":[],"error":"no error/warning"}' > $JSON_FILE
             else
               TOP=$(echo "$ALL" | sort -t$'\t' -k1,1n -k2,2n | head -n 5)
-              echo '{"topFindings":[" > $JSON_FILE
+              echo '{"topFindings":[' > $JSON_FILE
               COUNT=0
               while IFS=$'\t' read -r SEV_RANK LVL_RANK SEV RULE MSG SRC; do
                 COUNT=$((COUNT+1))
