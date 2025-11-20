@@ -609,4 +609,127 @@ git commit -m "ワークフローに ACR 管理者認証の自動有効化を追
 ---
 
 **記録日**: 2025 年 11 月 20 日  
-**更新日**: 2025 年 11 月 20 日 (ACR 管理者認証自動有効化の追加)
+**更新日**: 2025 年 11 月 20 日 (Container Apps Environment 動的解決、カテゴリ別抽出機能追加)
+
+---
+
+## 9. Container Apps Environment 名エラー
+
+### 🔴 問題
+
+```
+ERROR: The environment '/subscriptions/***/resourceGroups/RG-Container-App2/providers/Microsoft.App/managedEnvironments/cae-demo-dev' does not exist. Specify a valid environment
+```
+
+**原因**:
+- GitHub Actions 変数 `ACA_ENVIRONMENT_NAME` が固定値 (`cae-demo-dev`) を使用
+- 実際の Infrastructure Deploy では動的生成された名前 (`cae-RG-Container-App2`) を使用
+- 両者の不一致によりデプロイ失敗
+
+### ✅ 解決策
+
+**ワークフロー修正 (動的解決)** を採用:
+
+```yaml
+- name: Container Apps Environment 名を動的解決
+  run: |
+    set -euo pipefail
+    # RG 内の Container Apps Environment を検索
+    ACTUAL_ENV_NAME=$(az containerapp env list \
+      --resource-group "$RESOURCE_GROUP_NAME" \
+      --query "[0].name" \
+      -o tsv)
+    if [ -z "$ACTUAL_ENV_NAME" ]; then
+      echo "Container Apps Environment が見つかりません。infra-deploy を先に実行してください" >&2
+      exit 1
+    fi
+    echo "検出された Environment: $ACTUAL_ENV_NAME"
+    echo "ACA_ENVIRONMENT_NAME=$ACTUAL_ENV_NAME" >> "$GITHUB_ENV"
+```
+
+**修正箇所**:
+- ファイル: `.github/workflows/3-deploy-admin-app.yml`
+- 追加位置: "Container Apps 拡張機能を更新" ステップの直後
+- コミット: `fix(deploy): Container Apps Environment名を動的解決` (693e4d2)
+
+**検証結果**:
+- ✅ Run ID: 19523077815
+- ✅ 検出された Environment: `cae-RG-Container-App2`
+- ✅ Container App デプロイ成功 (1m48s)
+- ✅ FQDN: `admin-app.mangorock-67a791ba.japaneast.azurecontainerapps.io`
+
+**教訓**:
+- 動的リソース名は常に動的解決すべき
+- GitHub Actions 変数への固定値設定は環境依存性を生む
+- Infrastructure Deploy と同様の名前解決ロジックを統一的に適用
+
+---
+
+## 10. Security Scan カテゴリ別抽出機能
+
+### 📊 要件
+
+従来の「全カテゴリ統合で上位5件」から、**カテゴリごとに上位3件ずつ抽出**へ機能拡張
+
+**対象カテゴリ**:
+1. **codeql**: CodeQL (JS/Python コード品質)
+2. **gitleaks**: Gitleaks (シークレット漏洩)
+3. **trivy-fs**: Trivy FileSystem (脆弱性・シークレット)
+4. **trivy-infra**: Trivy Infra (Bicep 設定ミス)
+5. **trivy-k8s**: Trivy K8s (Kubernetes 設定)
+
+### ✅ 実装内容
+
+#### カテゴリ判定ロジック
+
+```bash
+declare -A CATEGORIES=(
+  ["codeql"]="🔍 CodeQL (JS/Python コード品質)"
+  ["gitleaks"]="🔑 Gitleaks (シークレット漏洩)"
+  ["trivy-fs"]="🛡️ Trivy FileSystem (脆弱性・シークレット)"
+  ["trivy-infra"]="🏗️ Trivy Infra (Bicep 設定ミス)"
+  ["trivy-k8s"]="☸️ Trivy K8s (Kubernetes 設定)"
+)
+```
+
+#### JSON 構造
+
+```json
+{
+  "categorizedFindings": {
+    "codeql": [...],
+    "gitleaks": [...],
+    "trivy-fs": [...],
+    "trivy-infra": [...],
+    "trivy-k8s": [...]
+  },
+  "generatedAt": "2025-11-20T02:14:11Z"
+}
+```
+
+**修正箇所**:
+- ファイル: `.github/workflows/security-scan.yml`
+- ステップ名: "カテゴリ別上位検出抽出 (各カテゴリ上位3件)"
+- コミット: `feat(security): カテゴリ別アラート抽出 (各3件) 実装` (f728654)
+
+**検証結果**:
+- ✅ Run ID: 19523049619
+- ✅ 全ジョブ成功 (CodeQL 2m8s / IaC 26s / まとめ 5s)
+- ✅ Artifact 生成: `security-top-findings-json`
+- ✅ カテゴリ別検出例:
+  - **trivy-fs**: 3件 (Dockerfile USER 未指定、K8s readOnlyRootFilesystem)
+  - **trivy-infra**: 1件 (SSH 秘密鍵検出)
+  - **trivy-k8s**: 3件 (K8s セキュリティコンテキスト)
+
+**効果**:
+- 可視性向上: スキャナーごとの優先課題が明確化
+- 対応優先度: カテゴリ単位で問題を識別可能
+- JSON 活用: 機械可読形式で後続処理に統合可能
+
+---
+
+**参考リンク**:
+- [Infrastructure Deploy トラブルシューティング](./troubleshooting-infra-deploy.md)
+- [GitHub Actions 設計](./github-actions-sp-deploy.md)
+- [Azure Architecture](./architecture.md)
+
