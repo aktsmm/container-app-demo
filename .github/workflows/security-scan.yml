@@ -208,7 +208,7 @@ jobs:
           JSON_FILE=top-findings.json
           echo "### 📁 カテゴリ別アラート (各上位3件)" > $TOP_FILE
           echo "" >> $TOP_FILE
-          
+
           # カテゴリ定義: ファイル名パターン → カテゴリ名 → アイコン
           declare -A CATEGORIES=(
             ["codeql"]="🔍 CodeQL (JS/Python コード品質)"
@@ -217,10 +217,10 @@ jobs:
             ["trivy-infra"]="🏗️ Trivy Infra (Bicep 設定ミス)"
             ["trivy-k8s"]="☸️ Trivy K8s (Kubernetes 設定)"
           )
-          
+
           echo '{"categorizedFindings":{' > $JSON_FILE
           FIRST_CAT=1
-          
+
           for PATTERN in codeql gitleaks trivy-fs trivy-infra trivy-k8s; do
             CAT_NAME="${CATEGORIES[$PATTERN]}"
             
@@ -278,14 +278,14 @@ jobs:
               echo "" >> $TOP_FILE
             fi
           done
-          
+
           echo '},"generatedAt":"'$(date -u +'%Y-%m-%dT%H:%M:%SZ')'"}' >> $JSON_FILE
-          
+
           # サマリがない場合
           if [ $FIRST_CAT -eq 1 ]; then
             echo "高優先度検出なし (error/warning 0件)" >> $TOP_FILE
           fi
-          
+
           cat $TOP_FILE >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "(機械可読JSON: top-findings.json を artifact として保存)" >> $GITHUB_STEP_SUMMARY

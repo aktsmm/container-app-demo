@@ -622,6 +622,7 @@ ERROR: The environment '/subscriptions/***/resourceGroups/RG-Container-App2/prov
 ```
 
 **原因**:
+
 - GitHub Actions 変数 `ACA_ENVIRONMENT_NAME` が固定値 (`cae-demo-dev`) を使用
 - 実際の Infrastructure Deploy では動的生成された名前 (`cae-RG-Container-App2`) を使用
 - 両者の不一致によりデプロイ失敗
@@ -648,17 +649,20 @@ ERROR: The environment '/subscriptions/***/resourceGroups/RG-Container-App2/prov
 ```
 
 **修正箇所**:
+
 - ファイル: `.github/workflows/3-deploy-admin-app.yml`
 - 追加位置: "Container Apps 拡張機能を更新" ステップの直後
 - コミット: `fix(deploy): Container Apps Environment名を動的解決` (693e4d2)
 
 **検証結果**:
+
 - ✅ Run ID: 19523077815
 - ✅ 検出された Environment: `cae-RG-Container-App2`
 - ✅ Container App デプロイ成功 (1m48s)
 - ✅ FQDN: `admin-app.mangorock-67a791ba.japaneast.azurecontainerapps.io`
 
 **教訓**:
+
 - 動的リソース名は常に動的解決すべき
 - GitHub Actions 変数への固定値設定は環境依存性を生む
 - Infrastructure Deploy と同様の名前解決ロジックを統一的に適用
@@ -669,9 +673,10 @@ ERROR: The environment '/subscriptions/***/resourceGroups/RG-Container-App2/prov
 
 ### 📊 要件
 
-従来の「全カテゴリ統合で上位5件」から、**カテゴリごとに上位3件ずつ抽出**へ機能拡張
+従来の「全カテゴリ統合で上位 5 件」から、**カテゴリごとに上位 3 件ずつ抽出**へ機能拡張
 
 **対象カテゴリ**:
+
 1. **codeql**: CodeQL (JS/Python コード品質)
 2. **gitleaks**: Gitleaks (シークレット漏洩)
 3. **trivy-fs**: Trivy FileSystem (脆弱性・シークレット)
@@ -708,28 +713,116 @@ declare -A CATEGORIES=(
 ```
 
 **修正箇所**:
+
 - ファイル: `.github/workflows/security-scan.yml`
-- ステップ名: "カテゴリ別上位検出抽出 (各カテゴリ上位3件)"
+- ステップ名: "カテゴリ別上位検出抽出 (各カテゴリ上位 3 件)"
 - コミット: `feat(security): カテゴリ別アラート抽出 (各3件) 実装` (f728654)
 
 **検証結果**:
+
 - ✅ Run ID: 19523049619
 - ✅ 全ジョブ成功 (CodeQL 2m8s / IaC 26s / まとめ 5s)
 - ✅ Artifact 生成: `security-top-findings-json`
 - ✅ カテゴリ別検出例:
-  - **trivy-fs**: 3件 (Dockerfile USER 未指定、K8s readOnlyRootFilesystem)
-  - **trivy-infra**: 1件 (SSH 秘密鍵検出)
-  - **trivy-k8s**: 3件 (K8s セキュリティコンテキスト)
+  - **trivy-fs**: 3 件 (Dockerfile USER 未指定、K8s readOnlyRootFilesystem)
+  - **trivy-infra**: 1 件 (SSH 秘密鍵検出)
+  - **trivy-k8s**: 3 件 (K8s セキュリティコンテキスト)
 
 **効果**:
+
 - 可視性向上: スキャナーごとの優先課題が明確化
 - 対応優先度: カテゴリ単位で問題を識別可能
 - JSON 活用: 機械可読形式で後続処理に統合可能
 
 ---
 
+## 11. Ingress IP 直アクセス問題
+
+### 🔴 問題
+
+Load Balancer IP (`20.18.238.223`) に直接アクセスすると、アプリが表示されず NGINX のデフォルトページが表示される:
+
+```
+404 Not Found
+nginx
+```
+
+**原因**:
+- Ingress が Host ベースルーティング (`host: board.localdemo.internal`) のみを使用
+- IP 直アクセス時は Host ヘッダーが一致しないため、NGINX がデフォルトバックエンドを返す
+- Pod 自体は正常稼働 (ヘルスチェック成功)
+
+### ✅ 解決策
+
+**Host 指定なしルールを追加**して IP 直アクセスを許可:
+
+```yaml
+spec:
+  rules:
+    # Host 指定なし: Load Balancer IP への直接アクセス用
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: board-app
+                port:
+                  number: 80
+    # Host 指定あり: DNS 経由アクセス用（将来の拡張用）
+    - host: board.localdemo.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: board-app
+                port:
+                  number: 80
+```
+
+**修正箇所**:
+- ファイル: `app/board-app/k8s/ingress.yaml`
+- 変更内容: `spec.rules` 配列に Host なしルールを先頭追加
+- コミット: `fix(k8s): Ingress に IP 直アクセス用ルールを追加` (14a8b17)
+
+**適用コマンド**:
+```bash
+kubectl apply -f app/board-app/k8s/ingress.yaml
+```
+
+**検証結果**:
+- ✅ Ingress ルール更新成功
+- ✅ `http://20.18.238.223` でアプリ表示確認
+- ✅ `http://20.18.238.223/dummy-secret.txt` アクセス可能
+- ✅ Pod ログに外部アクセス記録
+
+**教訓**:
+- Ingress の Host 指定はデモ環境では IP アクセスを阻害する
+- Host なしルールを先頭に配置することで、IP・DNS 両対応可能
+- 本番環境では DNS + TLS が推奨だが、デモでは柔軟性を優先
+
+---
+
+## 🌐 最終アクセス情報
+
+### 掲示板アプリ (AKS)
+- **Load Balancer IP**: `20.18.238.223`
+- **アプリURL**: `http://20.18.238.223`
+- **ダミーシークレット**: `http://20.18.238.223/dummy-secret.txt`
+- **認証**: なし (Public アクセス)
+
+### 管理アプリ (Container Apps)
+- **FQDN**: `admin-app.mangorock-67a791ba.japaneast.azurecontainerapps.io`
+- **アクセスURL**: `https://admin-app.mangorock-67a791ba.japaneast.azurecontainerapps.io`
+- **認証**: Basic 認証 (ID/Password 必要)
+- **プロトコル**: HTTPS (Container Apps 標準)
+
+---
+
 **参考リンク**:
+
 - [Infrastructure Deploy トラブルシューティング](./troubleshooting-infra-deploy.md)
 - [GitHub Actions 設計](./github-actions-sp-deploy.md)
 - [Azure Architecture](./architecture.md)
-
