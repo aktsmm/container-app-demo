@@ -27,7 +27,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <header>
-        <h1>低コスト掲示板デモ</h1>
+        <h1>掲示板dデモアプリ</h1>
         <p>
           AKS 上でホストされる簡易掲示板。投稿は Azure VM 上の MySQL
           に永続化され、ネットワーク障害時のみブラウザの LocalStorage
