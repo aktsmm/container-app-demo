@@ -1,6 +1,6 @@
 # Ingress Load Balancer IP が再デプロイ時に変更される問題
 
-**日時**: 2025年11月21日  
+**日時**: 2025 年 11 月 21 日  
 **影響範囲**: AKS Ingress Controller (NGINX)  
 **ステータス**: ✅ 解決済み
 
@@ -11,6 +11,7 @@
 Ingress Controller を再デプロイするたびに Load Balancer の Public IP アドレスが変更され、アクセス URL が不安定になる。
 
 ### 現象
+
 - 初回デプロイ時: `4.190.34.52`
 - 再デプロイ後: `4.190.32.132`
 - IP が固定されず、再デプロイのたびに新しい IP が割り当てられる
@@ -40,10 +41,10 @@ az network public-ip show --resource-group mc-RG-bbs-app10000 --name kubernetes-
 
 ### 3. Azure Public IP の仕様
 
-| SKU | 割り当て方法 | Load Balancer SKU |
-|-----|------------|-------------------|
-| Basic | Dynamic / Static 両方可 | Basic LB のみ |
-| **Standard** | **Static のみ** | Standard LB 必須 |
+| SKU          | 割り当て方法            | Load Balancer SKU |
+| ------------ | ----------------------- | ----------------- |
+| Basic        | Dynamic / Static 両方可 | Basic LB のみ     |
+| **Standard** | **Static のみ**         | Standard LB 必須  |
 
 Standard SKU では `publicIPAllocationMethod: 'Static'` が必須だが、**事前作成して明示的に指定しない限り、リソースが削除・再作成されるたびに新しい IP が割り当てられる**。
 
@@ -202,7 +203,7 @@ metadata:
     service.beta.kubernetes.io/azure-load-balancer-resource-group: "mc-RG-bbs-app10000"
 spec:
   type: LoadBalancer
-  loadBalancerIP: "4.190.34.52"  # 事前作成した Static IP を指定
+  loadBalancerIP: "4.190.34.52" # 事前作成した Static IP を指定
 ```
 
 ### Helm での指定方法
