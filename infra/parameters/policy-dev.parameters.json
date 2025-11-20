@@ -13,7 +13,7 @@
           "policyParameters": {},
           "policyOverrides": [],
           "enableManagedIdentity": true,
-          "managedIdentityLocation": "japaneast"
+          "managedIdentityLocation": ""
         }
       ]
     }

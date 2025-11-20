@@ -3,6 +3,9 @@ targetScope = 'resourceGroup'
 @description('デモ環境で適用するポリシー イニシアチブ割り当ての一覧')
 param policyAssignments array
 
+@description('Managed Identity のロケーション（LOCATION 環境変数から渡される）')
+param managedIdentityLocation string
+
 module initiativeAssignments 'modules/policyAssignment.bicep' = [for (assignment, i) in policyAssignments: {
   name: 'policyAssignment-${i}'
   scope: resourceGroup()
@@ -15,7 +18,7 @@ module initiativeAssignments 'modules/policyAssignment.bicep' = [for (assignment
     policyParameters: assignment.policyParameters
     policyOverrides: assignment.policyOverrides
     enableManagedIdentity: assignment.enableManagedIdentity
-    managedIdentityLocation: assignment.managedIdentityLocation
+    managedIdentityLocation: managedIdentityLocation
   }
 }]
 

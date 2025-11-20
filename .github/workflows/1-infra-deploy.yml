@@ -260,7 +260,8 @@ jobs:
             --resource-group "$RESOURCE_GROUP_NAME" \
             --name "policy-validate-$(date +%s)" \
             --template-file infra/policy.bicep \
-            --parameters "@${{ env.POLICY_PARAM_FILE }}"
+            --parameters "@${{ env.POLICY_PARAM_FILE }}" \
+            --parameters managedIdentityLocation="$LOCATION"
 
       - name: Azure Policy What-If (resource group scope)
         run: |
@@ -268,7 +269,8 @@ jobs:
             --resource-group "$RESOURCE_GROUP_NAME" \
             --name "policy-whatif-$(date +%s)" \
             --template-file infra/policy.bicep \
-            --parameters "@${{ env.POLICY_PARAM_FILE }}"
+            --parameters "@${{ env.POLICY_PARAM_FILE }}" \
+            --parameters managedIdentityLocation="$LOCATION"
 
       - name: Azure Policy Deploy (resource group scope)
         run: |
@@ -277,6 +279,7 @@ jobs:
             --name "policy-deploy-$(date +%s)" \
             --template-file infra/policy.bicep \
             --parameters "@${{ env.POLICY_PARAM_FILE }}" \
+            --parameters managedIdentityLocation="$LOCATION" \
             --only-show-errors
 
       - name: Azure logout
