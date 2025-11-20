@@ -1,4 +1,4 @@
-targetScope = 'subscription'
+targetScope = 'resourceGroup'
 
 @description('割り当て対象のポリシー イニシアチブ ID (/providers/Microsoft.Authorization/policySetDefinitions/<id>)')
 param policySetDefinitionId string
@@ -30,7 +30,7 @@ param managedIdentityLocation string = ''
 // デモ環境全体へ共通ガードレールを適用するための汎用ポリシー割り当て
 resource initiativeAssignment 'Microsoft.Authorization/policyAssignments@2022-06-01' = {
   name: assignmentName
-  scope: subscription()
+  scope: resourceGroup()
   location: enableManagedIdentity ? managedIdentityLocation : null
   identity: enableManagedIdentity ? {
     type: 'SystemAssigned'

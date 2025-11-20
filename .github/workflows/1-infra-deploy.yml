@@ -231,27 +231,27 @@ jobs:
           creds: >-
             {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
 
-      - name: Azure Policy Validate (subscription scope)
+      - name: Azure Policy Validate (resource group scope)
         run: |
-          az deployment sub validate \
+          az deployment group validate \
+            --resource-group "$RESOURCE_GROUP_NAME" \
             --name "policy-validate-$(date +%s)" \
-            --location "$LOCATION" \
             --template-file infra/policy.bicep \
             --parameters "@${{ env.POLICY_PARAM_FILE }}"
 
-      - name: Azure Policy What-If (subscription scope)
+      - name: Azure Policy What-If (resource group scope)
         run: |
-          az deployment sub what-if \
+          az deployment group what-if \
+            --resource-group "$RESOURCE_GROUP_NAME" \
             --name "policy-whatif-$(date +%s)" \
-            --location "$LOCATION" \
             --template-file infra/policy.bicep \
             --parameters "@${{ env.POLICY_PARAM_FILE }}"
 
-      - name: Azure Policy Deploy (subscription scope)
+      - name: Azure Policy Deploy (resource group scope)
         run: |
-          az deployment sub create \
+          az deployment group create \
+            --resource-group "$RESOURCE_GROUP_NAME" \
             --name "policy-deploy-$(date +%s)" \
-            --location "$LOCATION" \
             --template-file infra/policy.bicep \
             --parameters "@${{ env.POLICY_PARAM_FILE }}" \
             --only-show-errors

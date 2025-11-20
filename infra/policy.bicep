@@ -1,10 +1,11 @@
-targetScope = 'subscription'
+targetScope = 'resourceGroup'
 
 @description('デモ環境で適用するポリシー イニシアチブ割り当ての一覧')
 param policyAssignments array
 
 module initiativeAssignments 'modules/policyAssignment.bicep' = [for (assignment, i) in policyAssignments: {
   name: 'policyAssignment-${i}'
+  scope: resourceGroup()
   params: {
     policySetDefinitionId: assignment.policySetDefinitionId
     assignmentName: assignment.assignmentName
