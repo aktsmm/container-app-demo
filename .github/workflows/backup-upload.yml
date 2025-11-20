@@ -84,35 +84,38 @@ jobs:
         run: |
           set -euo pipefail
           SCRIPT_PATH="$RUNNER_TEMP/mysql-backup.sh"
-          python3 - "$SCRIPT_PATH" <<'PY'
-          import sys
-          from textwrap import dedent
-
-          script = """#!/bin/bash
+          cat <<'SCRIPT' > "$SCRIPT_PATH"
+          #!/bin/bash
           set -euo pipefail
-          STORAGE_ACCOUNT_NAME="$1"
-          BACKUP_CONTAINER_NAME="$2"
-          SAS_TOKEN="$3"
-          MYSQL_ROOT_PASSWORD="$4"
+
+          : "${storageAccountName:?storageAccountName is required}"
+          : "${backupContainerName:?backupContainerName is required}"
+          : "${sasToken:?sasToken is required}"
+          : "${mysqlPassword:?mysqlPassword is required}"
+
+          STORAGE_ACCOUNT_NAME="$storageAccountName"
+          BACKUP_CONTAINER_NAME="$backupContainerName"
+          SAS_TOKEN="$sasToken"
+          MYSQL_ROOT_PASSWORD="$mysqlPassword"
+
           TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
           BACKUP_DIR=/tmp/mysql-backups
           mkdir -p "$BACKUP_DIR"
           BACKUP_FILE="$BACKUP_DIR/backup-$TIMESTAMP.sql"
+
           mysqldump --all-databases --single-transaction --quick --lock-tables=false -u root -p"$MYSQL_ROOT_PASSWORD" > "$BACKUP_FILE"
+
           if ! command -v azcopy >/dev/null 2>&1; then
             TMPDIR=$(mktemp -d)
             curl -sSL https://aka.ms/downloadazcopy-v10-linux | tar -xz -C "$TMPDIR"
             AZCOPY_PATH=$(find "$TMPDIR" -name azcopy -type f | head -n 1)
             sudo install -m 755 "$AZCOPY_PATH" /usr/local/bin/azcopy
           fi
+
           DEST_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${BACKUP_CONTAINER_NAME}/backup-${TIMESTAMP}.sql?${SAS_TOKEN}"
           azcopy copy "$BACKUP_FILE" "$DEST_URL" --from-to=LocalBlob --overwrite ifSourceNewer --log-level WARNING
           logger "mysql-backup-upload success $TIMESTAMP"
-          """
-
-          with open(sys.argv[1], "w", encoding="utf-8") as f:
-            f.write(dedent(script))
-          PY
+          SCRIPT
           chmod +x "$SCRIPT_PATH"
 
           az vm run-command invoke \
@@ -120,7 +123,10 @@ jobs:
             --name "$VM_NAME" \
             --command-id RunShellScript \
             --scripts @"$SCRIPT_PATH" \
-            --parameters "$STORAGE_ACCOUNT_NAME" "$BACKUP_CONTAINER_NAME" "$SAS_TOKEN" "$MYSQL_ROOT_PASSWORD"
+            --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" \
+                         backupContainerName="$BACKUP_CONTAINER_NAME" \
+                         sasToken="$SAS_TOKEN" \
+                         mysqlPassword="$MYSQL_ROOT_PASSWORD"
 
       - name: バックアップサマリを出力
         if: success()

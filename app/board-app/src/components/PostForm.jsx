@@ -20,7 +20,7 @@ export default function PostForm({ onSubmit, disabled = false }) {
         <input
           value={author}
           onChange={(e) => setAuthor(e.target.value)}
-          placeholder="例: demo-user"
+          placeholder="demo-user"
           disabled={disabled}
         />
       </label>
@@ -29,7 +29,7 @@ export default function PostForm({ onSubmit, disabled = false }) {
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="進捗や障害メモをここに書きます"
+          placeholder="メッセージを書いてください。"
           disabled={disabled}
         />
       </label>

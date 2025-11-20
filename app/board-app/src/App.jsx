@@ -27,7 +27,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <header>
-        <h1>掲示板dデモアプリ</h1>
+        <h1>掲示板デモアプリ</h1>
         <p>
           AKS 上でホストされる簡易掲示板。投稿は Azure VM 上の MySQL
           に永続化され、ネットワーク障害時のみブラウザの LocalStorage
@@ -77,9 +77,8 @@ export default function App() {
 
       <footer>
         <small>
-          ログは Log Analytics に転送されます。ブラウザを閉じても MySQL
-          へ保存された投稿は残りますが、API
-          障害中に追加した投稿は端末内キャッシュのみです。
+          Azure Kubernetes Service や Azure Container Registry
+          を用いてこのアプリは作っています
         </small>
       </footer>
     </div>
