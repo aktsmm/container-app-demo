@@ -44,11 +44,11 @@ pwsh ./scripts/create-github-actions-sp.ps1 `
 
 ### 5.1 GitHub CLI を利用する場合
 
-規定値は `scripts/setup-github-secrets.ps1` で一括反映できます。
+規定値は `scripts/setup-github-secrets_variables.ps1` で一括反映できます。
 ＊GitHub CLI を利用している場合前提
 
 ```powershell
-pwsh ./scripts/setup-github-secrets.ps1 -EnvFilePath "ignore/環境情報.md"
+pwsh ./scripts/setup-github-secrets_variables.ps1 -EnvFilePath "ignore/環境情報.md"
 ```
 
 ### 5.2 手動で設定する場合

@@ -4,7 +4,7 @@
 
 - **Secrets** は GitHub Actions からもマスクされるため、クレデンシャルや Subscription ID を格納します。
 - **Variables** は値がログに出力される可能性があるため、低機密情報またはクロスワークフローで共通のパラメーターに使用します。
-- 値の一括投入: `scripts/setup-github-secrets.ps1 -EnvFilePath "ignore/環境情報.md"`
+- 値の一括投入: `scripts/setup-github-secrets_variables.ps1 -EnvFilePath "ignore/環境情報.md"`
 
 ## 2. GitHub Secrets 一覧
 
@@ -49,7 +49,7 @@
 ## 5. 推奨運用
 
 1. 新しい環境値を追加する場合は、まず `ignore/環境情報.md` に記述し、Pull Request でコンテキストを共有する。
-2. `scripts/setup-github-secrets.ps1` で GitHub CLI を通して変数/シークレットを一括設定。
+2. `scripts/setup-github-secrets_variables.ps1` で GitHub CLI を通して変数/シークレットを一括設定。
 3. クリティカルな値 (DB パスワード、Client Secret 等) はできるだけ Secret 側へ移し、YAML で `secrets.*` を参照するように更新。
 4. 変更後は `gh variable list` / `gh secret list` で実際に登録されているかを確認。
 
