@@ -69,11 +69,18 @@ jobs:
                     -OutputFile "app/board-app/k8s/vars.env"
 
             - name: AKS に ACR Pull 権限を付与
+              continue-on-error: true
               run: |
-                  az aks update \
-                    --name "$AKS_CLUSTER_NAME" \
-                    --resource-group "$RESOURCE_GROUP_NAME" \
-                    --attach-acr "$ACR_NAME"
+                  # ACR Pull 権限が既に付与されているか確認
+                  if az aks check-acr --name "$AKS_CLUSTER_NAME" --resource-group "$RESOURCE_GROUP_NAME" --acr "${ACR_LOGIN_SERVER}" &>/dev/null; then
+                    echo "ACR Pull 権限は既に付与されています"
+                  else
+                    echo "ACR Pull 権限を付与します"
+                    az aks update \
+                      --name "$AKS_CLUSTER_NAME" \
+                      --resource-group "$RESOURCE_GROUP_NAME" \
+                      --attach-acr "$ACR_NAME" || echo "⚠️ ACR 権限付与に失敗しましたが、既存の権限で継続します"
+                  fi
 
             - name: AKS 資格情報を取得
               run: |

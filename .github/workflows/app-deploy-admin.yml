@@ -93,6 +93,14 @@ jobs:
           # Container App が存在するか確認
           if az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" &>/dev/null; then
             echo "既存の Container App を更新します"
+            
+            # シークレットを更新
+            az containerapp secret set \
+              --name "$CONTAINER_APP_NAME" \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --secrets admin-username="$ADMIN_BASIC_AUTH_USERNAME" admin-password="$ADMIN_BASIC_AUTH_PASSWORD"
+            
+            # Container App を更新
             az containerapp update \
               --name "$CONTAINER_APP_NAME" \
               --resource-group "$RESOURCE_GROUP_NAME" \
@@ -105,6 +113,8 @@ jobs:
                 BACKUP_CONTAINER="$BACKUP_CONTAINER"
           else
             echo "新規 Container App を作成します"
+            
+            # シークレット参照なしで Container App を作成
             az containerapp create \
               --name "$CONTAINER_APP_NAME" \
               --resource-group "$RESOURCE_GROUP_NAME" \
@@ -116,24 +126,29 @@ jobs:
               --max-replicas 1 \
               --registry-server "$ACR_LOGIN_SERVER" \
               --registry-identity system \
-              --revision-suffix "gh-${GITHUB_RUN_NUMBER}" \
-              --env-vars \
-                ADMIN_USERNAME=secretref:admin-username \
-                ADMIN_PASSWORD=secretref:admin-password \
-                DB_ENDPOINT="$DB_ENDPOINT" \
-                BACKUP_CONTAINER="$BACKUP_CONTAINER"
+              --revision-suffix "gh-${GITHUB_RUN_NUMBER}"
             
             # ACR Pull 権限を付与
             CONTAINER_APP_IDENTITY=$(az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query identity.principalId -o tsv)
             ACR_ID=$(az acr show --name "$ACR_NAME" --query id -o tsv)
             az role assignment create --assignee "$CONTAINER_APP_IDENTITY" --role AcrPull --scope "$ACR_ID"
+            
+            # シークレットを設定
+            az containerapp secret set \
+              --name "$CONTAINER_APP_NAME" \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --secrets admin-username="$ADMIN_BASIC_AUTH_USERNAME" admin-password="$ADMIN_BASIC_AUTH_PASSWORD"
+            
+            # 環境変数を追加（シークレット参照含む）
+            az containerapp update \
+              --name "$CONTAINER_APP_NAME" \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --set-env-vars \
+                ADMIN_USERNAME=secretref:admin-username \
+                ADMIN_PASSWORD=secretref:admin-password \
+                DB_ENDPOINT="$DB_ENDPOINT" \
+                BACKUP_CONTAINER="$BACKUP_CONTAINER"
           fi
-
-          # シークレットを設定
-          az containerapp secret set \
-            --name "$CONTAINER_APP_NAME" \
-            --resource-group "$RESOURCE_GROUP_NAME" \
-            --secrets admin-username="$ADMIN_BASIC_AUTH_USERNAME" admin-password="$ADMIN_BASIC_AUTH_PASSWORD"
 
           # シングルリビジョンモードに設定
           az containerapp revision set-mode \
