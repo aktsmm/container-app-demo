@@ -46,6 +46,7 @@ jobs:
 
       - name: CodeQL 解析
         uses: github/codeql-action/analyze@v3
+        continue-on-error: true # Code scanning 未有効時のアップロード失敗を許容
         with:
           category: "codeql"
 
@@ -124,24 +125,28 @@ jobs:
 
       - name: Gitleaks SARIF アップロード
         uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true # Code scanning 未有効時は失敗を許容
         with:
           sarif_file: gitleaks-repo.sarif
           category: gitleaks
 
       - name: Trivy SARIF アップロード (全体)
         uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
         with:
           sarif_file: trivy-fs-all.sarif
           category: trivy-filesystem
 
       - name: Trivy SARIF アップロード (infra)
         uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
         with:
           sarif_file: trivy-infra.sarif
           category: trivy-infra
 
       - name: Trivy SARIF アップロード (k8s)
         uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
         with:
           sarif_file: trivy-k8s.sarif
           category: trivy-k8s
@@ -187,6 +192,7 @@ jobs:
           echo "- **trivy-infra**: Bicep 設定ミス" >> $GITHUB_STEP_SUMMARY
           echo "- **trivy-k8s**: Kubernetes 設定ミス" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ Code scanning が未有効の場合、SARIF アップロードは警告扱い/スキップされます。リポジトリ設定から有効化してください。" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "✅ スキャン実行日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY
           echo "🔄 次回定期実行: 毎日 12:00 JST" >> $GITHUB_STEP_SUMMARY
