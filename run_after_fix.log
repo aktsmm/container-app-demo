@@ -1,0 +1,220 @@
+backup	Set up job	﻿2025-11-20T05:09:27.7881377Z Current runner version: '2.329.0'
+backup	Set up job	2025-11-20T05:09:27.7956535Z ##[group]Runner Image Provisioner
+backup	Set up job	2025-11-20T05:09:27.7957942Z Hosted Compute Agent
+backup	Set up job	2025-11-20T05:09:27.7958981Z Version: 20251016.436
+backup	Set up job	2025-11-20T05:09:27.7959987Z Commit: 8ab8ac8bfd662a3739dab9fe09456aba92132568
+backup	Set up job	2025-11-20T05:09:27.7961130Z Build Date: 2025-10-15T20:44:12Z
+backup	Set up job	2025-11-20T05:09:27.7962268Z ##[endgroup]
+backup	Set up job	2025-11-20T05:09:27.7963136Z ##[group]Operating System
+backup	Set up job	2025-11-20T05:09:27.7964076Z Ubuntu
+backup	Set up job	2025-11-20T05:09:27.7965021Z 24.04.3
+backup	Set up job	2025-11-20T05:09:27.7965779Z LTS
+backup	Set up job	2025-11-20T05:09:27.7966553Z ##[endgroup]
+backup	Set up job	2025-11-20T05:09:27.7987769Z ##[group]Runner Image
+backup	Set up job	2025-11-20T05:09:27.7988750Z Image: ubuntu-24.04
+backup	Set up job	2025-11-20T05:09:27.7989765Z Version: 20251112.124.1
+backup	Set up job	2025-11-20T05:09:27.7991691Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20251112.124/images/ubuntu/Ubuntu2404-Readme.md
+backup	Set up job	2025-11-20T05:09:27.7994344Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20251112.124
+backup	Set up job	2025-11-20T05:09:27.7996538Z ##[endgroup]
+backup	Set up job	2025-11-20T05:09:27.7998743Z ##[group]GITHUB_TOKEN Permissions
+backup	Set up job	2025-11-20T05:09:27.8001810Z Contents: read
+backup	Set up job	2025-11-20T05:09:27.8002799Z Metadata: read
+backup	Set up job	2025-11-20T05:09:27.8003552Z ##[endgroup]
+backup	Set up job	2025-11-20T05:09:27.8006559Z Secret source: Actions
+backup	Set up job	2025-11-20T05:09:27.8027479Z Prepare workflow directory
+backup	Set up job	2025-11-20T05:09:27.9423673Z Prepare all required actions
+backup	Set up job	2025-11-20T05:09:27.9545284Z Getting action download info
+backup	Set up job	2025-11-20T05:09:28.2504846Z Download action repository 'azure/login@v2' (SHA:a457da9ea143d694b1b9c7c869ebb04ebe844ef5)
+backup	Set up job	2025-11-20T05:09:28.6320815Z Complete job name: backup
+backup	Azure に Service Principal でログイン	﻿2025-11-20T05:09:28.7035593Z ##[group]Run azure/login@v2
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7036423Z with:
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7038439Z   creds: {"clientId":"23ec2e1f-a7d0-4996-b102-8ecf2c789730","tenantId":"892fd90b-434b-42d0-bd82-41f9e1ba23f3","clientSecret":"***","subscriptionId":"***"}
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7039588Z   enable-AzPSSession: false
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7040055Z   environment: azurecloud
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7040527Z   allow-no-subscriptions: false
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7041028Z   audience: api://AzureADTokenExchange
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7041543Z   auth-type: SERVICE_PRINCIPAL
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7042336Z env:
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7042738Z   RESOURCE_GROUP_NAME: RG-bbs-demo
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7043230Z   VM_NAME: vm-mysql-demo
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7043696Z   STORAGE_ACCOUNT_PREFIX: stbackupdemo
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7044224Z   BACKUP_CONTAINER_NAME: mysql-backups
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7044715Z ##[endgroup]
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:28.7692348Z Running Azure CLI Login.
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:33.1503898Z [command]/usr/bin/az cloud set -n azurecloud
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:33.4258438Z Done setting cloud: "azurecloud"
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:33.4262330Z Note: Azure/login action also supports OIDC login mechanism. Refer https://github.com/azure/login#configure-a-service-principal-with-a-federated-credential-to-use-oidc-based-authentication for more details.
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:33.4279432Z Attempting Azure CLI login by using service principal with secret...
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:34.5680687Z Subscription is set successfully.
+backup	Azure に Service Principal でログイン	2025-11-20T05:09:34.5734860Z Azure CLI login succeeds by using service principal with secret.
+backup	ストレージアカウント名を解決	﻿2025-11-20T05:09:34.5935545Z ##[group]Run set -euo pipefail
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5936153Z [36;1mset -euo pipefail[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5936750Z [36;1mif [ -z "$STORAGE_ACCOUNT_PREFIX" ] || [ -z "$RESOURCE_GROUP_NAME" ]; then[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5937636Z [36;1m  echo "ストレージアカウント名を決定するための変数が不足しています" >&2[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5938107Z [36;1m  exit 1[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5938447Z [36;1mfi[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5938875Z [36;1mSTORAGE_ACCOUNT_NAME=$(az storage account list \[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5939465Z [36;1m  --resource-group "$RESOURCE_GROUP_NAME" \[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5940154Z [36;1m  --query "[?starts_with(name, '${STORAGE_ACCOUNT_PREFIX}')].name | [0]" \[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5940841Z [36;1m  -o tsv)[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5941303Z [36;1mif [ -z "$STORAGE_ACCOUNT_NAME" ]; then[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5941971Z [36;1m  echo "指定プレフィックスのストレージアカウントが存在しません。infra-deploy を先に実行してください" >&2[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5942910Z [36;1m  exit 1[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5943299Z [36;1mfi[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5943857Z [36;1mecho "STORAGE_ACCOUNT_NAME=$STORAGE_ACCOUNT_NAME" >> "$GITHUB_ENV"[0m
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5998251Z shell: /usr/bin/bash -e {0}
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5998797Z env:
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5999183Z   RESOURCE_GROUP_NAME: RG-bbs-demo
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.5999678Z   VM_NAME: vm-mysql-demo
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.6000135Z   STORAGE_ACCOUNT_PREFIX: stbackupdemo
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.6000683Z   BACKUP_CONTAINER_NAME: mysql-backups
+backup	ストレージアカウント名を解決	2025-11-20T05:09:34.6001195Z ##[endgroup]
+backup	バックアップコンテナを確保	﻿2025-11-20T05:09:37.3379678Z ##[group]Run set -euo pipefail
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3380054Z [36;1mset -euo pipefail[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3380355Z [36;1mif [ -z "$BACKUP_CONTAINER_NAME" ]; then[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3380657Z [36;1m  echo "バックアップコンテナ名が未設定です" >&2[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3380898Z [36;1m  exit 1[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3381082Z [36;1mfi[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3381319Z [36;1mEXISTS=$(az storage container exists \[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3381638Z [36;1m  --account-name "$STORAGE_ACCOUNT_NAME" \[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3381939Z [36;1m  --name "$BACKUP_CONTAINER_NAME" \[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3382203Z [36;1m  --auth-mode login \[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3382456Z [36;1m  --query exists -o tsv || echo "false")[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3382732Z [36;1mif [ "$EXISTS" != "true" ]; then[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3382985Z [36;1m  az storage container create \[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3383270Z [36;1m    --account-name "$STORAGE_ACCOUNT_NAME" \[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3383566Z [36;1m    --name "$BACKUP_CONTAINER_NAME" \[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3383889Z [36;1m    --auth-mode login \[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3384140Z [36;1m    --public-access off >/dev/null[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3384427Z [36;1m  echo "コンテナ $BACKUP_CONTAINER_NAME を新規作成しました"[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3384689Z [36;1melse[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3384897Z [36;1m  echo "コンテナ $BACKUP_CONTAINER_NAME は既に存在しています"[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3385164Z [36;1mfi[0m
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3420185Z shell: /usr/bin/bash -e {0}
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3420438Z env:
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3420635Z   RESOURCE_GROUP_NAME: RG-bbs-demo
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3420887Z   VM_NAME: vm-mysql-demo
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3421108Z   STORAGE_ACCOUNT_PREFIX: stbackupdemo
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3421396Z   BACKUP_CONTAINER_NAME: mysql-backups
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3421655Z   STORAGE_ACCOUNT_NAME: stbackupdemo5832
+backup	バックアップコンテナを確保	2025-11-20T05:09:37.3421910Z ##[endgroup]
+backup	バックアップコンテナを確保	2025-11-20T05:09:38.8545578Z コンテナ mysql-backups は既に存在しています
+backup	Storage 用 SAS を発行	﻿2025-11-20T05:09:38.8573240Z ##[group]Run EXPIRY=$(date -u -d '+90 minutes' +%Y-%m-%dT%H:%MZ)
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8573712Z [36;1mEXPIRY=$(date -u -d '+90 minutes' +%Y-%m-%dT%H:%MZ)[0m
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8574058Z [36;1mSAS=$(az storage account generate-sas \[0m
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8574352Z [36;1m  --permissions acdlpu \[0m
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8574635Z [36;1m  --account-name "$STORAGE_ACCOUNT_NAME" \[0m
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8574924Z [36;1m  --services b \[0m
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8575167Z [36;1m  --resource-types co \[0m
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8575405Z [36;1m  --expiry "$EXPIRY" \[0m
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8575618Z [36;1m  -o tsv)[0m
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8575839Z [36;1mecho "SAS_TOKEN=$SAS" >> "$GITHUB_ENV"[0m
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8608212Z shell: /usr/bin/bash -e {0}
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8608451Z env:
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8608636Z   RESOURCE_GROUP_NAME: RG-bbs-demo
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8608878Z   VM_NAME: vm-mysql-demo
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8609110Z   STORAGE_ACCOUNT_PREFIX: stbackupdemo
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8609374Z   BACKUP_CONTAINER_NAME: mysql-backups
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8609657Z   STORAGE_ACCOUNT_NAME: stbackupdemo5832
+backup	Storage 用 SAS を発行	2025-11-20T05:09:38.8609898Z ##[endgroup]
+backup	Storage 用 SAS を発行	2025-11-20T05:09:39.5001435Z WARNING: 
+backup	Storage 用 SAS を発行	2025-11-20T05:09:39.5012563Z There are no credentials provided in your command and environment, we will query for account key for your storage account.
+backup	Storage 用 SAS を発行	2025-11-20T05:09:39.5015257Z It is recommended to provide --connection-string, --account-key or --sas-token in your command as credentials.
+backup	Storage 用 SAS を発行	2025-11-20T05:09:39.5017251Z 
+backup	Storage 用 SAS を発行	2025-11-20T05:09:39.5018808Z In addition, setting the corresponding environment variables can avoid inputting credentials in your command. Please use --help to get more information about environment variable usage.
+backup	VM 上でバックアップを実行しアップロード	﻿2025-11-20T05:09:41.3523776Z ##[group]Run set -euo pipefail
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3524307Z [36;1mset -euo pipefail[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3524780Z [36;1mSCRIPT_PATH="$RUNNER_TEMP/mysql-backup.sh"[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3525304Z [36;1mpython3 - "$SCRIPT_PATH" <<'PY'[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3525777Z [36;1mimport sys[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3526177Z [36;1mfrom textwrap import dedent[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3526584Z [36;1m[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3527132Z [36;1mscript = """#!/bin/bash[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3527560Z [36;1mset -euo pipefail[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3527951Z [36;1mSTORAGE_ACCOUNT_NAME="$1"[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3528377Z [36;1mBACKUP_CONTAINER_NAME="$2"[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3528794Z [36;1mSAS_TOKEN="$3"[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3529192Z [36;1mMYSQL_ROOT_PASSWORD="$4"[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3529633Z [36;1mTIMESTAMP=$(date -u +%Y%m%d%H%M%S)[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3530100Z [36;1mBACKUP_DIR=/tmp/mysql-backups[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3530553Z [36;1mmkdir -p "$BACKUP_DIR"[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3531035Z [36;1mBACKUP_FILE="$BACKUP_DIR/backup-$TIMESTAMP.sql"[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3532127Z [36;1mmysqldump --all-databases --single-transaction --quick --lock-tables=false -u root -p"$MYSQL_ROOT_PASSWORD" > "$BACKUP_FILE"[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3533138Z [36;1mif ! command -v azcopy >/dev/null 2>&1; then[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3533628Z [36;1m  TMPDIR=$(mktemp -d)[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3534249Z [36;1m  curl -sSL https://aka.ms/downloadazcopy-v10-linux | tar -xz -C "$TMPDIR"[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3535053Z [36;1m  AZCOPY_PATH=$(find "$TMPDIR" -name azcopy -type f | head -n 1)[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3535805Z [36;1m  sudo install -m 755 "$AZCOPY_PATH" /usr/local/bin/azcopy[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3536347Z [36;1mfi[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3537316Z [36;1mDEST_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${BACKUP_CONTAINER_NAME}/backup-${TIMESTAMP}.sql?${SAS_TOKEN}"[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3538630Z [36;1mazcopy copy "$BACKUP_FILE" "$DEST_URL" --from-to=LocalBlob --overwrite ifSourceNewer --log-level WARNING[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3539534Z [36;1mlogger "mysql-backup-upload success $TIMESTAMP"[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3540038Z [36;1m"""[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3540305Z [36;1m[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3540672Z [36;1mwith open(sys.argv[1], "w", encoding="utf-8") as f:[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3541169Z [36;1m  f.write(dedent(script))[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3541545Z [36;1mPY[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3541854Z [36;1mchmod +x "$SCRIPT_PATH"[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3542312Z [36;1m[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3542646Z [36;1maz vm run-command invoke \[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3543113Z [36;1m  --resource-group "$RESOURCE_GROUP_NAME" \[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3543588Z [36;1m  --name "$VM_NAME" \[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3544000Z [36;1m  --command-id RunShellScript \[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3544456Z [36;1m  --scripts @"$SCRIPT_PATH" \[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3545200Z [36;1m  --parameters "$STORAGE_ACCOUNT_NAME" "$BACKUP_CONTAINER_NAME" "$SAS_TOKEN" "$MYSQL_ROOT_PASSWORD"[0m
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3586650Z shell: /usr/bin/bash -e {0}
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3587250Z env:
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3587458Z   RESOURCE_GROUP_NAME: RG-bbs-demo
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3587726Z   VM_NAME: vm-mysql-demo
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3587956Z   STORAGE_ACCOUNT_PREFIX: stbackupdemo
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3588224Z   BACKUP_CONTAINER_NAME: mysql-backups
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3588483Z   STORAGE_ACCOUNT_NAME: stbackupdemo5832
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3589010Z   SAS_TOKEN: se=2025-11-20T06%3A39Z&sp=dlacup&sv=2022-11-02&ss=b&srt=co&sig=x/WFaddCrX1QL1sVRL3gLGvAw5INopDMTU0nkIL0iIk%3D
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3589534Z   MYSQL_ROOT_PASSWORD: TempRootP@ssw0rd!2025
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:09:41.3589786Z ##[endgroup]
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:10:14.1224912Z {
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:10:14.1225907Z   "value": [
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:10:14.1252542Z     {
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:10:14.1253071Z       "code": "ProvisioningState/succeeded",
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:10:14.1253840Z       "displayStatus": "Provisioning succeeded",
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:10:14.1254714Z       "level": "Info",
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:10:14.1256375Z       "message": "Enable succeeded: \n[stdout]\n\n[stderr]\n/var/lib/waagent/run-command/download/5/script.sh: line 3: TempRootP@ssw0rd!2025: command not found\n/var/lib/waagent/run-command/download/5/script.sh: line 5: $1: unbound variable\n"
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:10:14.1286184Z     }
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:10:14.1286968Z   ]
+backup	VM 上でバックアップを実行しアップロード	2025-11-20T05:10:14.1287489Z }
+backup	バックアップサマリを出力	﻿2025-11-20T05:10:14.2776261Z ##[group]Run TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2776664Z [36;1mTIMESTAMP=$(date -u +%Y%m%d%H%M%S)[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2777545Z [36;1mBACKUP_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${BACKUP_CONTAINER_NAME}/backup-${TIMESTAMP}.sql"[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2778043Z [36;1m[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2778275Z [36;1mecho "## 🔄 MySQL バックアップ完了" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2778594Z [36;1mecho "" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2778869Z [36;1mecho "### 📦 バックアップ情報" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2779149Z [36;1mecho "" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2779439Z [36;1mecho "- **VM 名**: \`$VM_NAME\`" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2779800Z [36;1mecho "- **ストレージアカウント**: \`$STORAGE_ACCOUNT_NAME\`" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2780182Z [36;1mecho "- **コンテナ**: \`$BACKUP_CONTAINER_NAME\`" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2780580Z [36;1mecho "- **バックアップファイル**: \`backup-${TIMESTAMP}.sql\`" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2781032Z [36;1mecho "" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2781301Z [36;1mecho "### 📍 アクセス情報" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2781580Z [36;1mecho "" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2781887Z [36;1mecho "- **Blob URL**: \`$BACKUP_URL\`" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2782220Z [36;1mecho "" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2782558Z [36;1mecho "> 💡 Azure Portal の Storage Account から確認できます" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2782924Z [36;1mecho "" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2783186Z [36;1mecho "---" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2783510Z [36;1mecho "✅ バックアップ実行日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2783852Z [36;1mecho "🔄 次回定期実行: 1時間ごと" >> $GITHUB_STEP_SUMMARY[0m
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2816361Z shell: /usr/bin/bash -e {0}
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2816586Z env:
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2817006Z   RESOURCE_GROUP_NAME: RG-bbs-demo
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2817397Z   VM_NAME: vm-mysql-demo
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2817622Z   STORAGE_ACCOUNT_PREFIX: stbackupdemo
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2817876Z   BACKUP_CONTAINER_NAME: mysql-backups
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2818128Z   STORAGE_ACCOUNT_NAME: stbackupdemo5832
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2818614Z   SAS_TOKEN: se=2025-11-20T06%3A39Z&sp=dlacup&sv=2022-11-02&ss=b&srt=co&sig=x/WFaddCrX1QL1sVRL3gLGvAw5INopDMTU0nkIL0iIk%3D
+backup	バックアップサマリを出力	2025-11-20T05:10:14.2819100Z ##[endgroup]
+backup	Post Azure に Service Principal でログイン	﻿2025-11-20T05:10:14.2983189Z Post job cleanup.
+backup	Post Azure に Service Principal でログイン	2025-11-20T05:10:14.3470952Z Clearing azure cli accounts from the local cache.
+backup	Post Azure に Service Principal でログイン	2025-11-20T05:10:14.3479745Z [command]/usr/bin/az account clear
+backup	Complete job	﻿2025-11-20T05:10:14.9180191Z Cleaning up orphan processes
+backup	Complete job	2025-11-20T05:10:14.9884662Z Terminate orphan process: pid (2135) (python3)

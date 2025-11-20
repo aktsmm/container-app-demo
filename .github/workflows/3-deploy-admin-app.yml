@@ -124,8 +124,20 @@ jobs:
         run: |
           EVENT_NAME='${{ github.event_name }}'
           if [ "$EVENT_NAME" = 'workflow_run' ]; then
-            HEAD_SHA='${{ github.event.workflow_run.head_sha }}'
-            IMAGE_TAG="${HEAD_SHA:0:12}"
+            # ACR から最新のイメージタグを取得（latest 以外）
+            LATEST_TAG=$(az acr repository show-tags \
+              --name "$ACR_NAME" \
+              --repository "$ADMIN_IMAGE_NAME" \
+              --orderby time_desc \
+              --top 5 \
+              -o tsv | grep -v '^latest$' | head -n 1)
+            if [ -n "$LATEST_TAG" ]; then
+              IMAGE_TAG="$LATEST_TAG"
+              echo "ACR から最新タグを取得: $IMAGE_TAG"
+            else
+              IMAGE_TAG='latest'
+              echo "ACR にタグが見つからないため latest を使用"
+            fi
           else
             IMAGE_TAG='${{ github.event.inputs.imageTag }}'
           fi

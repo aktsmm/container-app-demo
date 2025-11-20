@@ -132,7 +132,7 @@ def list_messages():
   try:
     with conn.cursor() as cursor:
       cursor.execute("""
-        SELECT id, author, content, created_at 
+        SELECT id, author, message, created_at 
         FROM posts 
         ORDER BY created_at DESC 
         LIMIT 100
@@ -304,8 +304,8 @@ def index():
         let html = `<p>合計: ${data.count} メッセージ</p><table><thead><tr><th>ID</th><th>投稿者</th><th>内容</th><th>投稿日時</th><th>操作</th></tr></thead><tbody>`;
         data.messages.forEach(m => {
           const date = new Date(m.created_at).toLocaleString('ja-JP');
-          const content = m.content.length > 50 ? m.content.substring(0, 50) + '...' : m.content;
-          html += `<tr><td>${m.id}</td><td>${m.author}</td><td>${content}</td><td class="time">${date}</td><td><button onclick="deleteMessage(${m.id})">削除</button></td></tr>`;
+          const message = m.message.length > 50 ? m.message.substring(0, 50) + '...' : m.message;
+          html += `<tr><td>${m.id}</td><td>${m.author}</td><td>${message}</td><td class="time">${date}</td><td><button onclick="deleteMessage(${m.id})">削除</button></td></tr>`;
         });
         html += '</tbody></table>';
         document.getElementById('messages').innerHTML = html;
