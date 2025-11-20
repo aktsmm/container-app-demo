@@ -42,6 +42,29 @@ jobs:
                   fi
                   echo "STORAGE_ACCOUNT_NAME=$STORAGE_ACCOUNT_NAME" >> "$GITHUB_ENV"
 
+            - name: バックアップコンテナを確保
+              run: |
+                  set -euo pipefail
+                  if [ -z "$BACKUP_CONTAINER_NAME" ]; then
+                    echo "バックアップコンテナ名が未設定です" >&2
+                    exit 1
+                  fi
+                  EXISTS=$(az storage container exists \
+                    --account-name "$STORAGE_ACCOUNT_NAME" \
+                    --name "$BACKUP_CONTAINER_NAME" \
+                    --auth-mode login \
+                    --query exists -o tsv || echo "false")
+                  if [ "$EXISTS" != "true" ]; then
+                    az storage container create \
+                      --account-name "$STORAGE_ACCOUNT_NAME" \
+                      --name "$BACKUP_CONTAINER_NAME" \
+                      --auth-mode login \
+                      --public-access off >/dev/null
+                    echo "コンテナ $BACKUP_CONTAINER_NAME を新規作成しました"
+                  else
+                    echo "コンテナ $BACKUP_CONTAINER_NAME は既に存在しています"
+                  fi
+
             - name: Storage 用 SAS を発行
               id: sas
               run: |
