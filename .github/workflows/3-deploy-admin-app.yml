@@ -62,6 +62,21 @@ jobs:
         run: |
           az extension add --name containerapp --upgrade
 
+      - name: Container Apps Environment 名を動的解決
+        run: |
+          set -euo pipefail
+          # RG 内の Container Apps Environment を検索
+          ACTUAL_ENV_NAME=$(az containerapp env list \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --query "[0].name" \
+            -o tsv)
+          if [ -z "$ACTUAL_ENV_NAME" ]; then
+            echo "Container Apps Environment が見つかりません。infra-deploy を先に実行してください" >&2
+            exit 1
+          fi
+          echo "検出された Environment: $ACTUAL_ENV_NAME"
+          echo "ACA_ENVIRONMENT_NAME=$ACTUAL_ENV_NAME" >> "$GITHUB_ENV"
+
       - name: ACR 管理者認証を有効化
         run: |
           az acr update --name "$ACR_NAME" --admin-enabled true
