@@ -67,9 +67,9 @@ export default function useBoardStore() {
   }, [fetchFromApi]);
 
   const randomId = () =>
-    (typeof crypto !== "undefined" && crypto.randomUUID
+    typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
-      : `temp-${Date.now()}`);
+      : `temp-${Date.now()}`;
 
   // 新規投稿: API 経由。失敗時は pending 状態のままローカル保持
   const addPost = async (post) => {

@@ -78,7 +78,8 @@ export default function App() {
       <footer>
         <small>
           ログは Log Analytics に転送されます。ブラウザを閉じても MySQL
-          へ保存された投稿は残りますが、API 障害中に追加した投稿は端末内キャッシュのみです。
+          へ保存された投稿は残りますが、API
+          障害中に追加した投稿は端末内キャッシュのみです。
         </small>
       </footer>
     </div>

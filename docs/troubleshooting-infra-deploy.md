@@ -423,6 +423,81 @@ fi
 
 ---
 
+## 問題 12: Log Analytics listKeys 呼び出しで WorkspaceNotFound
+
+**発生日時**: 2025-11-20  
+**エラー内容**:
+
+```
+DeploymentFailed: Template output 'logAnalyticsSharedKey' is not valid: Unable to evaluate template language function 'listKeys': the resource 'Microsoft.OperationalInsights/workspaces/logdemo-dev' was not found.
+```
+
+**原因**:
+
+- 親テンプレート `main.bicep` の `output logAnalyticsSharedKey = listKeys(...)` が **外側スコープ**で実行され、ワークスペース作成前に listKeys を叩いていた
+- `list*`/`reference` 系関数は対象リソースが既に存在する前提で評価されるため、Azure Resource Manager が `NotFound` を返す（[公式ドキュメントでも、listKeys を使う際は正しいリソース ID とスコープが必要と明記](https://learn.microsoft.com/azure/azure-resource-manager/troubleshooting/error-not-found#solution-5-check-functions)）
+
+**解決策**:
+
+1. `logAnalytics` モジュール内で shared key を出力するように変更し、評価スコープを **inner** に固定
+2. 出力を `@secure()` 属性付きで公開し、親テンプレートは `logAnalytics.outputs.sharedKey` を参照
+3. 既存コードを以下のようにシンプル化し、作成完了後にのみ listKeys が呼ばれるようにした
+
+```bicep
+output customerId string = workspace.properties.customerId
+@secure()
+output sharedKey string = listKeys(workspace.id, '2020-08-01').primarySharedKey
+```
+
+**変更ファイル**: `infra/modules/logAnalytics.bicep`
+
+**効果**:
+
+- ✅ `infra-deploy` で Log Analytics 作成直後に shared key を参照できる
+- ✅ listKeys 呼び出しがモジュール内部に閉じたため、セキュアな形で出力履歴にも平文が残らない
+
+---
+
+## 問題 13: VM Public IP 出力が null で Bicep デプロイ失敗
+
+**発生日時**: 2025-11-20  
+**エラー内容**:
+
+```
+DeploymentFailed: Template output 'mysqlVmPublicIp' is not valid: Unable to evaluate template language function 'reference'. The resource 'Microsoft.Network/publicIPAddresses/vm-mysql-demo-pip' does not have property 'ipAddress' yet.
+```
+
+**原因**:
+
+- Bicep の `output mysqlVmPublicIp = reference(publicIp.id).ipAddress` が、Public IP の `provisioningState=Succeeded` 前に評価された
+- `reference` 関数はリソースが完成するまで一部プロパティを返せない（[list\*/reference 利用時は存在確認が必要という公式ガイドに合致](https://learn.microsoft.com/azure/azure-resource-manager/troubleshooting/error-not-found#solution-5-check-functions)）
+- その結果、`infra-deploy` 全体が `InvalidTemplate` で停止し、以降のワークフローも実行されなかった
+
+**解決策**:
+
+1. Bicep から IP 情報を出力する設計を廃止し、インフラ作成後に Azure CLI で動的取得する方式へ変更
+2. `.github/workflows/1-infra-deploy.yml` のサマリ出力ステップで `az vm show` / `az network public-ip show` を呼び、デプロイ完了後に安定した値のみを記録
+3. 以降のワークフローは CLI で取得した値を参照するようにし、テンプレート評価時に `reference` を使わない
+
+```yaml
+- name: デプロイサマリを出力
+  run: |
+    VM_NAME=$(az vm list --resource-group "$RESOURCE_GROUP_NAME" --query "[0].name" -o tsv)
+    if [ -n "$VM_NAME" ]; then
+      VM_SIZE=$(az vm show --name "$VM_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query hardwareProfile.vmSize -o tsv)
+      echo "- Name: \`$VM_NAME\`" >> $GITHUB_STEP_SUMMARY
+      echo "- Size: \`$VM_SIZE\`" >> $GITHUB_STEP_SUMMARY
+    fi
+```
+
+**効果**:
+
+- ✅ `infra-deploy` の Bicep 出力が最小化され、テンプレート評価エラーが解消
+- ✅ Public IP は Azure CLI 側で `Succeeded` を確認してから取得するため値が安定
+- ✅ 後続の app デプロイ系ワークフローが継続的に実行できるようになった
+
+---
+
 ## 成功時の構成
 
 ### デプロイされたリソース

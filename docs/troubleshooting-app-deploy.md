@@ -810,6 +810,65 @@ kubectl apply -f app/board-app/k8s/ingress.yaml
 
 ---
 
+## 12. board-api CrashLoopBackOff（DB Secret 未作成）
+
+### 🔴 問題
+
+`app-deploy-board` 実行後、`board-api` Pod が `CrashLoopBackOff` を繰り返し、ログに以下が表示された：
+
+```
+必須環境変数(DB_ENDPOINT/DB_APP_USERNAME/DB_APP_PASSWORD)が未設定です
+```
+
+### 🔍 原因
+
+- `app/board-app/k8s/board-api-deployment.yaml` では DB 接続情報を `SecretKeyRef` で参照する設計になっている
+- しかし GitHub Actions では `acr-secret` のみを作成しており、`board-db-conn` Secret が存在しないままデプロイしていた
+- その結果、コンテナ起動直後に環境変数が解決できず即時終了 → CrashLoopBackOff
+
+### ✅ 解決策
+
+`app-deploy-board.yml` に DB Secret 作成ステップを追加し、GitHub Actions Variables（`DB_ENDPOINT` / `DB_APP_USERNAME` / `DB_APP_PASSWORD`）から毎回再生成するようにした：
+
+```yaml
+- name: DB 接続 Secret(board-db-conn) を作成/更新
+  run: |
+    BOARD_NS=$(grep kubernetesNamespace "${KUSTOMIZE_DIR}/vars.env" | cut -d'=' -f2)
+    kubectl create namespace "$BOARD_NS" --dry-run=client -o yaml | kubectl apply -f -
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: board-db-conn
+      namespace: ${BOARD_NS}
+    type: Opaque
+    stringData:
+      db-endpoint: "${DB_ENDPOINT}"
+      db-username: "${DB_APP_USERNAME}"
+      db-password: "${DB_APP_PASSWORD}"
+    EOF
+```
+
+**ポイント**:
+
+- Secret を常に `apply` することで、認証情報変更にも即追従
+- AKS のベストプラクティス（[Kubernetes Secrets を用いた資格情報注入](https://learn.microsoft.com/azure/aks/concepts-security#kubernetes-secrets)）に準拠
+- ワークフローの `env:` に値を集約しているため、リポジトリに平文を書き込まずに済む
+
+### 🧪 検証手順
+
+1. ワークフロー実行後に `kubectl get secret board-db-conn -n board-app -o yaml` で存在確認
+2. `kubectl rollout status deployment/board-api -n board-app` が `1/1` で完了することを確認
+3. `kubectl logs deployment/board-api -n board-app` で MySQL への接続ログを確認
+
+### 🎯 結果
+
+- ✅ board-api Pod が安定稼働し、`/api/posts` で MySQL の投稿が取得可能
+- ✅ board-app フロントからの投稿が MySQL へ永続化されるようになった
+- ✅ 再デプロイ時も Secret が自動更新され、手動作業が不要に
+
+---
+
 ## 🌐 最終アクセス情報
 
 ### 掲示板アプリ (AKS)
