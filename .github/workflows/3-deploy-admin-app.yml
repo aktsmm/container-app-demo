@@ -353,8 +353,7 @@ jobs:
           # クリック可能な完全 URL がマスクされた際に、下記分割を用いて再構築できるようにする。
           FQDN_PART1="${FQDN%%.*}"          # 先頭ラベル
           FQDN_REST="${FQDN#*.}"            # 残り部分
-          echo "- **FQDN(分割)**: \`$FQDN_PART1\`.\`$FQDN_REST\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **再構築コマンド例**: \`echo $FQDN_PART1.$FQDN_REST\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **FQDN**: \`$FQDN_PART1\`.\`$FQDN_REST\`" >> $GITHUB_STEP_SUMMARY
           # ゼロ幅スペース等は URL クリック性を損なうため使用しない方針。
           echo "- **認証**: Basic 認証 (ID/Password 必要)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

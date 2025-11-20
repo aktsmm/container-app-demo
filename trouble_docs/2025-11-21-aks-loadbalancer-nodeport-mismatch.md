@@ -42,10 +42,12 @@ $ kubectl exec -n ingress-nginx deploy/ingress-nginx-controller -- curl -s local
 #### Kubernetes Service の Type=LoadBalancer の動作
 
 1. **NodePort の自動割り当て**
+
    - Kubernetes が Service を作成すると、各ノード（VM）に **ランダムなポート番号（30000-32767）** が割り当てられる
    - 例: `80:32170/TCP` → ポート 80 への通信を NodePort 32170 で受け付ける
 
 2. **Azure LoadBalancer の自動作成**
+
    - AKS が Azure LoadBalancer を自動的に作成
    - LoadBalancer → ノードの特定ポートへトラフィックを転送
 
@@ -103,6 +105,7 @@ Kubernetes Service には `externalTrafficPolicy` という設定があり、外
 ```
 
 **特徴**:
+
 - **メリット**: すべてのノードで受信可能、負荷分散が均等
 - **デメリット**: Azure LB が NodePort を認識しない → ポート番号が一致しない
 - **AKS での問題**: Azure は「ポート 80」に送信するが、実際は「NodePort 32170」でリッスン
@@ -117,6 +120,7 @@ Kubernetes Service には `externalTrafficPolicy` という設定があり、外
 ```
 
 **特徴**:
+
 - **メリット**: Azure LB が NodePort を自動検出、ポート番号が一致
 - **デメリット**: Pod が存在するノードのみトラフィックを受信（若干の偏り）
 - **AKS での効果**: Azure は「NodePort 32170」に送信 → 通信成功
@@ -132,11 +136,10 @@ Kubernetes Service には `externalTrafficPolicy` という設定があり、外
 
 #### Azure LoadBalancer の特性
 
-- **externalTrafficPolicy=Cluster の場合**: 
+- **externalTrafficPolicy=Cluster の場合**:
   - Azure LB は Service に定義された「通常のポート」（80, 443）をそのまま BackendPort に設定
   - NodePort の存在を認識しない
-  
-- **externalTrafficPolicy=Local の場合**: 
+- **externalTrafficPolicy=Local の場合**:
   - Azure Cloud Controller Manager が NodePort を検出
   - LoadBalancer Rule の BackendPort を自動的に NodePort に設定
 
@@ -200,15 +203,16 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
 
 ```yaml
 helm install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx \
-  --create-namespace \
-  --set controller.replicaCount=1 \
-  --set controller.service.externalTrafficPolicy=Local \
-  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
-  --wait --timeout=5m
+--namespace ingress-nginx \
+--create-namespace \
+--set controller.replicaCount=1 \
+--set controller.service.externalTrafficPolicy=Local \
+--set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+--wait --timeout=5m
 ```
 
 **重要なポイント**:
+
 - `--set controller.service.externalTrafficPolicy=Local`: Azure LB が NodePort を自動検出
 - `--wait --timeout=5m`: デプロイが完全に完了するまで待機
 - ヘルスプローブパス: Azure LB が Pod の健全性を `/healthz` エンドポイントで確認
@@ -276,34 +280,35 @@ Content-Type: text/html
 ## 🛠️ ワークフローでの修正内容（diff 形式）
 
 ### `.github/workflows/3-deploy-board-app.yml`
-+
-+          # Helm ロック状態を事前にチェック・解除
-+          if kubectl get secret -n ingress-nginx | grep -q 'sh\.helm\.release\.v1\.ingress-nginx'; then
-+            HELM_STATUS=$(helm status ingress-nginx -n ingress-nginx -o json 2>/dev/null | jq -r '.info.status' || echo "unknown")
-+            if [[ "$HELM_STATUS" == "pending-install" || "$HELM_STATUS" == "pending-upgrade" || "$HELM_STATUS" == "pending-rollback" ]]; then
-+              echo "⚠️  Helm リリースがロック状態（$HELM_STATUS）です。ロックを解除します"
-+              helm rollback ingress-nginx 0 -n ingress-nginx --wait=false || kubectl delete secret -n ingress-nginx -l owner=helm,name=ingress-nginx,status=pending-install || true
-+              sleep 5
-+            fi
-+          fi
-+
-           if kubectl get ns ingress-nginx >/dev/null 2>&1; then
-             echo "既に ingress-nginx Namespace が存在します。Service を再作成して LoadBalancer 設定を修正します";
-             helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
-               --namespace ingress-nginx \
-               --reuse-values \
-+              --set controller.service.externalTrafficPolicy=Local \
-+              --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
-+              --wait --timeout=5m
+
+-
+-          # Helm ロック状態を事前にチェック・解除
+-          if kubectl get secret -n ingress-nginx | grep -q 'sh\.helm\.release\.v1\.ingress-nginx'; then
+-            HELM_STATUS=$(helm status ingress-nginx -n ingress-nginx -o json 2>/dev/null | jq -r '.info.status' || echo "unknown")
+-            if [[ "$HELM_STATUS" == "pending-install" || "$HELM_STATUS" == "pending-upgrade" || "$HELM_STATUS" == "pending-rollback" ]]; then
+-              echo "⚠️  Helm リリースがロック状態（$HELM_STATUS）です。ロックを解除します"
+-              helm rollback ingress-nginx 0 -n ingress-nginx --wait=false || kubectl delete secret -n ingress-nginx -l owner=helm,name=ingress-nginx,status=pending-install || true
+-              sleep 5
+-            fi
+-          fi
+-           if kubectl get ns ingress-nginx >/dev/null 2>&1; then
+              echo "既に ingress-nginx Namespace が存在します。Service を再作成して LoadBalancer 設定を修正します";
+              helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
+                --namespace ingress-nginx \
+                --reuse-values \
+-              --set controller.service.externalTrafficPolicy=Local \
+-              --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+-              --wait --timeout=5m
            else
              helm install ingress-nginx ingress-nginx/ingress-nginx \
                --namespace ingress-nginx \
                --create-namespace \
                --set controller.replicaCount=1 \
-+              --set controller.service.externalTrafficPolicy=Local \
-+              --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
-+              --wait --timeout=5m
+-              --set controller.service.externalTrafficPolicy=Local \
+-              --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz \
+-              --wait --timeout=5m
            fi
+
 ```
 
 ---
@@ -333,16 +338,18 @@ Content-Type: text/html
 ### 簡単な例え
 
 ```
+
 ❌ 修正前
-宅配便（Azure LB）: 「80号室にお届けします」
-受取人（ノード）: 「私は32170号室にいます」
+宅配便（Azure LB）: 「80 号室にお届けします」
+受取人（ノード）: 「私は 32170 号室にいます」
 → 届かない
 
 ✅ 修正後
-宅配便（Azure LB）: 「32170号室ですね、確認しました」
-受取人（ノード）: 「はい、32170号室です」
+宅配便（Azure LB）: 「32170 号室ですね、確認しました」
+受取人（ノード）: 「はい、32170 号室です」
 → 届く
-```
+
+````
 
 ---
 
@@ -394,7 +401,7 @@ helm install ingress-nginx ingress-nginx/ingress-nginx
 
 # ✅ 良い例（完全にデプロイされるまで待機）
 helm install ingress-nginx ingress-nginx/ingress-nginx --wait --timeout=5m
-```
+````
 
 ### 3. Helm リポジトリは常に最新化
 
@@ -426,13 +433,16 @@ fi
 ### 重要なポイント
 
 1. **AKS では externalTrafficPolicy=Local を使う**
+
    - Azure LoadBalancer が NodePort を正しく検出するために必須
 
 2. **Helm のベストプラクティスを守る**
+
    - `--wait --timeout` でデプロイ完了を待機
    - リポジトリは毎回 `helm repo update` で最新化
 
 3. **CI/CD のロバスト化**
+
    - Helm ロック状態の自動解除処理を追加
    - エラーハンドリングを充実させる
 

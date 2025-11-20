@@ -297,8 +297,7 @@ jobs:
             # --- マスク回避用ワークアラウンド (GitHub Actions の自動レダクション対策) ---
             # 完全一致文字列がマスクされる場合に備え、IP を分割表示し再構築手段を提示する。
             LB_IP_PARTS=$(echo $LB_IP | tr '.' ' ')
-            echo "- **Load Balancer IP(分割)**: $(echo $LB_IP_PARTS | sed 's/ /./g')" >> $GITHUB_STEP_SUMMARY
-            echo "- **再構築コマンド例**: \`echo $LB_IP_PARTS | sed 's/ /./g'\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Load Balancer IP**: $(echo $LB_IP_PARTS | sed 's/ /./g')" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "> 💡 ブラウザで上記 IP にアクセスできます" >> $GITHUB_STEP_SUMMARY
           else
