@@ -50,6 +50,22 @@ jobs:
         with:
           category: "codeql"
 
+      - name: CodeQL SARIF アーティファクト収集
+        # analyze 実行後に生成された SARIF を探索しアーティファクト化
+        # 目的: 上位検出抽出処理で CodeQL の個別結果も統合するため
+        run: |
+          set -euo pipefail
+          mkdir -p codeql-sarif
+          # 標準的な出力先: codeql-results/ を再帰探索
+          find . -maxdepth 5 -type f -name '*.sarif' -print -exec cp {} codeql-sarif/ \;
+          echo "収集済みSARIF:" && ls -1 codeql-sarif || true
+        
+      - name: CodeQL SARIF アップロード (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-sarif
+          path: codeql-sarif/*.sarif
+
   iac-security:
     name: IaC セキュリティ (Bicep/K8s/Secrets)
     runs-on: ubuntu-latest
@@ -167,54 +183,77 @@ jobs:
     needs: [codeql, iac-security]
     if: always()
     steps:
-      - name: スキャン成果物取得
-        # iac-security ジョブで保存した SARIF を取得し要約抽出に利用
+      - name: スキャン成果物取得 (Trivy/Gitleaks)
         uses: actions/download-artifact@v4
         with:
           name: iac-scan-results
           path: sarif
 
+      - name: CodeQL SARIF 取得
+        uses: actions/download-artifact@v4
+        with:
+          name: codeql-sarif
+          path: sarif-codeql
+
       - name: 重要度上位検出抽出 (最大5件)
-        # SARIF 形式の結果から error/warning を抽出し最大5件まで要約。
-        # CodeQL の詳細結果は Security タブにあるためここでは Trivy/Gitleaks の成果物のみ。
-        # 解析方針:
-        #   - 各 SARIF の runs[].results[] を走査
-        #   - レベル (level) が error / warning を対象
-        #   - ruleId とメッセージを整形 (改行除去/先頭トリム)
-        #   - error 優先 → warning の順に並べて先頭から5件
-        #   - 件数が 0 の場合は「高優先度検出なし」を表示
         run: |
           set -euo pipefail
           TOP_FILE=top-findings.md
+          JSON_FILE=top-findings.json
           echo "### 🧪 上位検出 (最大5件)" > $TOP_FILE
           echo "" >> $TOP_FILE
-          if ls sarif/*.sarif 1> /dev/null 2>&1; then
-            # jq が存在する前提 (GitHub Hosted Runner 標準搭載)
-            # 全ファイルから error/warning を TSV で抽出
-            ALL=$(for f in sarif/*.sarif; do
-              jq -r '.runs[]? .results[]? | {rid:(.ruleId // "(rule不明)"), lvl:(.level // "note"), msg:(.message.text // "")} | select(.lvl=="error" or .lvl=="warning") | [.lvl, .rid, (.msg | gsub("\n"; " "))] | @tsv' "$f" || true;
-            done)
-            if [ -n "$ALL" ]; then
-              # error を先、次に warning。重複 ruleId は許容 (異なる場所かもしれないため)
-              TOP=$(echo "$ALL" | awk -F"\t" '{print $0}' | sort -t$'\t' -k1,1 | sed 's/^error/0\terror/' | sed 's/^warning/1\twarning/' | sort -t$'\t' -k1,1 -k2,2 | cut -f2- | head -n 5)
-              # 上記で sort 前に level を数値化 → sort 後 cut で除去するロジック
-              COUNT=0
-              while IFS=$'\t' read -r RULE MSG; do
-                COUNT=$((COUNT+1))
-                # メッセージを100文字程度にトリム（長すぎるとサマリが読みにくいため）
-                SHORT=$(echo "$MSG" | sed -E 's/ {1,}/ /g' | cut -c1-100)
-                echo "- **$RULE**: $SHORT" >> $TOP_FILE
-              done <<< "$TOP"
-              if [ "$COUNT" -eq 0 ]; then
-                echo "高優先度検出なし (error/warning 0件)" >> $TOP_FILE
-              fi
-            else
-              echo "高優先度検出なし (error/warning 0件)" >> $TOP_FILE
-            fi
-          else
+          FILE_LIST=$(ls sarif/*.sarif 2>/dev/null || true; ls sarif-codeql/*.sarif 2>/dev/null || true)
+          if [ -z "$FILE_LIST" ]; then
             echo "成果物が見つかりません (ARTIFACT未取得)" >> $TOP_FILE
+            echo '{"topFindings":[],"error":"no artifacts"}' > $JSON_FILE
+          else
+            ALL=$(for f in $FILE_LIST; do
+              jq -r --arg SRC "$f" '
+                .runs[]? .results[]? | {
+                  rid:(.ruleId // "(rule不明)"),
+                  lvl:(.level // "note"),
+                  sev:(.properties.severity // .properties["security-severity"] // .rule.properties.severity // "UNSPECIFIED"),
+                  msg:(.message.text // ""),
+                  src:$SRC
+                } | select(.lvl=="error" or .lvl=="warning") | [
+                  (if (.sev|ascii_upcase)=="CRITICAL" then 0 elif (.sev|ascii_upcase)=="HIGH" then 1 elif (.sev|ascii_upcase)=="MEDIUM" then 2 elif (.sev|ascii_upcase)=="LOW" then 3 else 4 end),
+                  (if .lvl=="error" then 0 else 1 end),
+                  (.sev|ascii_upcase),
+                  .rid,
+                  (.msg | gsub("\n"; " ") | gsub(" {2,}"; " ")),
+                  .src
+                ] | @tsv' "$f" || true;
+            done)
+            if [ -z "$ALL" ]; then
+              echo "高優先度検出なし (error/warning 0件)" >> $TOP_FILE
+              echo '{"topFindings":[],"error":"no error/warning"}' > $JSON_FILE
+            else
+              TOP=$(echo "$ALL" | sort -t$'\t' -k1,1n -k2,2n | head -n 5)
+              echo '{"topFindings":[" > $JSON_FILE
+              COUNT=0
+              while IFS=$'\t' read -r SEV_RANK LVL_RANK SEV RULE MSG SRC; do
+                COUNT=$((COUNT+1))
+                SHORT=$(echo "$MSG" | cut -c1-100)
+                echo "- **$SEV** / $RULE: $SHORT" >> $TOP_FILE
+                ESC_MSG=$(echo "$MSG" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
+                SEP=','; [ $COUNT -eq 1 ] && SEP=''
+                echo "${SEP}{\"severity\":\"$SEV\",\"ruleId\":\"$RULE\",\"message\":\"$ESC_MSG\",\"sourceFile\":\"$SRC\"}" >> $JSON_FILE
+              done <<< "$TOP"
+              echo '],"generatedAt":"'$(date -u +'%Y-%m-%dT%H:%M:%SZ')'"}' >> $JSON_FILE
+              if [ $COUNT -eq 0 ]; then
+                sed -i '1i高優先度検出なし (error/warning 0件)' $TOP_FILE
+              fi
+            fi
           fi
           cat $TOP_FILE >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "(機械可読JSON: top-findings.json を artifact として保存)" >> $GITHUB_STEP_SUMMARY
+
+      - name: 上位検出JSON保存 (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-top-findings-json
+          path: top-findings.json
 
       - name: スキャン結果サマリを出力
         run: |
