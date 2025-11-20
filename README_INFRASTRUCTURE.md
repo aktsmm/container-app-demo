@@ -2,17 +2,17 @@
 
 ## 1. Bicep 構成概要
 
-| モジュール         | ファイル                               | 主な役割                                                                                                                            |
-| ------------------ | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| ルートテンプレート | `infra/main.bicep`                     | 低コスト VNet + AKS + Container Apps Env + VM (MySQL) + ACR + Storage + Log Analytics + 診断設定をまとめて展開                      |
-| `logAnalytics`     | `infra/modules/logAnalytics.bicep`     | Log Analytics Workspace (PerGB2018, retention 30 日、`enableLogAccessUsingOnlyResourcePermissions`)                                 |
-| `vnet`             | `infra/modules/vnet.bicep`             | `10.0.0.0/16` の VNet と 3 サブネット (AKS/VM/ACA)。Container Apps サブネットには `Microsoft.App/environments` デリゲーションを付与 |
-| `acr`              | `infra/modules/acr.bicep`              | Basic SKU、管理者ユーザー無効、匿名 Pull 不可                                                                                       |
+| モジュール         | ファイル                               | 主な役割                                                                                                                               |
+| ------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| ルートテンプレート | `infra/main.bicep`                     | 低コスト VNet + AKS + Container Apps Env + VM (MySQL) + ACR + Storage + Log Analytics + 診断設定をまとめて展開                         |
+| `logAnalytics`     | `infra/modules/logAnalytics.bicep`     | Log Analytics Workspace (PerGB2018, retention 30 日、`enableLogAccessUsingOnlyResourcePermissions`)                                    |
+| `vnet`             | `infra/modules/vnet.bicep`             | `10.0.0.0/16` の VNet と 3 サブネット (AKS/VM/ACA)。Container Apps サブネットには `Microsoft.App/environments` デリゲーションを付与    |
+| `acr`              | `infra/modules/acr.bicep`              | Basic SKU、管理者ユーザー無効、匿名 Pull 不可                                                                                          |
 | `storageAccount`   | `infra/modules/storageAccount.bicep`   | Backup 用 StorageV2、Standard_LRS + Cool、Blob 公開禁止、TLS1.2 強制。Blob Service とバックアップコンテナ（`mysql-backups`）を自動作成 |
-| `containerAppEnv`  | `infra/modules/containerAppEnv.bicep`  | Consumption workload profile + Log Analytics ログ出力 + VNet 統合                                                                   |
-| `aks`              | `infra/modules/aks.bicep`              | SystemAssigned ID、`Standard_B2s` 1 ノード、Overlay ネットワーク、OMS Agent Add-on (Log Analytics 連携)                             |
-| `vm`               | `infra/modules/vm.bicep`               | Standard_B1ms Linux VM、SystemAssigned ID、`mysql-init.sh` を Custom Script 拡張で実行、NSG で 22/3306 を許可                       |
-| `policyAssignment` | `infra/modules/policyAssignment.bicep` | Resource Group スコープでポリシー イニシアチブを割り当て (Managed Identity オプションあり)                                          |
+| `containerAppEnv`  | `infra/modules/containerAppEnv.bicep`  | Consumption workload profile + Log Analytics ログ出力 + VNet 統合                                                                      |
+| `aks`              | `infra/modules/aks.bicep`              | SystemAssigned ID、`Standard_B2s` 1 ノード、Overlay ネットワーク、OMS Agent Add-on (Log Analytics 連携)                                |
+| `vm`               | `infra/modules/vm.bicep`               | Standard_B1ms Linux VM、SystemAssigned ID、`mysql-init.sh` を Custom Script 拡張で実行、NSG で 22/3306 を許可                          |
+| `policyAssignment` | `infra/modules/policyAssignment.bicep` | Resource Group スコープでポリシー イニシアチブを割り当て (Managed Identity オプションあり)                                             |
 
 ### 1.1 パラメーター管理
 
