@@ -382,17 +382,40 @@ jobs:
           echo "Azure LoadBalancer のヘルスプローブ設定を確認します"
           NODE_RG="${NODE_RESOURCE_GROUP:-}"
           if [ -n "$NODE_RG" ]; then
-            PROBE_INFO=$(az network lb probe list \
-              --resource-group "$NODE_RG" \
-              --lb-name kubernetes \
-              --query "[?contains(name, 'ae3f94b3d23304b5c99316a6da9704ef')].{Name:name, Port:port, Path:requestPath, Protocol:protocol}" \
-              -o json 2>/dev/null || echo "[]")
+            echo "ヘルスプローブの作成完了を待機します（最大 3分）"
+            PROBE_WAIT_ATTEMPTS=18
+            PROBE_FOUND=false
             
-            if [ "$PROBE_INFO" != "[]" ]; then
-              echo "✅ LoadBalancer ヘルスプローブ設定:"
-              echo "$PROBE_INFO" | jq '.'
-            else
-              echo "⚠️ ヘルスプローブ情報が取得できませんでした（作成中の可能性があります）"
+            for i in $(seq 1 $PROBE_WAIT_ATTEMPTS); do
+              PROBE_INFO=$(az network lb probe list \
+                --resource-group "$NODE_RG" \
+                --lb-name kubernetes \
+                --query "[].{Name:name, Port:port, Path:requestPath, Protocol:protocol}" \
+                -o json 2>/dev/null || echo "[]")
+              
+              if [ "$PROBE_INFO" != "[]" ]; then
+                echo "✅ LoadBalancer ヘルスプローブが作成されました"
+                echo "$PROBE_INFO" | jq '.'
+                
+                # healthCheckNodePort (30254) が使用されているか確認
+                HEALTH_PORT=$(echo "$PROBE_INFO" | jq -r '.[0].Port // empty')
+                if [ "$HEALTH_PORT" = "30254" ]; then
+                  echo "✅ 固定 healthCheckNodePort (30254) が正しく設定されています"
+                  PROBE_FOUND=true
+                  break
+                else
+                  echo "⚠️ ヘルスプローブのポートが $HEALTH_PORT です（期待値: 30254）"
+                fi
+              fi
+              
+              echo "[$i/$PROBE_WAIT_ATTEMPTS] ヘルスプローブ作成待機中..."
+              sleep 10
+            done
+            
+            if [ "$PROBE_FOUND" = "false" ]; then
+              echo "⚠️ ヘルスプローブが期待通りに設定されていない可能性があります"
+              echo "現在のヘルスプローブ設定:"
+              az network lb probe list --resource-group "$NODE_RG" --lb-name kubernetes -o table || true
             fi
           fi
 
@@ -401,11 +424,29 @@ jobs:
           for i in $(seq 1 $CONNECTIVITY_ATTEMPTS); do
             if timeout 5 bash -c "echo > /dev/tcp/$LB_IP/80" 2>/dev/null; then
               echo "✅ [$i/$CONNECTIVITY_ATTEMPTS] LoadBalancer ポート 80 への接続成功"
+              echo "LOADBALANCER_READY=true" >> "$GITHUB_ENV"
               break
             fi
             echo "[$i/$CONNECTIVITY_ATTEMPTS] LoadBalancer 接続待機中..."
             sleep 10
           done
+          
+          # 接続確認が失敗した場合は診断情報を出力
+          if [ "${LOADBALANCER_READY:-false}" != "true" ]; then
+            echo "❌ LoadBalancer への接続確認が失敗しました"
+            echo "診断情報を出力します:"
+            kubectl get svc -n ingress-nginx ingress-nginx-controller -o yaml | grep -A 20 "annotations:" || true
+            kubectl describe svc -n ingress-nginx ingress-nginx-controller | tail -20 || true
+            
+            if [ -n "$NODE_RG" ]; then
+              echo "LoadBalancer バックエンドプールの状態:"
+              az network lb show --resource-group "$NODE_RG" --name kubernetes \
+                --query "{FrontendIP:frontendIPConfigurations[].publicIPAddress.id, BackendPools:backendAddressPools[].name, Rules:loadBalancingRules[].name}" \
+                -o json | jq '.' || true
+            fi
+            
+            echo "⚠️ 接続確認失敗。後続のデプロイは続行しますが、アクセスできない可能性があります"
+          fi
 
       - name: Ingress Controller 状態を記録
         if: success()

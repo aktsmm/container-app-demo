@@ -74,6 +74,10 @@ controller:
   service:
     type: LoadBalancer
     externalTrafficPolicy: Local
+    
+    # 🔑 重要: ヘルスチェック用の固定 NodePort
+    # これにより LoadBalancer のヘルスプローブが毎回同じポートを参照
+    healthCheckNodePort: 30254
 
     annotations:
       # ヘルスプローブのパスと設定を明示
@@ -92,6 +96,8 @@ controller:
       path: /healthz
       port: 10254
 ```
+
+**重要ポイント**: `healthCheckNodePort: 30254` を固定化することで、Kubernetes が毎回同じ NodePort でヘルスプローブを受け付けるようになります。これにより Azure LoadBalancer のヘルスプローブ設定との不一致が解消されます。
 
 ### 2. **ワークフローを修正**
 
@@ -177,24 +183,60 @@ curl -H "Host: board.localdemo.internal" http://20.222.232.70/
 
 ## 再発防止策
 
-1. **values.yaml で設定を一元管理**
+1. **healthCheckNodePort を固定化**（最重要）
+
+   - `externalTrafficPolicy: Local` 使用時は `healthCheckNodePort` を明示的に指定
+   - Kubernetes がランダムに割り当てる問題を回避
+   - 推奨値: 30254（30000-32767 の範囲で任意のポート）
+   - 参考: [Kubernetes LoadBalancer - Preserving the client source IP](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip)
+
+2. **values.yaml で設定を一元管理**
 
    - `--set` での個別指定ではなく、values.yaml で標準設定を定義
    - ヘルスプローブ設定を明示的に含める
 
-2. **LoadBalancer の強制再作成**
+3. **LoadBalancer の強制再作成**
 
    - Helm upgrade 時に既存サービスを削除して再作成
    - 古い設定が残らないようにする
 
-3. **接続確認ステップの追加**
+4. **ヘルスプローブ設定の確認ステップを追加**
 
-   - デプロイ後に LoadBalancer への接続テストを実施
+   - デプロイ後に Azure LoadBalancer のヘルスプローブ設定を確認
+   - `healthCheckNodePort: 30254` が正しく使用されているか検証
    - 問題を早期に検出
 
-4. **タイムアウト時間の延長**
+5. **接続確認ステップの追加**
+
+   - デプロイ後に LoadBalancer への接続テストを実施
+   - 接続失敗時は診断情報を出力
+
+6. **タイムアウト時間の延長**
    - LoadBalancer IP 割り当て待機を 10 分に延長
+   - ヘルスプローブ作成待機を 3 分に設定
    - Azure のプロビジョニング時間に余裕を持たせる
+
+### 新しいリソースグループでのデプロイ時の注意
+
+**初回デプロイ時の推奨手順**:
+
+1. インフラデプロイ（`1️⃣ Infrastructure Deploy`）を実行
+2. **5-10 分待機** して Azure LoadBalancer のプロビジョニングを待つ
+3. アプリデプロイ（`3️⃣ Deploy Board App`）を実行
+4. ワークフローの `LoadBalancer 接続確認` ステップで接続成功を確認
+
+もし接続確認が失敗した場合:
+
+- 5-10 分待機後、ワークフローを再実行
+- ヘルスプローブのポートが `30254` になっているか確認:
+  ```bash
+  az network lb probe list --resource-group <node-rg> --lb-name kubernetes -o table
+  ```
+- それでも失敗する場合は Service を削除して再作成:
+  ```bash
+  kubectl delete svc ingress-nginx-controller -n ingress-nginx
+  # ワークフローを再実行
+  ```
 
 ---
 

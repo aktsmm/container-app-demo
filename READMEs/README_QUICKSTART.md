@@ -187,6 +187,19 @@ pwsh ./scripts/setup-github-secrets_variables.ps1 -DryRun     # 設定内容の�
    - Step Summary で ACR / AKS / ACA / VM / Storage / Log Analytics の情報を出力
 3. 完了後 `az resource list -g <RG>` でリソースが揃っていることを確認します。
 
+### ⚠️ 新しいリソースグループでの初回デプロイ時の注意
+
+**初回デプロイ時は、Ingress Controller の LoadBalancer 設定が安定するまで時間がかかる場合があります。**
+
+- **推奨**: インフラデプロイ完了後、**最低 5-10 分待機**してからアプリデプロイを実行
+- **理由**: Azure LoadBalancer のヘルスプローブ設定が完全にプロビジョニングされるまで時間がかかる
+- **確認方法**: `3️⃣ Deploy Board App (AKS)` の `LoadBalancer 接続確認` ステップで接続成功を確認
+
+もし接続確認が失敗した場合:
+1. ワークフローのログで `healthCheckNodePort: 30254` が正しく設定されているか確認
+2. 5-10 分待機後、ワークフローを再実行
+3. それでも失敗する場合は `trouble_docs/2025-01-21-loadbalancer-healthprobe-nodeport-mismatch.md` を参照
+
 ## 7. アプリケーションビルド & デプロイ
 
 1. **ビルド**

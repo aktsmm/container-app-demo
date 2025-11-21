@@ -7,7 +7,7 @@ controller:
   service:
     type: LoadBalancer
     externalTrafficPolicy: Local
-    
+
     # ヘルスチェック用の固定 NodePort（30000-32767 の範囲で指定）
     # externalTrafficPolicy: Local の場合、この NodePort でヘルスプローブを受け付ける
     healthCheckNodePort: 30254
