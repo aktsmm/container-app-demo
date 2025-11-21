@@ -428,13 +428,30 @@ jobs:
             echo "parameters に ingressPublicIpName がありません" >&2
             exit 1
           fi
-          IP_JSON=$(az network public-ip show --resource-group "$NODE_RG" --name "$PIP_NAME")
+          # AKS の node RG が再生成されても追従できるよう、複数 RG を順番に探索する
+          EXTRA_PIP_RG=$(jq -r '.parameters.ingressPublicIpResourceGroup.value // empty' "$PARAM_FILE" 2>/dev/null || true)
+          IP_JSON=""
+          RESOLVED_PIP_RG=""
+          for RG in "$EXTRA_PIP_RG" "$NODE_RG" "$RESOURCE_GROUP_NAME"; do
+            if [ -z "$RG" ] || [ "$RG" = "null" ]; then
+              continue
+            fi
+            if IP_JSON=$(az network public-ip show --resource-group "$RG" --name "$PIP_NAME" 2>/dev/null); then
+              RESOLVED_PIP_RG="$RG"
+              break
+            fi
+          done
+          if [ -z "$RESOLVED_PIP_RG" ] || [ -z "$IP_JSON" ]; then
+            echo "Public IP ($PIP_NAME) が node RG や指定 RG で見つかりません" >&2
+            exit 1
+          fi
           STATIC_IP=$(echo "$IP_JSON" | jq -r '.properties.ipAddress')
           FQDN=$(echo "$IP_JSON" | jq -r '.properties.dnsSettings.fqdn')
           if [ -z "$STATIC_IP" ] || [ "$STATIC_IP" = "null" ]; then
             echo "Public IP が存在しません。infra-deploy を再実行してください" >&2
             exit 1
           fi
+          echo "INGRESS_PIP_RESOURCE_GROUP=$RESOLVED_PIP_RG" >> "$GITHUB_ENV"
           echo "NODE_RESOURCE_GROUP=$NODE_RG" >> "$GITHUB_ENV"
           echo "INGRESS_STATIC_IP=$STATIC_IP" >> "$GITHUB_ENV"
           echo "INGRESS_FQDN=${FQDN:-N/A}" >> "$GITHUB_ENV"
