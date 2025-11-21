@@ -1,0 +1,59 @@
+# NGINX Ingress Controller の Helm values
+# 目的: Azure LoadBalancer との統合を確実にし、ヘルスプローブの不一致を防ぐ
+
+controller:
+  replicaCount: 1
+  
+  service:
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+    
+    # Azure LoadBalancer 用アノテーション
+    annotations:
+      # ヘルスプローブのパスを明示的に指定
+      service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: "/healthz"
+      # ヘルスプローブの間隔（秒）
+      service.beta.kubernetes.io/azure-load-balancer-health-probe-interval: "5"
+      # 異常と判定するまでの失敗回数
+      service.beta.kubernetes.io/azure-load-balancer-health-probe-num-of-probe: "2"
+      # TCPリセット有効化
+      service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout: "30"
+    
+    # 注意: loadBalancerIP と service.beta.kubernetes.io/azure-load-balancer-resource-group は
+    # ワークフロー内で動的に --set で上書きする
+
+  # リソース要求を低コストに設定
+  resources:
+    requests:
+      cpu: 100m
+      memory: 90Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  # ヘルスチェックエンドポイント
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 10254
+      scheme: HTTP
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: 10254
+      scheme: HTTP
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+
+# 低コスト設計: admission webhook は最小構成
+defaultBackend:
+  enabled: false
