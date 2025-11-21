@@ -39,7 +39,7 @@
 | `scripts/create-github-actions-sp.ps1`       | Service Principal 発行 + 権限割り当て + GitHub 用出力         | すべてのワークフローの前提。手動実行し Client ID/Secret を GitHub Variables/Secrets へ登録。実行者には Azure AD の `Application Administrator` (または同等) と Subscription の `Owner` もしくは `User Access Administrator` 権限が必要 |
 | `scripts/setup-github-secrets_variables.ps1` | `$GitHubVariables/$GitHubSecrets` を gh CLI で一括登録        | `$DefaultRepo` で対象リポジトリを宣言し、未指定時は git remote → 対話入力の順で解決。`scripts/create-github-actions-sp.ps1` で発行した Service Principal 値をハッシュテーブルへ転記してから運用。`-DryRun` でプラン確認後に本番実行。  |
 | `scripts/mysql-init.sh`                      | VM 上で MySQL をインストール、ユーザー作成、外部接続有効化    | `1-infra-deploy.yml` で Bicep デプロイ実行時に Custom Script Extension から自動実行                                                                                                                                                    |
-| `scripts/sync-board-vars.ps1`                | `main-dev.parameters.json` から Kustomize `vars.env` を再生成 | `3-deploy-board-app.yml` の「Namespace/Ingress の値を同期」ステップで実行。ローカル検証時も同コマンドを推奨                                                                                                                            |
+| `scripts/sync-board-vars.ps1`                | `main-dev.parameters.json` から Kustomize `vars.env` を再生成 | `2-board-app-build-deploy.yml` の「Namespace/Ingress の値を同期」ステップで実行。ローカル検証時も同コマンドを推奨                                                                                                                        |
 
 ## 5. ログ & 監視
 

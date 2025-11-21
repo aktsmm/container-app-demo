@@ -109,6 +109,9 @@ param aksPodCidr string = '10.244.0.0/16'
 @description('Ingress用Static Public IP名')
 param ingressPublicIpName string
 
+@description('Ingress 用 Public IP に付与する DNS ラベル（<label>.<region>.cloudapp.azure.com を生成）')
+param ingressPublicIpDnsLabel string
+
 @description('MySQL VM 名')
 param vmName string
 
@@ -266,10 +269,12 @@ module aks './modules/aks.bicep' = if (!aksSkipCreate) {
     subnetId: resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, aksSubnetName)
     logAnalyticsWorkspaceId: logAnalytics.outputs.id
     ingressPublicIpName: ingressPublicIpName
+    ingressPublicIpDnsLabel: ingressPublicIpDnsLabel
     acrId: acr.outputs.id
     tags: defaultTags
   }
 }
+
 
 module vm './modules/vm.bicep' = {
   name: 'vm-${deploymentTimestamp}'
@@ -392,7 +397,12 @@ output azureContainerRegistryId string = acr.outputs.id
 // 既存クラスタ再利用時も ID を一貫して出力 (aksSkipCreate=true の場合 module は作成されない)
 output aksClusterId string = resourceId('Microsoft.ContainerService/managedClusters', aksName)
 output aksNodeResourceGroup string = aksSkipCreate ? aksNodeResourceGroup : aks!.outputs.nodeResourceGroup
-output ingressPublicIpAddress string = aksSkipCreate ? '' : aks!.outputs.ingressPublicIpAddress
+output ingressPublicIpAddress string = aksSkipCreate
+  ? reference(resourceId('Microsoft.Network/publicIPAddresses', ingressPublicIpName), '2023-09-01', 'full').properties.ipAddress
+  : aks!.outputs.ingressPublicIpAddress
+output ingressPublicIpFqdn string = aksSkipCreate
+  ? reference(resourceId('Microsoft.Network/publicIPAddresses', ingressPublicIpName), '2023-09-01', 'full').properties.dnsSettings.fqdn
+  : aks!.outputs.ingressPublicIpFqdn
 output containerAppsEnvironmentId string = containerAppsEnv.outputs.id
 output logAnalyticsId string = logAnalytics.outputs.id
 output virtualNetworkId string = vnet.outputs.id

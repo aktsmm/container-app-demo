@@ -7,7 +7,7 @@
 ### 体験できる価値
 
 - **IaC (Infrastructure as Code) の便利さ**: すべてのインフラ構成を `infra/main.bicep` と `parameters/*.json` でコード化することで、環境の再現性・変更履歴の可視化・レビューによる品質向上を実現。手作業での構築ミスを防ぎ、何度でも同じ環境を迅速に構築できます。
-- **CI/CD パイプラインの自動化**: GitHub Actions による 8 本の疎結合ワークフローで、インフラのデプロイ (`1️⃣ Infrastructure Deploy`)、コンテナイメージのビルド・スキャン (`2️⃣ Build`系)、アプリケーションのデプロイ (`3️⃣ Deploy`系)、定期バックアップ・クリーンアップを完全自動化。コードをプッシュするだけで、Validate → What-If → Deploy → Policy 適用まで一貫して実行されます。
+- **CI/CD パイプラインの自動化**: GitHub Actions による 8 本の疎結合ワークフローで、インフラのデプロイ (`1️⃣ Infrastructure Deploy`)、掲示板/管理アプリのビルド & デプロイ統合ワークフロー (`2️⃣ Board App Build & Deploy`, `2️⃣ Admin App Build & Deploy`)、定期バックアップ・クリーンアップを完全自動化。コードをプッシュするだけで、Validate → What-If → Deploy → Policy 適用まで一貫して実行されます。
 - **DevOps の文化**: インフラチームとアプリチームが同じリポジトリで協働し、IaC とアプリコードを統合管理。変更はすべて Git で追跡され、Pull Request レビュー → 自動テスト → 本番反映という DevOps サイクルを体感できます。
 - **DevSecOps によるセキュリティシフトレフト**: CodeQL (SAST)、Trivy (コンテナ・IaC スキャン)、Secret Scanning、Dependabot (SCA) を組み込み、開発初期段階から脆弱性を検出・修正。**Azure Policy** (`infra/policy.bicep`) によるコンプライアンス強制とガバナンス自動化、Log Analytics への全ログ統合により、セキュリティとガバナンスを開発プロセスに組み込んだ運用を実現します。
 
@@ -41,7 +41,7 @@ infra/
 	main.bicep        # 低コスト Azure リソース一式
 	modules/          # acr / aks / containerAppEnv / vm / storage / vnet / logAnalytics / policy
 	parameters/       # main-dev.parameters.json / policy-dev.parameters.json
-.github/workflows/  # 1-infra, 2-build-*, 3-deploy-*, backup-upload, cleanup-workflows, security-scan
+.github/workflows/  # 1-infra, 2-board-app-build-deploy, 2-admin-app-build-deploy, backup-upload, cleanup-workflows, security-scan
 scripts/            # SP発行、GitHub Secrets投入、MySQL初期化、K8s変数同期
 trouble_docs/       # トラブルシューティング履歴
 ```

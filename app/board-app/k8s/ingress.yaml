@@ -26,8 +26,8 @@ spec:
                 name: board-api
                 port:
                   number: 3000
-    # Host 指定あり: DNS 経由アクセス用（将来の拡張用）
-    - host: board.localdemo.internal
+    # Host 指定あり: Bicep で確保した Public IP の DNS 名を使用
+    - host: $(BOARD_APP_INGRESS_HOST)
       http:
         paths:
           - path: /

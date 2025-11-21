@@ -1,0 +1,635 @@
+name: 2️⃣ Board App Build & Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      redeployTag:
+        description: "ACR に既存タグがある場合に再デプロイする (空なら最新コミットをビルド)"
+        required: false
+  push:
+    branches:
+      - master
+    paths:
+      - "app/board-app/**"
+      - "app/board-api/**"
+      - "app/board-app/k8s/**"
+      - ".github/workflows/2-board-app-build-deploy.yml"
+  workflow_run:
+    workflows:
+      - "1️⃣ Infrastructure Deploy"
+    types:
+      - completed
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+  AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+  PARAM_FILE: infra/parameters/main-dev.parameters.json
+  KUSTOMIZE_DIR: app/board-app/k8s
+  ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
+  STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
+  BOARD_IMAGE_NAME: board-app
+  BOARD_API_IMAGE_NAME: board-api
+  DB_APP_USERNAME: ${{ vars.DB_APP_USERNAME }}
+  DB_APP_PASSWORD: ${{ vars.DB_APP_PASSWORD }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  prepare-context:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      checkout_ref: ${{ steps.detect_ref.outputs.checkout_ref }}
+      image_tag: ${{ steps.detect_ref.outputs.image_tag }}
+      build_required: ${{ steps.detect_ref.outputs.build_required }}
+      acr_name: ${{ steps.resolve_acr.outputs.acr_name }}
+      acr_login_server: ${{ steps.resolve_acr.outputs.acr_login_server }}
+      resource_group_name: ${{ steps.resolve_rg.outputs.resource_group_name }}
+      db_endpoint: ${{ steps.mysql_endpoint.outputs.db_endpoint }}
+    env:
+      REDEPLOY_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.redeployTag || '' }}
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+
+      - name: ビルド対象コミットとタグを決定
+        id: detect_ref
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            REF='${{ github.event.workflow_run.head_sha }}'
+          else
+            REF='${{ github.sha }}'
+          fi
+          BUILD_REQUIRED=true
+          IMAGE_TAG=""
+          if [ -n "${REDEPLOY_TAG}" ]; then
+            BUILD_REQUIRED=false
+            IMAGE_TAG="${REDEPLOY_TAG}"
+          fi
+          if [ -z "$IMAGE_TAG" ]; then
+            SHORT_REF="${REF:0:12}"
+            IMAGE_TAG="$SHORT_REF"
+          fi
+          echo "checkout_ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "build_required=$BUILD_REQUIRED" >> "$GITHUB_OUTPUT"
+          echo "ターゲットコミット: $REF (tag=$IMAGE_TAG, build_required=$BUILD_REQUIRED)"
+
+      - name: Azure に Service Principal でログイン
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
+      - name: リソースグループを解決
+        id: resolve_rg
+        run: |
+          set -euo pipefail
+          RG_NAME="${RESOURCE_GROUP_NAME}"
+          if [ -z "$RG_NAME" ]; then
+            RG_NAME=$(jq -r '.parameters.resourceGroupName.value // empty' "$PARAM_FILE" || true)
+          fi
+          if [ -z "$RG_NAME" ]; then
+            echo "ResourceGroup を特定できません" >&2
+            exit 1
+          fi
+          if ! az group show --name "$RG_NAME" &>/dev/null; then
+            echo "指定 RG ($RG_NAME) が存在しません" >&2
+            az group list --query '[].name' -o tsv >&2 || true
+            exit 2
+          fi
+          echo "resource_group_name=$RG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: ACR 名を解決
+        id: resolve_acr
+        env:
+          RESOLVED_RG: ${{ steps.resolve_rg.outputs.resource_group_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ACR_NAME_PREFIX" ] || [ -z "$RESOLVED_RG" ]; then
+            echo "ACR を解決するための変数が不足しています" >&2
+            exit 1
+          fi
+          ACR_NAME=$(az acr list --resource-group "$RESOLVED_RG" --query "[?starts_with(name, '${ACR_NAME_PREFIX}')].name | [0]" -o tsv)
+          if [ -z "$ACR_NAME" ]; then
+            echo "ACR が見つかりません。infra-deploy を先に実行してください" >&2
+            exit 1
+          fi
+          echo "acr_name=$ACR_NAME" >> "$GITHUB_OUTPUT"
+          echo "acr_login_server=${ACR_NAME}.azurecr.io" >> "$GITHUB_OUTPUT"
+          echo "resource_group_name=$RESOLVED_RG" >> "$GITHUB_OUTPUT"
+
+      - name: インフラ出力から MySQL Private IP を取得
+        id: mysql_endpoint
+        env:
+          INFRA_WORKFLOW_NAME: "1️⃣ Infrastructure Deploy"
+        run: |
+          set -euo pipefail
+          mkdir -p infra-output
+          if [ "${{ github.event_name }}" = "workflow_run" ] && [ "${{ github.event.workflow_run.name }}" = "$INFRA_WORKFLOW_NAME" ]; then
+            TARGET_RUN_ID='${{ github.event.workflow_run.id }}'
+          else
+            TARGET_RUN_ID=$(curl -s -H "Authorization: token $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/1-infra-deploy.yml/runs?status=success&per_page=1" \
+              | jq -r '.workflow_runs[0].id')
+          fi
+          if [ -z "$TARGET_RUN_ID" ] || [ "$TARGET_RUN_ID" = "null" ]; then
+            echo "インフラデプロイの成功履歴が見つかりません" >&2
+            exit 1
+          fi
+          gh run download "$TARGET_RUN_ID" --name infra-outputs --dir infra-output >/dev/null
+          OUTPUT_FILE=$(find infra-output -name '*.json' | head -n1)
+          if [ -z "$OUTPUT_FILE" ]; then
+            echo "infra-outputs アーティファクトに JSON がありません" >&2
+            exit 1
+          fi
+          MYSQL_IP=$(jq -r '.mysqlPrivateIp.value' "$OUTPUT_FILE")
+          if [ -z "$MYSQL_IP" ] || [ "$MYSQL_IP" = "null" ]; then
+            echo "mysqlPrivateIp が取得できません" >&2
+            exit 1
+          fi
+          echo "db_endpoint=${MYSQL_IP}:3306" >> "$GITHUB_OUTPUT"
+          echo "Resolved MySQL endpoint: ${MYSQL_IP}:3306"
+
+  code-security-scans:
+    runs-on: ubuntu-latest
+    needs: prepare-context
+    if: ${{ needs.prepare-context.outputs.build_required == 'true' }}
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-context.outputs.checkout_ref }}
+
+      - name: Gitleaks で秘密情報を検出
+        continue-on-error: true
+        run: |
+          set +e
+          VERSION="8.18.4"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o gitleaks.tgz
+          tar -xzf gitleaks.tgz gitleaks
+          sudo install -m 755 gitleaks /usr/local/bin/gitleaks
+          gitleaks detect --no-banner --report-format sarif --report-path gitleaks-board.sarif
+          echo "Gitleaks completed (exit code=$?)"
+
+      - name: ソース/設定/シークレット総合スキャン (Trivy FS)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b ./trivy-bin
+          ./trivy-bin fs --scanners vuln,secret,config --ignore-unfixed --severity CRITICAL,HIGH \
+            --format sarif --output trivy-fs-board.sarif app/board-app || echo "脆弱性検出あり"
+
+      - name: Trivy SARIF をアップロード (FS)
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-fs-board.sarif
+
+      - name: Gitleaks SARIF をアップロード
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: gitleaks-board.sarif
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-context
+      - code-security-scans
+    if: ${{ needs.prepare-context.result == 'success' && (needs.code-security-scans.result == 'success' || needs.code-security-scans.result == 'skipped') }}
+    outputs:
+      image_tag: ${{ steps.metadata.outputs.image_tag }}
+      board_image_full: ${{ steps.metadata.outputs.board_image_full }}
+      board_api_image_full: ${{ steps.metadata.outputs.board_api_image_full }}
+    env:
+      CHECKOUT_REF: ${{ needs.prepare-context.outputs.checkout_ref }}
+      IMAGE_TAG: ${{ needs.prepare-context.outputs.image_tag }}
+      ACR_NAME: ${{ needs.prepare-context.outputs.acr_name }}
+      ACR_LOGIN_SERVER: ${{ needs.prepare-context.outputs.acr_login_server }}
+      BUILD_REQUIRED: ${{ needs.prepare-context.outputs.build_required }}
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: メタデータをエクスポート
+        id: metadata
+        run: |
+          IMAGE_FULL="$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:$IMAGE_TAG"
+          BOARD_API_IMAGE_FULL="$ACR_LOGIN_SERVER/$BOARD_API_IMAGE_NAME:$IMAGE_TAG"
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "board_image_full=$IMAGE_FULL" >> "$GITHUB_OUTPUT"
+          echo "board_api_image_full=$BOARD_API_IMAGE_FULL" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_FULL=$IMAGE_FULL" >> "$GITHUB_ENV"
+          echo "BOARD_API_IMAGE_FULL=$BOARD_API_IMAGE_FULL" >> "$GITHUB_ENV"
+
+      - name: Azure に Service Principal でログイン
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
+      - name: ACR 管理者認証を有効化
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        run: az acr update --name "$ACR_NAME" --admin-enabled true
+
+      - name: ACR へログイン
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        run: az acr login --name "$ACR_NAME"
+
+      - name: コンテナイメージをビルド
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        run: |
+          docker build --file app/board-app/Dockerfile --tag "$IMAGE_FULL" app/board-app
+          docker tag "$IMAGE_FULL" "$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:latest"
+          docker build --file app/board-api/Dockerfile --tag "$BOARD_API_IMAGE_FULL" app/board-api
+          docker tag "$BOARD_API_IMAGE_FULL" "$ACR_LOGIN_SERVER/$BOARD_API_IMAGE_NAME:latest"
+
+      - name: Trivy DB キャッシュ復元
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('app/board-app/package.json') }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      - name: コンテナ SBOM 生成 (Board)
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_FULL }}
+          format: "cyclonedx"
+          output: "sbom-board.cdx.json"
+          hide-progress: true
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: コンテナ SBOM 生成 (Board API)
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.BOARD_API_IMAGE_FULL }}
+          format: "cyclonedx"
+          output: "sbom-board-api.cdx.json"
+          hide-progress: true
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Trivy でコンテナをスキャン (Board)
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: aquasecurity/trivy-action@0.28.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ env.IMAGE_FULL }}
+          format: "sarif"
+          output: "trivy-image-board.sarif"
+          hide-progress: true
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Trivy でコンテナをスキャン (Board API)
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: aquasecurity/trivy-action@0.28.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ env.BOARD_API_IMAGE_FULL }}
+          format: "sarif"
+          output: "trivy-image-board-api.sarif"
+          hide-progress: true
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Trivy SARIF をアップロード
+        if: ${{ env.BUILD_REQUIRED == 'true' && always() }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-image-board.sarif
+
+      - name: Trivy SARIF (Board API) をアップロード
+        if: ${{ env.BUILD_REQUIRED == 'true' && always() }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-image-board-api.sarif
+
+      - name: イメージを ACR へプッシュ
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        run: |
+          docker push "$IMAGE_FULL"
+          docker push "$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:latest"
+          docker push "$BOARD_API_IMAGE_FULL"
+          docker push "$ACR_LOGIN_SERVER/$BOARD_API_IMAGE_NAME:latest"
+
+      - name: 成果メタデータを保存
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: board-app-image
+          path: |
+            sbom-board.cdx.json
+            sbom-board-api.cdx.json
+            trivy-image-board.sarif
+            trivy-image-board-api.sarif
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-context
+      - build-and-push
+    if: ${{ needs.prepare-context.result == 'success' && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') }}
+    env:
+      RESOURCE_GROUP_NAME: ${{ needs.prepare-context.outputs.resource_group_name }}
+      ACR_NAME: ${{ needs.prepare-context.outputs.acr_name }}
+      ACR_LOGIN_SERVER: ${{ needs.prepare-context.outputs.acr_login_server }}
+      DB_ENDPOINT: ${{ needs.prepare-context.outputs.db_endpoint }}
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag || needs.prepare-context.outputs.image_tag }}
+      CHECKOUT_REF: ${{ needs.prepare-context.outputs.checkout_ref }}
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Azure に Service Principal でログイン
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
+      - name: kubectl を準備
+        run: az aks install-cli
+
+      - name: Namespace/Ingress の値を同期
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./scripts/sync-board-vars.ps1 `
+            -ParametersFile "infra/parameters/main-dev.parameters.json" `
+            -OutputFile "app/board-app/k8s/vars.env"
+
+      - name: AKS 資格情報を取得
+        run: |
+          az aks get-credentials \
+            --name "$AKS_CLUSTER_NAME" \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --overwrite-existing
+
+      - name: Ingress 用 Public IP 情報を取得
+        id: pip
+        run: |
+          set -euo pipefail
+          AKS_LOCATION=$(az aks show --resource-group "$RESOURCE_GROUP_NAME" --name "$AKS_CLUSTER_NAME" --query location -o tsv)
+          NODE_RG=$(az aks show --resource-group "$RESOURCE_GROUP_NAME" --name "$AKS_CLUSTER_NAME" --query nodeResourceGroup -o tsv)
+          if [ -z "$NODE_RG" ]; then
+            echo "ノードリソースグループを取得できません" >&2
+            exit 1
+          fi
+          PIP_NAME=$(jq -r '.parameters.ingressPublicIpName.value // empty' "$PARAM_FILE")
+          if [ -z "$PIP_NAME" ]; then
+            echo "parameters に ingressPublicIpName がありません" >&2
+            exit 1
+          fi
+          IP_JSON=$(az network public-ip show --resource-group "$NODE_RG" --name "$PIP_NAME")
+          STATIC_IP=$(echo "$IP_JSON" | jq -r '.properties.ipAddress')
+          FQDN=$(echo "$IP_JSON" | jq -r '.properties.dnsSettings.fqdn')
+          if [ -z "$STATIC_IP" ] || [ "$STATIC_IP" = "null" ]; then
+            echo "Public IP が存在しません。infra-deploy を再実行してください" >&2
+            exit 1
+          fi
+          echo "NODE_RESOURCE_GROUP=$NODE_RG" >> "$GITHUB_ENV"
+          echo "INGRESS_STATIC_IP=$STATIC_IP" >> "$GITHUB_ENV"
+          echo "INGRESS_FQDN=${FQDN:-N/A}" >> "$GITHUB_ENV"
+          echo "AKS_LOCATION=$AKS_LOCATION" >> "$GITHUB_ENV"
+
+      - name: NSG に Load Balancer 通信用ルールを適用
+        run: |
+          set -euo pipefail
+          NODE_RG="${NODE_RESOURCE_GROUP}"
+          NSG_NAME=$(az network nsg list --resource-group "$NODE_RG" --query "[?contains(name, 'aks-agentpool')].name | [0]" -o tsv)
+          if [ -z "$NSG_NAME" ]; then
+            echo "NSG が見つかりません: rg=$NODE_RG" >&2
+            exit 1
+          fi
+          ensure_rule() {
+            local rule_name=$1
+            local source_prefix=$2
+            local ports=$3
+            local priority=$4
+            if az network nsg rule show --resource-group "$NODE_RG" --nsg-name "$NSG_NAME" --name "$rule_name" &>/dev/null; then
+              az network nsg rule update --resource-group "$NODE_RG" --nsg-name "$NSG_NAME" --name "$rule_name" \
+                --source-address-prefixes "$source_prefix" --destination-port-ranges "$ports" \
+                --access Allow --direction Inbound --protocol Tcp --priority "$priority" >/dev/null
+            else
+              az network nsg rule create --resource-group "$NODE_RG" --nsg-name "$NSG_NAME" --name "$rule_name" \
+                --source-address-prefixes "$source_prefix" --destination-port-ranges "$ports" \
+                --access Allow --direction Inbound --protocol Tcp --priority "$priority" >/dev/null
+            fi
+          }
+          ensure_rule "allow-azure-lb-probes" AzureLoadBalancer 30000-32767 300
+          ensure_rule "allow-nodeport-from-internet" Internet 30000-32767 310
+
+      - name: Ingress Controller (nginx) を確認/インストール
+        env:
+          NODE_RESOURCE_GROUP: ${{ env.NODE_RESOURCE_GROUP }}
+        run: |
+          set -euo pipefail
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx || true
+          helm repo update
+          INGRESS_APP_VERSION=$(helm show chart ingress-nginx/ingress-nginx | awk -F': ' '/^appVersion:/ {print $2}' | tr -d '[:space:]')
+          if [ -z "$INGRESS_APP_VERSION" ] || [ "$INGRESS_APP_VERSION" = "null" ]; then
+            echo "appVersion を取得できません" >&2
+            exit 1
+          fi
+          if [[ "$INGRESS_APP_VERSION" == v* ]]; then
+            CONTROLLER_TAG="$INGRESS_APP_VERSION"
+          else
+            CONTROLLER_TAG="v${INGRESS_APP_VERSION}"
+          fi
+          CONTROLLER_IMAGE="ingress-nginx/controller"
+          az acr import --name "$ACR_NAME" --source "registry.k8s.io/${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --image "${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --force || \
+            az acr import --name "$ACR_NAME" --source "mcr.microsoft.com/oss/kubernetes/${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --image "${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --force
+
+          VALUES_FILE="app/board-app/k8s/ingress-nginx-values.yaml"
+          OVERRIDE_ARGS="--set controller.image.registry=$ACR_LOGIN_SERVER --set controller.image.image=$CONTROLLER_IMAGE --set controller.image.tag=$CONTROLLER_TAG"
+          OVERRIDE_ARGS="$OVERRIDE_ARGS --set controller.service.loadBalancerIP=$INGRESS_STATIC_IP"
+          OVERRIDE_ARGS="$OVERRIDE_ARGS --set controller.service.annotations.\"service.beta.kubernetes.io/azure-load-balancer-resource-group\"=$NODE_RESOURCE_GROUP"
+
+          if helm status ingress-nginx -n ingress-nginx &>/dev/null; then
+            kubectl delete svc ingress-nginx-controller -n ingress-nginx --ignore-not-found=true
+            sleep 5
+            if ! helm upgrade ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" $OVERRIDE_ARGS --wait --timeout=10m; then
+              helm uninstall ingress-nginx -n ingress-nginx --wait || true
+              kubectl delete ns ingress-nginx --ignore-not-found=true
+              sleep 5
+              kubectl create namespace ingress-nginx
+              helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" $OVERRIDE_ARGS --wait --timeout=10m
+            fi
+          else
+            kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
+            helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" $OVERRIDE_ARGS --wait --timeout=10m
+          fi
+
+          kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=600s
+          for i in $(seq 1 60); do
+            LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+            if [ -n "$LB_IP" ]; then
+              echo "ACTUAL_LB_IP=$LB_IP" >> "$GITHUB_ENV"
+              break
+            fi
+            sleep 10
+          done
+
+      - name: LoadBalancer 健康チェック
+        run: |
+          set -euo pipefail
+          LB_IP=${ACTUAL_LB_IP:-$INGRESS_STATIC_IP}
+          if [ -z "$LB_IP" ]; then
+            echo "LoadBalancer IP が取得できません" >&2
+            exit 1
+          fi
+
+          echo "LoadBalancer ($LB_IP) のヘルスプローブを検証します"
+          HEALTH_CHECK_ATTEMPTS=30
+          for i in $(seq 1 $HEALTH_CHECK_ATTEMPTS); do
+            if kubectl exec -n ingress-nginx deployment/ingress-nginx-controller -- curl -s -o /dev/null -w "%{http_code}" http://localhost:10254/healthz | grep -q "200"; then
+              echo "✅ [$i/$HEALTH_CHECK_ATTEMPTS] Ingress Controller ヘルスチェック成功"
+              break
+            fi
+            echo "[$i/$HEALTH_CHECK_ATTEMPTS] ヘルスチェック待機中..."
+            sleep 5
+          done
+
+          NODE_RG="${NODE_RESOURCE_GROUP}"
+          if [ -n "$NODE_RG" ]; then
+            PROBE_INFO=$(az network lb probe list --resource-group "$NODE_RG" --lb-name kubernetes --query "[].{Name:name,Port:port}" -o json 2>/dev/null || echo "[]")
+            echo "現在のヘルスプローブ:" && echo "$PROBE_INFO" | jq '.'
+          fi
+
+          CONNECTIVITY_ATTEMPTS=30
+          for i in $(seq 1 $CONNECTIVITY_ATTEMPTS); do
+            if timeout 5 bash -c "echo > /dev/tcp/$LB_IP/80" 2>/dev/null; then
+              echo "✅ [$i/$CONNECTIVITY_ATTEMPTS] LoadBalancer ポート 80 への接続成功"
+              break
+            fi
+            sleep 10
+          done
+
+      - name: ACR Pull 権限を再確認
+        run: |
+          if az aks check-acr --name "$AKS_CLUSTER_NAME" --resource-group "$RESOURCE_GROUP_NAME" --acr "$ACR_LOGIN_SERVER" &>/dev/null; then
+            echo "ACR Pull 権限は有効です"
+          else
+            az aks update --name "$AKS_CLUSTER_NAME" --resource-group "$RESOURCE_GROUP_NAME" --attach-acr "$ACR_NAME"
+          fi
+
+      - name: AKS に ACR 認証 Secret を用意
+        run: |
+          BOARD_NS=$(grep kubernetesNamespace "$KUSTOMIZE_DIR/vars.env" | cut -d'=' -f2)
+          kubectl create namespace "$BOARD_NS" --dry-run=client -o yaml | kubectl apply -f -
+          ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
+          ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+          kubectl create secret docker-registry acr-secret \
+            --docker-server="$ACR_LOGIN_SERVER" \
+            --docker-username="$ACR_USERNAME" \
+            --docker-password="$ACR_PASSWORD" \
+            -n "$BOARD_NS" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: DB 接続 Secret(board-db-conn) を用意
+        run: |
+          set -euo pipefail
+          BOARD_NS=$(grep kubernetesNamespace "$KUSTOMIZE_DIR/vars.env" | cut -d'=' -f2)
+          kubectl create namespace "$BOARD_NS" --dry-run=client -o yaml | kubectl apply -f -
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: board-db-conn
+            namespace: ${BOARD_NS}
+          type: Opaque
+          stringData:
+            db-endpoint: "${DB_ENDPOINT}"
+            db-username: "${DB_APP_USERNAME}"
+            db-password: "${DB_APP_PASSWORD}"
+          EOF
+
+      - name: デプロイ用イメージ参照をエクスポート
+        run: |
+          echo "IMAGE_FULL=$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "BOARD_API_IMAGE_FULL=$ACR_LOGIN_SERVER/$BOARD_API_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: Kustomize を適用してロールアウト
+        run: |
+          set -euo pipefail
+          BOARD_NS=$(grep kubernetesNamespace "$KUSTOMIZE_DIR/vars.env" | cut -d'=' -f2)
+          kubectl kustomize "$KUSTOMIZE_DIR" \
+            | sed "s#acr-placeholder.azurecr.io/board-app:latest#${IMAGE_FULL}#g" \
+            | sed "s#acr-placeholder.azurecr.io/board-api:latest#${BOARD_API_IMAGE_FULL}#g" \
+            | kubectl apply -f -
+
+          wait_rollout() {
+            local deploy=$1
+            local timeout=$2
+            local mode=${3:-fail}
+            if ! kubectl rollout status deployment/"$deploy" -n "$BOARD_NS" --timeout="${timeout}s"; then
+              kubectl get pods -n "$BOARD_NS" -l app="$deploy" || true
+              kubectl describe deployment "$deploy" -n "$BOARD_NS" || true
+              if [ "$mode" = "fail" ]; then
+                exit 1
+              fi
+            fi
+          }
+
+          wait_rollout "board-app" 420 fail
+          wait_rollout "board-api" 420 warn
+          kubectl get ingress -n "$BOARD_NS"
+
+      - name: デプロイサマリを出力
+        run: |
+          BOARD_NS=$(grep kubernetesNamespace "$KUSTOMIZE_DIR/vars.env" | cut -d'=' -f2)
+          INGRESS_HOST=$(grep ingressHost "$KUSTOMIZE_DIR/vars.env" | cut -d'=' -f2)
+          LB_IP=${ACTUAL_LB_IP:-$INGRESS_STATIC_IP}
+          echo "## 🎯 掲示板アプリ AKS デプロイ完了" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Namespace**: \`$BOARD_NS\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **デプロイタグ**: \`$IMAGE_TAG\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **ACR**: \`$ACR_LOGIN_SERVER\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📍 アクセス" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$INGRESS_HOST" ]; then
+            echo "- **DNS**: http://$INGRESS_HOST" >> $GITHUB_STEP_SUMMARY
+            echo "- **ダミーシークレット**: http://$INGRESS_HOST/dummy-secret.txt" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -n "$LB_IP" ]; then
+            echo "- **Load Balancer IP**: http://$LB_IP" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Pod 状態" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n "$BOARD_NS" -o wide >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🌐 Ingress 状態" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          kubectl get ingress -n "$BOARD_NS" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY

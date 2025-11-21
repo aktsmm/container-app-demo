@@ -142,20 +142,6 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
   --wait --timeout=5m
 ```
 
-#### 5. GitHub Variables に追加
-
-**ファイル**: `scripts/setup-github-secrets_variables.ps1`
-
-```powershell
-$GitHubVariables = @{
-    # ... 既存変数 ...
-    # Ingress Static IP (Bicep デプロイ後に自動設定される。初回は空でOK)
-    INGRESS_PUBLIC_IP = ''
-}
-```
-
----
-
 ## 🔧 適用手順
 
 ### 1. Infrastructure Deploy ワークフローを実行
@@ -173,7 +159,7 @@ $GitHubVariables = @{
 # GitHub Actions で "3️⃣ Deploy Board App (AKS)" を実行
 ```
 
-Ingress Controller が作成済みの Static IP を使用し、以降は **IP が固定される**。
+Ingress Controller が作成済みの Static IP を使用し、以降は **IP が固定される**。2025-11-22 以降は Bicep が DNS ラベル (`ingressPublicIpDnsLabel`) まで払い出すため、ワークフローは `az network public-ip show` から FQDN を解決し、アプリは IP ではなく DNS 名でアクセスする。
 
 ### 3. 確認
 

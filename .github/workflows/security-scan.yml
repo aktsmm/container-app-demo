@@ -85,7 +85,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v6
         continue-on-error: true
         with:
-          workflow: 2-build-board-app.yml
+          workflow: 2-board-app-build-deploy.yml
           name: board-app-image
           path: build-artifacts/board
 
@@ -93,7 +93,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v6
         continue-on-error: true
         with:
-          workflow: 2-build-admin-app.yml
+          workflow: 2-admin-app-build-deploy.yml
           name: admin-app-image
           path: build-artifacts/admin
 

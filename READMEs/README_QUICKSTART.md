@@ -163,8 +163,7 @@ pwsh ./scripts/setup-github-secrets_variables.ps1 -DryRun     # 設定内容の�
 
 **自動設定項目（編集不要）**:
 
-- `INGRESS_PUBLIC_IP` – Ingress 用 Static IP（デフォルト: 空文字列）  
-  📝 Bicep デプロイ後、`3️⃣ Deploy Board App (AKS)` ワークフローが自動設定します
+- Ingress 用 Static Public IP / DNS 名（`<label>.<region>.cloudapp.azure.com`）は Bicep で作成されるため、GitHub Variables への個別設定は不要です。
 
 > **💡 ヒント**: スクリプト実行前に `scripts/setup-github-secrets_variables.ps1` 冒頭の `$GitHubVariables` / `$GitHubSecrets` ハッシュテーブルを編集してください。実行後は GitHub リポジトリの Settings → Secrets and variables → Actions で確認できます。
 
@@ -191,23 +190,26 @@ pwsh ./scripts/setup-github-secrets_variables.ps1 -DryRun     # 設定内容の�
 
 **初回デプロイ時は、Ingress Controller の LoadBalancer 設定が安定するまで時間がかかる場合があります。**
 
-- **推奨**: インフラデプロイ完了後、**最低 5-10 分待機**してからアプリデプロイを実行
+- **推奨**: インフラデプロイ完了後、**最低 5-10 分待機**してからアプリデプロイ ( `2️⃣ Board App Build & Deploy` ) を実行
 - **理由**: Azure LoadBalancer のヘルスプローブ設定が完全にプロビジョニングされるまで時間がかかる
-- **確認方法**: `3️⃣ Deploy Board App (AKS)` の `LoadBalancer 接続確認` ステップで接続成功を確認
+- **確認方法**: `2️⃣ Board App Build & Deploy` の `LoadBalancer 接続確認` ステップで接続成功を確認
 
 もし接続確認が失敗した場合:
+
 1. ワークフローのログで `healthCheckNodePort: 30254` が正しく設定されているか確認
 2. 5-10 分待機後、ワークフローを再実行
 3. それでも失敗する場合は `trouble_docs/2025-01-21-loadbalancer-healthprobe-nodeport-mismatch.md` を参照
 
 ## 7. アプリケーションビルド & デプロイ
 
-1. **ビルド**
-   - `2️⃣ Build Board App` と `2️⃣ Build Admin App` を手動または `app/**` の変更で実行。
-   - Docker Build → Trivy / Gitleaks → SBOM → ACR push を行い、成果物を Actions アーティファクトへアップロードします。
-2. **デプロイ**
-   - `3️⃣ Deploy Board App (AKS)` を実行し、`app/board-app/k8s` の Kustomize を AKS に適用。`dummy-secret.txt` へのリンクも自動で有効になります。
-   - `3️⃣ Deploy Admin App (Container Apps)` を実行し、最新タグまたは指定タグで ACA を更新。Basic 認証の ID/PW は GitHub Variables から `az containerapp secret set` で注入されます。
+- `2️⃣ Board App Build & Deploy`
+  - `app/board-app/**` や `app/board-api/**` に変更が入ると自動でトリガー (手動起動も可)。
+  - **前半 (Build)**: Gitleaks / Trivy FS → Docker Build (board-app, board-api) → Trivy Image → SBOM/SARIF を生成し ACR へ push。
+  - **後半 (Deploy)**: `scripts/sync-board-vars.ps1` で Bicep から Ingress DNS (`<label>.<region>.cloudapp.azure.com`) を同期し、ingress-nginx + Kustomize を AKS に適用。`dummy-secret.txt` ルートもこのとき公開されます。
+
+- `2️⃣ Admin App Build & Deploy`
+  - `app/admin-app/**` 変更または手動起動で実行。Docker Build → Trivy/Gitleaks → SBOM/SARIF を ACR/Artifacts に格納。
+  - Container Apps へ最新タグをデプロイし、Basic 認証 (ID/PW) と DB 接続情報を Secret 経由で注入。Managed Identity へのロール付与も自動化しています。
 
 ## 8. 運用ワークフローの有効化
 
@@ -217,12 +219,13 @@ pwsh ./scripts/setup-github-secrets_variables.ps1 -DryRun     # 設定内容の�
 
 ## 9. 動作確認
 
-1. AKS Ingress の Public IP を取得
-   ```powershell
-   kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
-   ```
-2. ブラウザで `http://<IP>/` にアクセスし、掲示板 UI と `ダミーシークレットはこちら` のリンクが表示されることを確認。
-3. 管理アプリの FQDN (`az containerapp show` で取得可能) に Basic 認証でアクセスし、バックアップ一覧や投稿削除が機能することを確認。
+1. AKS Ingress の DNS FQDN を取得
+  ```powershell
+  kubectl get ingress -n board-app board-app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+  ```
+  もしくは `az network public-ip show -g <RG> -n pip-aks-ingress-dev --query dnsSettings.fqdn -o tsv` で Static IP の DNS ラベルを確認できます。
+2. ブラウザで `http://<FQDN>/` にアクセスし、掲示板 UI と `ダミーシークレットはこちら` のリンク (`/dummy-secret`) が表示されることを確認。
+3. 管理アプリの FQDN (`az containerapp show --name <app> --resource-group <RG> --query properties.configuration.ingress.fqdn -o tsv`) に Basic 認証でアクセスし、バックアップ一覧や投稿削除が機能することを確認。
 
 ## 10. 次のステップ
 

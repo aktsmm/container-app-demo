@@ -14,5 +14,11 @@ configMapGenerator:
       - vars.env
 generatorOptions:
   disableNameSuffixHash: true
-# replacements は削除: IP 直アクセスを使用するため Host ベースルーティング不要
-# Ingress に Host なしルールを追加したため、動的な Host 置換は不要
+vars:
+  - name: BOARD_APP_INGRESS_HOST
+    objref:
+      apiVersion: v1
+      kind: ConfigMap
+      name: board-app-vars
+    fieldref:
+      fieldpath: data.ingressHost

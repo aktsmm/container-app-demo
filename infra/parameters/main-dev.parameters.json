@@ -107,6 +107,9 @@
     "ingressPublicIpName": {
       "value": "pip-aks-ingress-dev"
     },
+    "ingressPublicIpDnsLabel": {
+      "value": "aksdemodevingress"
+    },
     "vmName": {
       "value": "vm-mysql-demo"
     },
@@ -138,7 +141,7 @@
       "value": "board-app"
     },
     "boardAppIngressHost": {
-      "value": "board.localdemo.internal"
+      "value": "aksdemodevingress.japaneast.cloudapp.azure.com"
     }
   }
 }

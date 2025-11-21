@@ -13,7 +13,7 @@
 
 - GitHub Secrets/Variables は `README_SECRETS_VARIABLES.md` に一覧化。
 - `dummy-secret.txt` はダミー情報と明示し、実鍵を置かない。
-- Kubernetes Secret (`board-db-conn`) は `3-deploy-board-app` ワークフローで `kubectl apply` され、DB 認証情報を環境変数としてのみ参照。
+- Kubernetes Secret (`board-db-conn`) は `2️⃣ Board App Build & Deploy` ワークフローで `kubectl apply` され、DB 認証情報を環境変数としてのみ参照。
 
 ## 3. スキャンと監査
 
@@ -45,8 +45,8 @@
 ## 6. デプロイ時の安全策
 
 - `1️⃣ Infrastructure Deploy` は Validate → What-If → Deploy の順で実行し、Plan の差分を明示。
-- `3️⃣ Deploy Board App` は `kubectl rollout status` で Deployment の完了を確認し、失敗時は `kubectl get ingress/pods` 出力を Step Summary に表示。
-- `3️⃣ Deploy Admin App` は Container Apps の provisioningState が `Succeeded` になるまでリトライ。
+- `2️⃣ Board App Build & Deploy` は `kubectl rollout status` で Deployment の完了を確認し、失敗時は `kubectl get ingress/pods` 出力を Step Summary に表示。
+- `2️⃣ Admin App Build & Deploy` は Container Apps の provisioningState が `Succeeded` になるまでリトライ。
 
 ## 7. 改善候補
 

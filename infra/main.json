@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "17973512593507693052"
+      "templateHash": "380387020716070503"
     }
   },
   "parameters": {
@@ -130,6 +130,13 @@
         "description": "Storage アクセス層"
       }
     },
+    "backupContainerName": {
+      "type": "string",
+      "defaultValue": "mysql-backups",
+      "metadata": {
+        "description": "バックアップコンテナ名"
+      }
+    },
     "containerAppsEnvironmentName": {
       "type": "string",
       "metadata": {
@@ -229,6 +236,18 @@
       "defaultValue": "10.244.0.0/16",
       "metadata": {
         "description": "AKS Pod CIDR (Overlay 利用時)"
+      }
+    },
+    "ingressPublicIpName": {
+      "type": "string",
+      "metadata": {
+        "description": "Ingress用Static Public IP名"
+      }
+    },
+    "ingressPublicIpDnsLabel": {
+      "type": "string",
+      "metadata": {
+        "description": "Ingress 用 Public IP に付与する DNS ラベル（<label>.<region>.cloudapp.azure.com を生成）"
       }
     },
     "vmName": {
@@ -344,6 +363,20 @@
       "type": "Microsoft.Storage/storageAccounts",
       "apiVersion": "2023-04-01",
       "name": "[parameters('storageAccountName')]"
+    },
+    "vmStorageRoleAssignment": {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('storageAccountName'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), parameters('vmName'), 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
+        "principalId": "[reference('vm').outputs.principalId.value]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "vm"
+      ]
     },
     "storageDiagnostics": {
       "type": "Microsoft.Insights/diagnosticSettings",
@@ -778,6 +811,9 @@
           "accessTier": {
             "value": "[parameters('storageAccessTier')]"
           },
+          "backupContainerName": {
+            "value": "[parameters('backupContainerName')]"
+          },
           "tags": {
             "value": "[variables('defaultTags')]"
           }
@@ -789,7 +825,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "9347732355872572090"
+              "templateHash": "4796759553817442287"
             }
           },
           "parameters": {
@@ -821,6 +857,13 @@
               ],
               "metadata": {
                 "description": "アクセス層 (Hot/Cool)"
+              }
+            },
+            "backupContainerName": {
+              "type": "string",
+              "defaultValue": "mysql-backups",
+              "metadata": {
+                "description": "バックアップコンテナ名"
               }
             },
             "tags": {
@@ -861,6 +904,25 @@
                   "keySource": "Microsoft.Storage"
                 }
               }
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices",
+              "apiVersion": "2023-04-01",
+              "name": "[format('{0}/{1}', parameters('name'), 'default')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('name'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-04-01",
+              "name": "[format('{0}/{1}/{2}', parameters('name'), 'default', parameters('backupContainerName'))]",
+              "properties": {
+                "publicAccess": "None"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('name'), 'default')]"
+              ]
             }
           ],
           "outputs": {
@@ -871,6 +933,10 @@
             "primaryEndpoints": {
               "type": "object",
               "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('name')), '2023-04-01').primaryEndpoints]"
+            },
+            "backupContainerName": {
+              "type": "string",
+              "value": "[parameters('backupContainerName')]"
             }
           }
         }
@@ -1039,6 +1105,15 @@
           "logAnalyticsWorkspaceId": {
             "value": "[reference('logAnalytics').outputs.id.value]"
           },
+          "ingressPublicIpName": {
+            "value": "[parameters('ingressPublicIpName')]"
+          },
+          "ingressPublicIpDnsLabel": {
+            "value": "[parameters('ingressPublicIpDnsLabel')]"
+          },
+          "acrId": {
+            "value": "[reference('acr').outputs.id.value]"
+          },
           "tags": {
             "value": "[variables('defaultTags')]"
           }
@@ -1050,7 +1125,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "819669361105815399"
+              "templateHash": "14168388495665055089"
             }
           },
           "parameters": {
@@ -1103,6 +1178,25 @@
                 "description": "Log Analytics Workspace Resource ID"
               }
             },
+            "ingressPublicIpName": {
+              "type": "string",
+              "metadata": {
+                "description": "Ingress用Static Public IP名"
+              }
+            },
+            "ingressPublicIpDnsLabel": {
+              "type": "string",
+              "metadata": {
+                "description": "Ingress 用 Public IP に付与する DNS ラベル（地域内で一意）"
+              }
+            },
+            "acrId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "ACR Resource ID (AKS に AcrPull ロールを付与するため)"
+              }
+            },
             "tags": {
               "type": "object",
               "defaultValue": {},
@@ -1111,7 +1205,27 @@
               }
             }
           },
+          "variables": {
+            "acrName": "[if(not(empty(parameters('acrId'))), last(split(parameters('acrId'), '/')), '')]"
+          },
           "resources": [
+            {
+              "type": "Microsoft.Network/publicIPAddresses",
+              "apiVersion": "2023-09-01",
+              "name": "[parameters('ingressPublicIpName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard"
+              },
+              "properties": {
+                "publicIPAllocationMethod": "Static",
+                "publicIPAddressVersion": "IPv4",
+                "dnsSettings": {
+                  "domainNameLabel": "[parameters('ingressPublicIpDnsLabel')]"
+                }
+              },
+              "tags": "[parameters('tags')]"
+            },
             {
               "type": "Microsoft.ContainerService/managedClusters",
               "apiVersion": "2024-05-01",
@@ -1176,6 +1290,21 @@
                 }
               },
               "tags": "[parameters('tags')]"
+            },
+            {
+              "condition": "[not(empty(parameters('acrId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.ContainerRegistry/registries/{0}', variables('acrName'))]",
+              "name": "[guid(parameters('acrId'), resourceId('Microsoft.ContainerService/managedClusters', parameters('name')), 'AcrPull')]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')]",
+                "principalId": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('name')), '2024-05-01').identityProfile.kubeletidentity.objectId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ContainerService/managedClusters', parameters('name'))]"
+              ]
             }
           ],
           "outputs": {
@@ -1190,11 +1319,28 @@
             "kubeletIdentity": {
               "type": "object",
               "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('name')), '2024-05-01').identityProfile.kubeletidentity]"
+            },
+            "nodeResourceGroup": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('name')), '2024-05-01').nodeResourceGroup]"
+            },
+            "ingressPublicIpAddress": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', parameters('ingressPublicIpName')), '2023-09-01').ipAddress]"
+            },
+            "ingressPublicIpId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/publicIPAddresses', parameters('ingressPublicIpName'))]"
+            },
+            "ingressPublicIpFqdn": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', parameters('ingressPublicIpName')), '2023-09-01').dnsSettings.fqdn]"
             }
           }
         }
       },
       "dependsOn": [
+        "acr",
         "logAnalytics"
       ]
     },
@@ -1252,7 +1398,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.39.26.7824",
-              "templateHash": "9615721353764157521"
+              "templateHash": "14595126643836999119"
             }
           },
           "parameters": {
@@ -1334,7 +1480,7 @@
             }
           },
           "variables": {
-            "mysqlInitScript": "#!/usr/bin/env bash\nset -euo pipefail\n\n# 引数が base64 エンコードされている場合はデコード\nif [[ \"${1:-}\" =~ ^[A-Za-z0-9+/=]+$ ]]; then\n    ROOT_PASSWORD=$(echo \"$1\" | base64 -d)\n    APP_USER=$(echo \"$2\" | base64 -d)\n    APP_PASSWORD=$(echo \"$3\" | base64 -d)\nelse\n    ROOT_PASSWORD=\"${1:-}\"\n    APP_USER=\"${2:-}\"\n    APP_PASSWORD=\"${3:-}\"\nfi\n\nif [[ -z \"$ROOT_PASSWORD\" || -z \"$APP_USER\" || -z \"$APP_PASSWORD\" ]]; then\n    echo \"[mysql-init] Required arguments are missing\" >&2\n    exit 1\nfi\n\nlog() {\n    echo \"[mysql-init] $1\"\n}\n\nescape_sql() {\n    # Escapes single quotes for SQL statements\n    printf \"%s\" \"$1\" | sed \"s/'/''/g\"\n}\n\nCONFIG_FILE='/etc/mysql/mysql.conf.d/mysqld.cnf'\n\nensure_bind_address() {\n    local key=\"$1\"\n    if sudo grep -q \"^[[:space:]]*${key}[[:space:]]*=\" \"$CONFIG_FILE\"; then\n        sudo sed -i \"s/^[[:space:]]*${key}[[:space:]]*=.*/${key} = 0.0.0.0/\" \"$CONFIG_FILE\"\n    else\n        echo \"${key} = 0.0.0.0\" | sudo tee -a \"$CONFIG_FILE\" >/dev/null\n    fi\n}\n\nROOT_ESC=\"$(escape_sql \"$ROOT_PASSWORD\")\"\nAPP_USER_ESC=\"$(escape_sql \"$APP_USER\")\"\nAPP_PASS_ESC=\"$(escape_sql \"$APP_PASSWORD\")\"\n\nlog \"Updating apt cache\"\n# cnf-update-db のエラーを回避: APT::Update::Post-Invoke-Success を一時的に無効化\nsudo DEBIAN_FRONTEND=noninteractive apt-get update -y -o APT::Update::Post-Invoke-Success::=\n\n# MySQL パッケージが配布されていないイメージ向けに段階的なフォールバックを実装\ninstall_mysql_server() {\n    log \"Installing mysql-server (with automatic fallback)\"\n    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server; then\n        return 0\n    fi\n\n    log \"mysql-server パッケージが標準リポジトリに無いため Universe を再有効化して再試行\"\n    sudo apt-get install -y software-properties-common >/dev/null 2>&1 || true\n    sudo add-apt-repository -y universe >/dev/null 2>&1 || true\n    sudo DEBIAN_FRONTEND=noninteractive apt-get update -y -o APT::Update::Post-Invoke-Success::=\n    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server; then\n        return 0\n    fi\n\n    log \"mysql-server メタパッケージが取得できないため mysql-server-8.0 で再試行\"\n    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server-8.0 mysql-client-8.0; then\n        return 0\n    fi\n\n    log \"MySQL パッケージのインストールに失敗しました\"\n    return 1\n}\n\ninstall_mysql_server\n\nlog \"Enabling MySQL service\"\nsudo systemctl enable --now mysql\n\nlog \"Applying user configuration\"\ncat <<SQL | sudo mysql\nALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${ROOT_ESC}';\nCREATE USER IF NOT EXISTS '${APP_USER_ESC}'@'%' IDENTIFIED WITH mysql_native_password BY '${APP_PASS_ESC}';\nGRANT ALL PRIVILEGES ON *.* TO '${APP_USER_ESC}'@'%' WITH GRANT OPTION;\nFLUSH PRIVILEGES;\nSQL\n\nlog \"Enabling remote MySQL connections\"\nensure_bind_address 'bind-address'\nensure_bind_address 'mysqlx-bind-address'\n\nlog \"Restarting MySQL to apply configuration\"\nsudo systemctl restart mysql\n\nlog \"MySQL initialization complete\"\n",
+            "mysqlInitScript": "#!/usr/bin/env bash\nset -euo pipefail\nexport DEBIAN_FRONTEND=noninteractive\n\n# 引数が base64 エンコードされている場合はデコード\nif [[ \"${1:-}\" =~ ^[A-Za-z0-9+/=]+$ ]]; then\n    ROOT_PASSWORD=$(echo \"$1\" | base64 -d)\n    APP_USER=$(echo \"$2\" | base64 -d)\n    APP_PASSWORD=$(echo \"$3\" | base64 -d)\nelse\n    ROOT_PASSWORD=\"${1:-}\"\n    APP_USER=\"${2:-}\"\n    APP_PASSWORD=\"${3:-}\"\nfi\n\nif [[ -z \"$ROOT_PASSWORD\" || -z \"$APP_USER\" || -z \"$APP_PASSWORD\" ]]; then\n    echo \"[mysql-init] Required arguments are missing\" >&2\n    exit 1\nfi\n\nlog() {\n    echo \"[mysql-init] $1\"\n}\n\nescape_sql() {\n    # Escapes single quotes for SQL statements\n    printf \"%s\" \"$1\" | sed \"s/'/''/g\"\n}\n\n# apt リポジトリの問題に対する耐性を強化\nlog \"Fixing potentially broken apt lists\"\nsudo rm -rf /var/lib/apt/lists/*\nsudo mkdir -p /var/lib/apt/lists/partial\nsudo apt-get clean\n\nretry_apt_update() {\n    for i in {1..5}; do\n        log \"apt-get update (try $i)...\"\n        if sudo apt-get update -y; then\n            log \"apt-get update succeeded\"\n            return 0\n        fi\n        log \"apt-get update failed. Sleeping 10s and retrying...\"\n        sleep 10\n    done\n    log \"apt-get update failed after 5 attempts\" >&2\n    return 1\n}\n\nlog \"Updating apt cache with retry logic\"\nretry_apt_update\n\nCONFIG_FILE='/etc/mysql/mysql.conf.d/mysqld.cnf'\n\nensure_bind_address() {\n    local key=\"$1\"\n    if sudo grep -q \"^[[:space:]]*${key}[[:space:]]*=\" \"$CONFIG_FILE\"; then\n        sudo sed -i \"s/^[[:space:]]*${key}[[:space:]]*=.*/${key} = 0.0.0.0/\" \"$CONFIG_FILE\"\n    else\n        echo \"${key} = 0.0.0.0\" | sudo tee -a \"$CONFIG_FILE\" >/dev/null\n    fi\n}\n\nROOT_ESC=\"$(escape_sql \"$ROOT_PASSWORD\")\"\nAPP_USER_ESC=\"$(escape_sql \"$APP_USER\")\"\nAPP_PASS_ESC=\"$(escape_sql \"$APP_PASSWORD\")\"\n\n# command-not-found が cnf-update-db を実行すると欠落ファイルで失敗するため、一時的に無効化\n# command-not-found の Post-Invoke を全パターン無効化\ndisable_command_not_found_update() {\n    log \"Disabling command-not-found apt hooks\"\n    local targets\n    targets=$(sudo find /etc/apt/apt.conf.d -maxdepth 1 -type f -name '*command-not-found*' 2>/dev/null || true)\n    if [[ -n \"$targets\" ]]; then\n        while IFS= read -r file; do\n            if [[ -f \"$file\" ]]; then\n                sudo mv \"$file\" \"${file}.disabled\" || sudo truncate -s 0 \"$file\"\n            fi\n        done <<< \"$targets\"\n    fi\n    sudo rm -f /var/lib/apt/lists/*command-not-found* 2>/dev/null || true\n}\n\ndisable_command_not_found_update\n\n# MySQL パッケージが配布されていないイメージ向けに段階的なフォールバックを実装\ninstall_mysql_server() {\n    log \"Installing mysql-server (with automatic fallback)\"\n    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server; then\n        return 0\n    fi\n\n    log \"mysql-server パッケージが標準リポジトリに無いため Universe を再有効化して再試行\"\n    sudo apt-get install -y software-properties-common >/dev/null 2>&1 || true\n    sudo add-apt-repository -y universe >/dev/null 2>&1 || true\n    sudo DEBIAN_FRONTEND=noninteractive apt-get update -y -o APT::Update::Post-Invoke-Success::=\n    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server; then\n        return 0\n    fi\n\n    log \"mysql-server メタパッケージが取得できないため mysql-server-8.0 で再試行\"\n    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server-8.0 mysql-client-8.0; then\n        return 0\n    fi\n\n    log \"MySQL パッケージのインストールに失敗しました\"\n    return 1\n}\n\ninstall_mysql_server\n\nlog \"Enabling MySQL service\"\nsudo systemctl enable --now mysql\n\nlog \"Applying user configuration\"\ncat <<SQL | sudo mysql\nALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${ROOT_ESC}';\nCREATE USER IF NOT EXISTS '${APP_USER_ESC}'@'%' IDENTIFIED WITH mysql_native_password BY '${APP_PASS_ESC}';\nGRANT ALL PRIVILEGES ON *.* TO '${APP_USER_ESC}'@'%' WITH GRANT OPTION;\nFLUSH PRIVILEGES;\nSQL\n\nlog \"Enabling remote MySQL connections\"\nensure_bind_address 'bind-address'\nensure_bind_address 'mysqlx-bind-address'\n\nlog \"Restarting MySQL to apply configuration\"\nsudo systemctl restart mysql\n\nlog \"MySQL initialization complete\"\n",
             "mysqlInitCommand": "[format('bash -c \"echo {0} | base64 -d > /tmp/mysql-init.sh && chmod +x /tmp/mysql-init.sh && /tmp/mysql-init.sh {1} {2} {3}\"', base64(variables('mysqlInitScript')), base64(parameters('mysqlRootPassword')), base64(parameters('mysqlAppUsername')), base64(parameters('mysqlAppPassword')))]"
           },
           "resources": [
@@ -1424,6 +1570,9 @@
               "name": "[parameters('name')]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
               "properties": {
                 "hardwareProfile": {
                   "vmSize": "[parameters('vmSize')]"
@@ -1490,6 +1639,18 @@
             "id": {
               "type": "string",
               "value": "[resourceId('Microsoft.Compute/virtualMachines', parameters('name'))]"
+            },
+            "principalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Compute/virtualMachines', parameters('name')), '2023-09-01', 'full').identity.principalId]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            },
+            "privateIp": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic', parameters('name'))), '2023-09-01').ipConfigurations[0].properties.privateIPAddress]"
             }
           }
         }
@@ -1508,6 +1669,18 @@
       "type": "string",
       "value": "[resourceId('Microsoft.ContainerService/managedClusters', parameters('aksName'))]"
     },
+    "aksNodeResourceGroup": {
+      "type": "string",
+      "value": "[if(parameters('aksSkipCreate'), parameters('aksNodeResourceGroup'), reference('aks').outputs.nodeResourceGroup.value)]"
+    },
+    "ingressPublicIpAddress": {
+      "type": "string",
+      "value": "[if(parameters('aksSkipCreate'), reference(resourceId('Microsoft.Network/publicIPAddresses', parameters('ingressPublicIpName')), '2023-09-01', 'full').properties.ipAddress, reference('aks').outputs.ingressPublicIpAddress.value)]"
+    },
+    "ingressPublicIpFqdn": {
+      "type": "string",
+      "value": "[if(parameters('aksSkipCreate'), reference(resourceId('Microsoft.Network/publicIPAddresses', parameters('ingressPublicIpName')), '2023-09-01', 'full').properties.dnsSettings.fqdn, reference('aks').outputs.ingressPublicIpFqdn.value)]"
+    },
     "containerAppsEnvironmentId": {
       "type": "string",
       "value": "[reference('containerAppsEnv').outputs.id.value]"
@@ -1523,6 +1696,10 @@
     "storageAccountId": {
       "type": "string",
       "value": "[reference('storage').outputs.id.value]"
+    },
+    "mysqlPrivateIp": {
+      "type": "string",
+      "value": "[reference('vm').outputs.privateIp.value]"
     }
   }
 }

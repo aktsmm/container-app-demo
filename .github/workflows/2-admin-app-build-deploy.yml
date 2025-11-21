@@ -1,0 +1,480 @@
+name: 2️⃣ Admin App Build & Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      redeployTag:
+        description: "ACR に既存タグがある場合に再デプロイする (空なら最新コミットをビルド)"
+        required: false
+  push:
+    branches:
+      - master
+    paths:
+      - "app/admin-app/**"
+      - ".github/workflows/2-admin-app-build-deploy.yml"
+  workflow_run:
+    workflows:
+      - "1️⃣ Infrastructure Deploy"
+    types:
+      - completed
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+  ACA_ENVIRONMENT_NAME: ${{ vars.ACA_ENVIRONMENT_NAME }}
+  CONTAINER_APP_NAME: ${{ vars.ADMIN_CONTAINER_APP_NAME }}
+  ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
+  STORAGE_ACCOUNT_PREFIX: ${{ vars.STORAGE_ACCOUNT_PREFIX }}
+  ADMIN_IMAGE_NAME: admin-app
+  ADMIN_TARGET_PORT: 8000
+  BACKUP_CONTAINER: ${{ vars.BACKUP_CONTAINER_NAME }}
+  DB_APP_USERNAME: ${{ vars.DB_APP_USERNAME }}
+  DB_APP_PASSWORD: ${{ vars.DB_APP_PASSWORD }}
+  ACA_ADMIN_USERNAME: ${{ vars.ACA_ADMIN_USERNAME }}
+  ACA_ADMIN_PASSWORD: ${{ vars.ACA_ADMIN_PASSWORD }}
+  PARAM_FILE: infra/parameters/main-dev.parameters.json
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  prepare-context:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      checkout_ref: ${{ steps.detect_ref.outputs.checkout_ref }}
+      image_tag: ${{ steps.detect_ref.outputs.image_tag }}
+      build_required: ${{ steps.detect_ref.outputs.build_required }}
+      acr_name: ${{ steps.resolve_acr.outputs.acr_name }}
+      acr_login_server: ${{ steps.resolve_acr.outputs.acr_login_server }}
+      resource_group_name: ${{ steps.resolve_rg.outputs.resource_group_name }}
+      storage_account_name: ${{ steps.resolve_storage.outputs.storage_account_name }}
+      aca_environment_name: ${{ steps.resolve_env.outputs.aca_environment_name }}
+      db_endpoint: ${{ steps.mysql_endpoint.outputs.db_endpoint }}
+    env:
+      REDEPLOY_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.redeployTag || '' }}
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+
+      - name: ビルド対象コミットとタグを決定
+        id: detect_ref
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            REF='${{ github.event.workflow_run.head_sha }}'
+          else
+            REF='${{ github.sha }}'
+          fi
+          BUILD_REQUIRED=true
+          IMAGE_TAG=""
+          if [ -n "${REDEPLOY_TAG}" ]; then
+            BUILD_REQUIRED=false
+            IMAGE_TAG="${REDEPLOY_TAG}"
+          fi
+          if [ -z "$IMAGE_TAG" ]; then
+            IMAGE_TAG="${REF:0:12}"
+          fi
+          echo "checkout_ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "build_required=$BUILD_REQUIRED" >> "$GITHUB_OUTPUT"
+
+      - name: Azure に Service Principal でログイン
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
+      - name: リソースグループを解決
+        id: resolve_rg
+        run: |
+          set -euo pipefail
+          RG_NAME="${RESOURCE_GROUP_NAME}"
+          if [ -z "$RG_NAME" ]; then
+            echo "ResourceGroup を特定できません" >&2
+            exit 1
+          fi
+          if ! az group show --name "$RG_NAME" &>/dev/null; then
+            echo "指定 RG ($RG_NAME) が存在しません" >&2
+            az group list --query '[].name' -o tsv >&2 || true
+            exit 2
+          fi
+          echo "resource_group_name=$RG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: ACR 名を解決
+        id: resolve_acr
+        env:
+          RESOLVED_RG: ${{ steps.resolve_rg.outputs.resource_group_name }}
+        run: |
+          set -euo pipefail
+          ACR_NAME=$(az acr list --resource-group "$RESOLVED_RG" --query "[?starts_with(name, '${ACR_NAME_PREFIX}')].name | [0]" -o tsv)
+          if [ -z "$ACR_NAME" ]; then
+            echo "ACR が見つかりません" >&2
+            exit 1
+          fi
+          echo "acr_name=$ACR_NAME" >> "$GITHUB_OUTPUT"
+          echo "acr_login_server=${ACR_NAME}.azurecr.io" >> "$GITHUB_OUTPUT"
+
+      - name: Storage Account 名を解決
+        id: resolve_storage
+        env:
+          RESOLVED_RG: ${{ steps.resolve_rg.outputs.resource_group_name }}
+        run: |
+          set -euo pipefail
+          STORAGE_NAME=$(az storage account list --resource-group "$RESOLVED_RG" --query "[?starts_with(name, '${STORAGE_ACCOUNT_PREFIX}')].name | [0]" -o tsv)
+          if [ -z "$STORAGE_NAME" ]; then
+            echo "Storage Account が見つかりません" >&2
+            exit 1
+          fi
+          echo "storage_account_name=$STORAGE_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Container Apps Environment 名を解決
+        id: resolve_env
+        env:
+          RESOLVED_RG: ${{ steps.resolve_rg.outputs.resource_group_name }}
+        run: |
+          set -euo pipefail
+          ENV_NAME=$(az containerapp env list --resource-group "$RESOLVED_RG" --query "[0].name" -o tsv)
+          if [ -z "$ENV_NAME" ]; then
+            echo "Container Apps Environment が見つかりません" >&2
+            exit 1
+          fi
+          echo "aca_environment_name=$ENV_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: インフラ出力から MySQL Private IP を取得
+        id: mysql_endpoint
+        env:
+          INFRA_WORKFLOW_NAME: "1️⃣ Infrastructure Deploy"
+        run: |
+          set -euo pipefail
+          mkdir -p infra-output
+          if [ "${{ github.event_name }}" = "workflow_run" ] && [ "${{ github.event.workflow_run.name }}" = "$INFRA_WORKFLOW_NAME" ]; then
+            TARGET_RUN_ID='${{ github.event.workflow_run.id }}'
+          else
+            TARGET_RUN_ID=$(curl -s -H "Authorization: token $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/1-infra-deploy.yml/runs?status=success&per_page=1" \
+              | jq -r '.workflow_runs[0].id')
+          fi
+          if [ -z "$TARGET_RUN_ID" ] || [ "$TARGET_RUN_ID" = "null" ]; then
+            echo "インフラデプロイの成功履歴が見つかりません" >&2
+            exit 1
+          fi
+          gh run download "$TARGET_RUN_ID" --name infra-outputs --dir infra-output >/dev/null
+          OUTPUT_FILE=$(find infra-output -name '*.json' | head -n1)
+          if [ -z "$OUTPUT_FILE" ]; then
+            echo "infra-outputs アーティファクトに JSON がありません" >&2
+            exit 1
+          fi
+          MYSQL_IP=$(jq -r '.mysqlPrivateIp.value' "$OUTPUT_FILE")
+          if [ -z "$MYSQL_IP" ] || [ "$MYSQL_IP" = "null" ]; then
+            echo "mysqlPrivateIp が取得できません" >&2
+            exit 1
+          fi
+          echo "db_endpoint=${MYSQL_IP}:3306" >> "$GITHUB_OUTPUT"
+
+  code-security-scans:
+    runs-on: ubuntu-latest
+    needs: prepare-context
+    if: ${{ needs.prepare-context.outputs.build_required == 'true' }}
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-context.outputs.checkout_ref }}
+
+      - name: Gitleaks で秘密情報を検出
+        continue-on-error: true
+        run: |
+          set +e
+          VERSION="8.18.4"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o gitleaks.tgz
+          tar -xzf gitleaks.tgz gitleaks
+          sudo install -m 755 gitleaks /usr/local/bin/gitleaks
+          gitleaks detect --no-banner --report-format sarif --report-path gitleaks-admin.sarif
+          echo "Gitleaks completed (exit code=$?)"
+
+      - name: ソース/設定/シークレット総合スキャン (Trivy FS)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b ./trivy-bin
+          ./trivy-bin fs --scanners vuln,secret,config --ignore-unfixed --severity CRITICAL,HIGH \
+            --format sarif --output trivy-fs-admin.sarif app/admin-app || echo "脆弱性検出あり"
+
+      - name: Trivy SARIF をアップロード (FS)
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-fs-admin.sarif
+
+      - name: Gitleaks SARIF をアップロード
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: gitleaks-admin.sarif
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-context
+      - code-security-scans
+    if: ${{ needs.prepare-context.result == 'success' && (needs.code-security-scans.result == 'success' || needs.code-security-scans.result == 'skipped') }}
+    outputs:
+      image_tag: ${{ steps.metadata.outputs.image_tag }}
+      admin_image_full: ${{ steps.metadata.outputs.admin_image_full }}
+    env:
+      CHECKOUT_REF: ${{ needs.prepare-context.outputs.checkout_ref }}
+      IMAGE_TAG: ${{ needs.prepare-context.outputs.image_tag }}
+      ACR_NAME: ${{ needs.prepare-context.outputs.acr_name }}
+      ACR_LOGIN_SERVER: ${{ needs.prepare-context.outputs.acr_login_server }}
+      BUILD_REQUIRED: ${{ needs.prepare-context.outputs.build_required }}
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: メタデータをエクスポート
+        id: metadata
+        run: |
+          IMAGE_FULL="$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:$IMAGE_TAG"
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "admin_image_full=$IMAGE_FULL" >> "$GITHUB_OUTPUT"
+          echo "ADMIN_IMAGE_FULL=$IMAGE_FULL" >> "$GITHUB_ENV"
+
+      - name: Azure に Service Principal でログイン
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
+      - name: ACR 管理者認証を有効化
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        run: az acr update --name "$ACR_NAME" --admin-enabled true
+
+      - name: ACR へログイン
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        run: az acr login --name "$ACR_NAME"
+
+      - name: コンテナイメージをビルド
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        run: |
+          docker build --file app/admin-app/Dockerfile --tag "$ADMIN_IMAGE_FULL" app/admin-app
+          docker tag "$ADMIN_IMAGE_FULL" "$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:latest"
+
+      - name: Trivy DB キャッシュ復元
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('app/admin-app/requirements.txt') }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      - name: コンテナ SBOM 生成 (CycloneDX)
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.ADMIN_IMAGE_FULL }}
+          format: "cyclonedx"
+          output: "sbom-admin.cdx.json"
+          hide-progress: true
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Trivy でコンテナをスキャン (SARIF)
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: aquasecurity/trivy-action@0.28.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ env.ADMIN_IMAGE_FULL }}
+          format: "sarif"
+          output: "trivy-image-admin.sarif"
+          hide-progress: true
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Trivy SARIF をアップロード (Image)
+        if: ${{ env.BUILD_REQUIRED == 'true' && always() }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-image-admin.sarif
+
+      - name: イメージを ACR へプッシュ
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        run: |
+          docker push "$ADMIN_IMAGE_FULL"
+          docker push "$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:latest"
+
+      - name: 成果メタデータを保存
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-app-image
+          path: |
+            sbom-admin.cdx.json
+            trivy-image-admin.sarif
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-context
+      - build-and-push
+    if: ${{ needs.prepare-context.result == 'success' && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') }}
+    env:
+      RESOURCE_GROUP_NAME: ${{ needs.prepare-context.outputs.resource_group_name }}
+      ACR_NAME: ${{ needs.prepare-context.outputs.acr_name }}
+      ACR_LOGIN_SERVER: ${{ needs.prepare-context.outputs.acr_login_server }}
+      STORAGE_ACCOUNT_NAME: ${{ needs.prepare-context.outputs.storage_account_name }}
+      ACA_ENVIRONMENT_NAME: ${{ needs.prepare-context.outputs.aca_environment_name }}
+      DB_ENDPOINT: ${{ needs.prepare-context.outputs.db_endpoint }}
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag || needs.prepare-context.outputs.image_tag }}
+      CHECKOUT_REF: ${{ needs.prepare-context.outputs.checkout_ref }}
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Azure に Service Principal でログイン
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
+      - name: Container Apps CLI 拡張を更新
+        run: az extension add --name containerapp --upgrade
+
+      - name: Container Apps Environment のプロビジョニング完了を待機
+        run: |
+          set -euo pipefail
+          MAX_RETRY=20
+          for attempt in $(seq 1 $MAX_RETRY); do
+            STATE=$(az containerapp env show --name "$ACA_ENVIRONMENT_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query properties.provisioningState -o tsv || echo "Unknown")
+            if [ "$STATE" = "Succeeded" ]; then
+              echo "Environment is ready"
+              break
+            fi
+            if [ "$attempt" -eq "$MAX_RETRY" ]; then
+              echo "Container Apps Environment が安定しません" >&2
+              exit 1
+            fi
+            sleep 30
+          done
+
+      - name: デプロイ用イメージ参照をエクスポート
+        run: |
+          echo "ADMIN_IMAGE_FULL=$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: ACR 認証情報を取得
+        run: |
+          az acr update --name "$ACR_NAME" --admin-enabled true
+          ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
+          ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+          echo "ACR_USERNAME=$ACR_USERNAME" >> "$GITHUB_ENV"
+          echo "ACR_PASSWORD=$ACR_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Container App を作成/更新
+        run: |
+          set -euo pipefail
+          if az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" &>/dev/null; then
+            az containerapp registry set --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" \
+              --server "$ACR_LOGIN_SERVER" --username "$ACR_USERNAME" --password "$ACR_PASSWORD"
+            az containerapp secret set --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" \
+              --secrets admin-username="$ACA_ADMIN_USERNAME" admin-password="$ACA_ADMIN_PASSWORD"
+            az containerapp update --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" \
+              --image "$ADMIN_IMAGE_FULL" --revision-suffix "gh-${GITHUB_RUN_NUMBER}" \
+              --set-env-vars \
+                ADMIN_USERNAME=secretref:admin-username \
+                ADMIN_PASSWORD=secretref:admin-password \
+                DB_ENDPOINT="$DB_ENDPOINT" \
+                DB_APP_USERNAME="$DB_APP_USERNAME" \
+                DB_APP_PASSWORD="$DB_APP_PASSWORD" \
+                DB_NAME="boardapp" \
+                BACKUP_CONTAINER="$BACKUP_CONTAINER" \
+                STORAGE_ACCOUNT_NAME="$STORAGE_ACCOUNT_NAME"
+          else
+            az containerapp create --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" \
+              --environment "$ACA_ENVIRONMENT_NAME" --image "$ADMIN_IMAGE_FULL" \
+              --ingress external --target-port "$ADMIN_TARGET_PORT" \
+              --min-replicas 0 --max-replicas 1 \
+              --registry-server "$ACR_LOGIN_SERVER" --registry-username "$ACR_USERNAME" --registry-password "$ACR_PASSWORD" \
+              --revision-suffix "gh-${GITHUB_RUN_NUMBER}"
+            az containerapp secret set --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" \
+              --secrets admin-username="$ACA_ADMIN_USERNAME" admin-password="$ACA_ADMIN_PASSWORD"
+            az containerapp update --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" \
+              --set-env-vars \
+                ADMIN_USERNAME=secretref:admin-username \
+                ADMIN_PASSWORD=secretref:admin-password \
+                DB_ENDPOINT="$DB_ENDPOINT" \
+                DB_APP_USERNAME="$DB_APP_USERNAME" \
+                DB_APP_PASSWORD="$DB_APP_PASSWORD" \
+                DB_NAME="boardapp" \
+                BACKUP_CONTAINER="$BACKUP_CONTAINER" \
+                STORAGE_ACCOUNT_NAME="$STORAGE_ACCOUNT_NAME"
+          fi
+          az containerapp revision set-mode --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --mode single
+
+      - name: Container App に Managed Identity を付与
+        run: |
+          set -euo pipefail
+          az containerapp identity assign --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --system-assigned
+          PRINCIPAL_ID=$(az containerapp identity show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query principalId -o tsv)
+          echo "Managed Identity Principal ID: $PRINCIPAL_ID"
+          echo "PRINCIPAL_ID=$PRINCIPAL_ID" >> "$GITHUB_ENV"
+          MAX_WAIT=20
+          for attempt in $(seq 1 $MAX_WAIT); do
+            if az ad sp show --id "$PRINCIPAL_ID" --query id -o tsv &>/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq "$MAX_WAIT" ]; then
+              echo "Managed Identity のレプリケーションに時間がかかっています" >&2
+            fi
+            sleep 15
+          done
+          ROLE_WAIT=180
+          if ! az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal \
+            --role "Contributor" --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}"; then
+              echo "Contributor ロール付与に失敗。${ROLE_WAIT} 秒待って再実行" >&2
+              sleep $ROLE_WAIT
+              az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal \
+                --role "Contributor" --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}" || exit 1
+          fi
+          STORAGE_ID=$(az storage account show --name "$STORAGE_ACCOUNT_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query id -o tsv)
+          if ! az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal \
+            --role "Storage Blob Data Contributor" --scope "$STORAGE_ID"; then
+              echo "Storage ロール付与失敗。${ROLE_WAIT} 秒待って再実行" >&2
+              sleep $ROLE_WAIT
+              az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal \
+                --role "Storage Blob Data Contributor" --scope "$STORAGE_ID" || exit 1
+          fi
+
+      - name: デプロイサマリを出力
+        run: |
+          FQDN=$(az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query properties.configuration.ingress.fqdn -o tsv)
+          STATE=$(az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query properties.provisioningState -o tsv)
+          STATUS=$(az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query properties.runningStatus -o tsv)
+          echo "## 🎯 管理アプリ Container Apps デプロイ完了" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Container App**: \`$CONTAINER_APP_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: \`$ACA_ENVIRONMENT_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **イメージ**: \`$ACR_LOGIN_SERVER/$ADMIN_IMAGE_NAME:$IMAGE_TAG\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Provisioning**: \`$STATE\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Running Status**: \`$STATUS\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📍 アクセス" >> $GITHUB_STEP_SUMMARY
+          echo "- https://$FQDN" >> $GITHUB_STEP_SUMMARY
+          echo "- Basic 認証: $ACA_ADMIN_USERNAME / (GitHub Variables)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔐 Managed Identity" >> $GITHUB_STEP_SUMMARY
+          echo "- Principal ID: \`$PRINCIPAL_ID\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 付与ロール: Contributor (demo) + Storage Blob Data Contributor" >> $GITHUB_STEP_SUMMARY

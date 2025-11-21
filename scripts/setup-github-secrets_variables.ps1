@@ -40,8 +40,6 @@ $GitHubVariables = @{
 	VM_ADMIN_PASSWORD        = 'P@ssw0rd!2025'
 	MYSQL_ROOT_PASSWORD      = 'P@ssw0rd!2025'
 	DB_APP_PASSWORD          = 'P@ssw0rd!2025'
-	# Ingress Static IP (Bicep デプロイ後に自動設定される。初回は空でOK)
-	INGRESS_PUBLIC_IP        = ''
 }
 
 

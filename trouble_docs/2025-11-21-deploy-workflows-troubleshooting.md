@@ -47,6 +47,8 @@ UPGRADE FAILED: "ingress-nginx" has no deployed releases
 - GitHub Actions の `actions: write` 権限があっても Variables API へのアクセスが拒否される
 - その後の Helm upgrade が "has no deployed releases" で失敗
 
+> 2025-11-22 追記: Ingress の静的 IP / DNS は Bicep で管理するよう変更したため、`INGRESS_PUBLIC_IP` 変数は廃止済み。ワークフローから GitHub Variables を操作する必要はなくなった。
+
 **実施した修正**:
 
 - `gh variable set` コマンドをコメントアウト（workflow_run イベント時のトークン制限を考慮）
