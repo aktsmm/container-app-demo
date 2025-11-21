@@ -15,9 +15,6 @@ on:
   workflow_run:
     workflows:
       - "1️⃣ Infrastructure Deploy"
-      USER_ASSIGNED_IDENTITY_ID: ${{ needs.prepare-context.outputs.identity_resource_id }}
-      PRINCIPAL_ID: ${{ needs.prepare-context.outputs.identity_principal_id }}
-      ACA_USER_ASSIGNED_IDENTITY_NAME: ${{ needs.prepare-context.outputs.identity_name }}
     types:
       - completed
 
