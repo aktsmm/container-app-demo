@@ -277,7 +277,7 @@ jobs:
                 --image "${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" \
                 --force
             }
-          
+
           # Helm リリースのロック状態を確認・解除
           if kubectl get ns ingress-nginx >/dev/null 2>&1 && kubectl get secret -n ingress-nginx | grep -q 'sh\.helm\.release\.v1\.ingress-nginx'; then
             echo "Helm リリースの状態を確認します"
@@ -288,11 +288,11 @@ jobs:
               sleep 5
             fi
           fi
-          
+
           # values.yaml ベースの設定 + 動的パラメータを --set で上書き
           VALUES_FILE="app/board-app/k8s/ingress-nginx-values.yaml"
           OVERRIDE_ARGS="--set controller.image.registry=$ACR_LOGIN_SERVER --set controller.image.image=$CONTROLLER_IMAGE --set controller.image.tag=$CONTROLLER_TAG"
-          
+
           if [ -n "$STATIC_IP" ] && [ -n "$NODE_RG" ]; then
             echo "✅ Static Public IP を使用: $STATIC_IP (Resource Group: $NODE_RG)"
             OVERRIDE_ARGS="$OVERRIDE_ARGS --set controller.service.loadBalancerIP=$STATIC_IP --set controller.service.annotations.\"service\.beta\.kubernetes\.io/azure-load-balancer-resource-group\"=$NODE_RG"
@@ -332,10 +332,10 @@ jobs:
               $OVERRIDE_ARGS \
               --wait --timeout=10m
           fi
-          
+
           echo "ingress-nginx controller のロールアウト完了を待機します"
           kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=600s
-          
+
           echo "LoadBalancer IP の割り当てを待機します (最大 10分)"
           ATTEMPTS=60
           for i in $(seq 1 $ATTEMPTS); do
@@ -348,7 +348,7 @@ jobs:
             echo "[$i/$ATTEMPTS] LoadBalancer IP 割り当て待機中..."
             sleep 10
           done
-          
+
           if [ -z "${LB_IP:-}" ]; then
             echo "❌ 規定時間内に LoadBalancer IP を取得できませんでした" >&2
             kubectl describe svc ingress-nginx-controller -n ingress-nginx
@@ -362,12 +362,12 @@ jobs:
           if [ -z "$LB_IP" ]; then
             LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
           fi
-          
+
           if [ -z "$LB_IP" ]; then
             echo "❌ LoadBalancer IP が取得できません" >&2
             exit 1
           fi
-          
+
           echo "LoadBalancer ($LB_IP) へのヘルスチェックを実行します"
           HEALTH_CHECK_ATTEMPTS=30
           for i in $(seq 1 $HEALTH_CHECK_ATTEMPTS); do
@@ -378,7 +378,7 @@ jobs:
             echo "[$i/$HEALTH_CHECK_ATTEMPTS] ヘルスチェック待機中..."
             sleep 5
           done
-          
+
           echo "Azure LoadBalancer のヘルスプローブ設定を確認します"
           NODE_RG="${NODE_RESOURCE_GROUP:-}"
           if [ -n "$NODE_RG" ]; then
@@ -395,7 +395,7 @@ jobs:
               echo "⚠️ ヘルスプローブ情報が取得できませんでした（作成中の可能性があります）"
             fi
           fi
-          
+
           echo "LoadBalancer の準備完了を待機します（最大 5分）"
           CONNECTIVITY_ATTEMPTS=30
           for i in $(seq 1 $CONNECTIVITY_ATTEMPTS); do
@@ -417,7 +417,7 @@ jobs:
           kubectl get svc -n ingress-nginx >> $GITHUB_STEP_SUMMARY || true
           echo "```" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "N/A")
           echo "**LoadBalancer IP:** \`$LB_IP\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

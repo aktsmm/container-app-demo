@@ -70,23 +70,23 @@ LoadBalancer のヘルスプローブ設定を明示的に指定する values �
 ```yaml
 controller:
   replicaCount: 1
-  
+
   service:
     type: LoadBalancer
     externalTrafficPolicy: Local
-    
+
     annotations:
       # ヘルスプローブのパスと設定を明示
       service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: "/healthz"
       service.beta.kubernetes.io/azure-load-balancer-health-probe-interval: "5"
       service.beta.kubernetes.io/azure-load-balancer-health-probe-num-of-probe: "2"
       service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout: "30"
-  
+
   livenessProbe:
     httpGet:
       path: /healthz
       port: 10254
-  
+
   readinessProbe:
     httpGet:
       path: /healthz
@@ -100,6 +100,7 @@ controller:
 #### 主な変更点
 
 1. **values.yaml ベースの設定**
+
    ```bash
    helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
      --namespace ingress-nginx \
@@ -110,6 +111,7 @@ controller:
    ```
 
 2. **既存 LoadBalancer サービスの削除**
+
    ```bash
    # upgrade 前に古い設定の LoadBalancer を削除
    kubectl delete svc ingress-nginx-controller -n ingress-nginx --ignore-not-found=true
@@ -117,6 +119,7 @@ controller:
    ```
 
 3. **LoadBalancer IP 取得の確実化**
+
    ```bash
    # 最大 10分待機（60回 × 10秒）
    ATTEMPTS=60
@@ -132,11 +135,12 @@ controller:
    ```
 
 4. **接続確認ステップを追加**
+
    ```bash
    # Ingress Controller のヘルスチェック
    kubectl exec -n ingress-nginx deployment/ingress-nginx-controller -- \
      curl -s -o /dev/null -w "%{http_code}" http://localhost:10254/healthz
-   
+
    # LoadBalancer ポート 80 への接続テスト
    timeout 5 bash -c "echo > /dev/tcp/$LB_IP/80"
    ```
@@ -174,19 +178,22 @@ curl -H "Host: board.localdemo.internal" http://20.222.232.70/
 ## 再発防止策
 
 1. **values.yaml で設定を一元管理**
+
    - `--set` での個別指定ではなく、values.yaml で標準設定を定義
    - ヘルスプローブ設定を明示的に含める
 
 2. **LoadBalancer の強制再作成**
+
    - Helm upgrade 時に既存サービスを削除して再作成
    - 古い設定が残らないようにする
 
 3. **接続確認ステップの追加**
+
    - デプロイ後に LoadBalancer への接続テストを実施
    - 問題を早期に検出
 
 4. **タイムアウト時間の延長**
-   - LoadBalancer IP 割り当て待機を 10分に延長
+   - LoadBalancer IP 割り当て待機を 10 分に延長
    - Azure のプロビジョニング時間に余裕を持たせる
 
 ---

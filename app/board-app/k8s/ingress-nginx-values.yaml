@@ -3,11 +3,11 @@
 
 controller:
   replicaCount: 1
-  
+
   service:
     type: LoadBalancer
     externalTrafficPolicy: Local
-    
+
     # Azure LoadBalancer 用アノテーション
     annotations:
       # ヘルスプローブのパスを明示的に指定
@@ -18,7 +18,7 @@ controller:
       service.beta.kubernetes.io/azure-load-balancer-health-probe-num-of-probe: "2"
       # TCPリセット有効化
       service.beta.kubernetes.io/azure-load-balancer-tcp-idle-timeout: "30"
-    
+
     # 注意: loadBalancerIP と service.beta.kubernetes.io/azure-load-balancer-resource-group は
     # ワークフロー内で動的に --set で上書きする
 
