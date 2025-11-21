@@ -2,7 +2,7 @@ name: 🧹 Cleanup Workflow Runs (Scheduled)
 
 on:
   schedule:
-    - cron: "0 */12 * * *" # 12時間ごと
+    - cron: "0 */18 * * *" # 12時間ごと
   workflow_dispatch:
   push:
     branches: [main]
