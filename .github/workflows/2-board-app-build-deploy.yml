@@ -203,7 +203,7 @@ jobs:
       - name: Trivy SARIF をアップロード (FS)
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-fs-board.sarif
           category: board-app-trivy-fs
@@ -211,7 +211,7 @@ jobs:
       - name: Gitleaks SARIF をアップロード
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: gitleaks-board.sarif
           category: board-app-gitleaks
@@ -338,7 +338,7 @@ jobs:
       - name: Trivy SARIF をアップロード
         if: ${{ env.BUILD_REQUIRED == 'true' && always() }}
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-image-board.sarif
           category: board-app-trivy-image
@@ -346,7 +346,7 @@ jobs:
       - name: Trivy SARIF (Board API) をアップロード
         if: ${{ env.BUILD_REQUIRED == 'true' && always() }}
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-image-board-api.sarif
           category: board-api-trivy-image
