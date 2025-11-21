@@ -15,12 +15,16 @@ on:
   workflow_run:
     workflows:
       - "1️⃣ Infrastructure Deploy"
+      USER_ASSIGNED_IDENTITY_ID: ${{ needs.prepare-context.outputs.identity_resource_id }}
+      PRINCIPAL_ID: ${{ needs.prepare-context.outputs.identity_principal_id }}
+      ACA_USER_ASSIGNED_IDENTITY_NAME: ${{ needs.prepare-context.outputs.identity_name }}
     types:
       - completed
 
 permissions:
   contents: read
   id-token: write
+  security-events: write
 
 env:
   RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
@@ -53,6 +57,9 @@ jobs:
       storage_account_name: ${{ steps.resolve_storage.outputs.storage_account_name }}
       aca_environment_name: ${{ steps.resolve_env.outputs.aca_environment_name }}
       db_endpoint: ${{ steps.mysql_endpoint.outputs.db_endpoint }}
+      identity_resource_id: ${{ steps.resolve_identity.outputs.identity_resource_id }}
+      identity_principal_id: ${{ steps.resolve_identity.outputs.identity_principal_id }}
+      identity_name: ${{ steps.resolve_identity.outputs.identity_name }}
     env:
       REDEPLOY_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.redeployTag || '' }}
     steps:
@@ -164,6 +171,7 @@ jobs:
               OUTPUT_FILE=$(find infra-output -name '*.json' | head -n1)
               if [ -n "$OUTPUT_FILE" ]; then
                 MYSQL_IP=$(jq -r '.mysqlPrivateIp.value // empty' "$OUTPUT_FILE")
+                echo "infra_output_path=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
               fi
             fi
           fi
@@ -183,8 +191,54 @@ jobs:
           fi
           echo "db_endpoint=${MYSQL_IP}:${MYSQL_PORT}" >> "$GITHUB_OUTPUT"
 
+      - name: Container Apps 用ユーザー割当 ID を解決
+        id: resolve_identity
+        env:
+          INFRA_OUTPUT_FILE: ${{ steps.mysql_endpoint.outputs.infra_output_path }}
+          RESOLVED_RG: ${{ steps.resolve_rg.outputs.resource_group_name }}
+        run: |
+          set -euo pipefail
+          ID_RESOURCE_ID=""
+          PRINCIPAL_ID=""
+          ID_NAME=""
+          if [ -n "$INFRA_OUTPUT_FILE" ] && [ -f "$INFRA_OUTPUT_FILE" ]; then
+            ID_RESOURCE_ID=$(jq -r '.containerAppUserAssignedIdentityId.value // empty' "$INFRA_OUTPUT_FILE")
+            PRINCIPAL_ID=$(jq -r '.containerAppUserAssignedIdentityPrincipalId.value // empty' "$INFRA_OUTPUT_FILE")
+          fi
+          if [ -n "$ID_RESOURCE_ID" ] && [ -z "$ID_NAME" ]; then
+            ID_NAME="${ID_RESOURCE_ID##*/}"
+          fi
+          if [ -z "$ID_NAME" ]; then
+            ID_NAME=$(jq -r '.parameters.containerAppManagedIdentityName.value // empty' "$PARAM_FILE")
+          fi
+          if [ -z "$ID_NAME" ]; then
+            ID_NAME="${ACA_USER_ASSIGNED_IDENTITY_NAME:-}"
+          fi
+          if [ -z "$ID_RESOURCE_ID" ] || [ -z "$PRINCIPAL_ID" ]; then
+            if [ -z "$ID_NAME" ]; then
+              echo "Managed Identity 名を parameters または変数から解決できません" >&2
+              exit 1
+            fi
+            ID_JSON=$(az identity show --name "$ID_NAME" --resource-group "$RESOLVED_RG" -o json)
+            ID_RESOURCE_ID=$(echo "$ID_JSON" | jq -r '.id // empty')
+            PRINCIPAL_ID=$(echo "$ID_JSON" | jq -r '.principalId // empty')
+          fi
+          if [ -z "$ID_RESOURCE_ID" ] || [ -z "$PRINCIPAL_ID" ]; then
+            echo "Managed Identity を特定できません" >&2
+            exit 1
+          fi
+          if [ -z "$ID_NAME" ]; then
+            ID_NAME="${ID_RESOURCE_ID##*/}"
+          fi
+          echo "identity_resource_id=$ID_RESOURCE_ID" >> "$GITHUB_OUTPUT"
+          echo "identity_principal_id=$PRINCIPAL_ID" >> "$GITHUB_OUTPUT"
+          echo "identity_name=$ID_NAME" >> "$GITHUB_OUTPUT"
+
   code-security-scans:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # SARIF アップロードで必要
     needs: prepare-context
     if: ${{ needs.prepare-context.outputs.build_required == 'true' }}
     steps:
@@ -228,6 +282,9 @@ jobs:
 
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # SARIF アップロードで必要
     needs:
       - prepare-context
       - code-security-scans
@@ -349,6 +406,9 @@ jobs:
       DB_ENDPOINT: ${{ needs.prepare-context.outputs.db_endpoint }}
       IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag || needs.prepare-context.outputs.image_tag }}
       CHECKOUT_REF: ${{ needs.prepare-context.outputs.checkout_ref }}
+      USER_ASSIGNED_IDENTITY_ID: ${{ needs.prepare-context.outputs.identity_resource_id }}
+      PRINCIPAL_ID: ${{ needs.prepare-context.outputs.identity_principal_id }}
+      ACA_USER_ASSIGNED_IDENTITY_NAME: ${{ needs.prepare-context.outputs.identity_name }}
     steps:
       - name: コードを取得
         uses: actions/checkout@v4
@@ -434,21 +494,17 @@ jobs:
           fi
           az containerapp revision set-mode --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --mode single
 
-      - name: Container App 用ユーザー割当 ID を解決
+      - name: Container App 用ユーザー割当 ID を検証
         run: |
           set -euo pipefail
-          if [ -z "${ACA_USER_ASSIGNED_IDENTITY_NAME}" ]; then
-            echo "ACA_USER_ASSIGNED_IDENTITY_NAME が未設定です" >&2
-            exit 1
-          fi
-          ID_RESOURCE_ID=$(az identity show --name "$ACA_USER_ASSIGNED_IDENTITY_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query id -o tsv)
-          PRINCIPAL_ID=$(az identity show --name "$ACA_USER_ASSIGNED_IDENTITY_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query principalId -o tsv)
-          if [ -z "$ID_RESOURCE_ID" ] || [ -z "$PRINCIPAL_ID" ]; then
-            echo "ユーザー割当 ID を解決できません" >&2
-            exit 1
-          fi
-          echo "USER_ASSIGNED_IDENTITY_ID=$ID_RESOURCE_ID" >> "$GITHUB_ENV"
-          echo "PRINCIPAL_ID=$PRINCIPAL_ID" >> "$GITHUB_ENV"
+          for var_name in USER_ASSIGNED_IDENTITY_ID PRINCIPAL_ID; do
+            val=$(eval echo "\${$var_name}")
+            if [ -z "$val" ] || [ "$val" = "null" ]; then
+              echo "$var_name が解決できません。infra-deploy の出力を確認してください" >&2
+              exit 1
+            fi
+          done
+          echo "Managed Identity: ${ACA_USER_ASSIGNED_IDENTITY_NAME:-${USER_ASSIGNED_IDENTITY_ID##*/}}"
 
       - name: Container App にユーザー割当 ID を付与
         run: |
