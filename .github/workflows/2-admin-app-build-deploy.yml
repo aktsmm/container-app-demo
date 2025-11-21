@@ -146,9 +146,11 @@ jobs:
         id: mysql_endpoint
         env:
           INFRA_WORKFLOW_NAME: "1️⃣ Infrastructure Deploy"
+          RESOLVED_RG: ${{ steps.resolve_rg.outputs.resource_group_name }}
         run: |
           set -euo pipefail
           mkdir -p infra-output
+          MYSQL_IP=""
           if [ "${{ github.event_name }}" = "workflow_run" ] && [ "${{ github.event.workflow_run.name }}" = "$INFRA_WORKFLOW_NAME" ]; then
             TARGET_RUN_ID='${{ github.event.workflow_run.id }}'
           else
@@ -156,22 +158,29 @@ jobs:
               "https://api.github.com/repos/${{ github.repository }}/actions/workflows/1-infra-deploy.yml/runs?status=success&per_page=1" \
               | jq -r '.workflow_runs[0].id')
           fi
-          if [ -z "$TARGET_RUN_ID" ] || [ "$TARGET_RUN_ID" = "null" ]; then
-            echo "インフラデプロイの成功履歴が見つかりません" >&2
-            exit 1
+          if [ -n "$TARGET_RUN_ID" ] && [ "$TARGET_RUN_ID" != "null" ]; then
+            if gh run download "$TARGET_RUN_ID" --name infra-outputs --dir infra-output >/dev/null 2>&1; then
+              OUTPUT_FILE=$(find infra-output -name '*.json' | head -n1)
+              if [ -n "$OUTPUT_FILE" ]; then
+                MYSQL_IP=$(jq -r '.mysqlPrivateIp.value // empty' "$OUTPUT_FILE")
+              fi
+            fi
           fi
-          gh run download "$TARGET_RUN_ID" --name infra-outputs --dir infra-output >/dev/null
-          OUTPUT_FILE=$(find infra-output -name '*.json' | head -n1)
-          if [ -z "$OUTPUT_FILE" ]; then
-            echo "infra-outputs アーティファクトに JSON がありません" >&2
-            exit 1
+          if [ -z "$MYSQL_IP" ]; then
+            echo "infra-outputs から MySQL IP を取得できなかったため Azure リソースから解決します" >&2
+            VM_NAME=$(jq -r '.parameters.vmName.value // empty' "$PARAM_FILE")
+            if [ -z "$VM_NAME" ]; then
+              echo "parameters ファイルに vmName が存在しません" >&2
+              exit 1
+            fi
+            MYSQL_IP=$(az vm list-ip-addresses --resource-group "$RESOLVED_RG" --name "$VM_NAME" --query "[0].virtualMachine.network.privateIpAddresses[0]" -o tsv || true)
           fi
-          MYSQL_IP=$(jq -r '.mysqlPrivateIp.value' "$OUTPUT_FILE")
+          MYSQL_PORT=$(jq -r '.parameters.mysqlPort.value // 3306' "$PARAM_FILE")
           if [ -z "$MYSQL_IP" ] || [ "$MYSQL_IP" = "null" ]; then
-            echo "mysqlPrivateIp が取得できません" >&2
+            echo "MySQL Private IP を Azure から取得できませんでした" >&2
             exit 1
           fi
-          echo "db_endpoint=${MYSQL_IP}:3306" >> "$GITHUB_OUTPUT"
+          echo "db_endpoint=${MYSQL_IP}:${MYSQL_PORT}" >> "$GITHUB_OUTPUT"
 
   code-security-scans:
     runs-on: ubuntu-latest

@@ -203,6 +203,7 @@ pwsh ./scripts/setup-github-secrets_variables.ps1 -DryRun     # 設定内容の�
 ## 7. アプリケーションビルド & デプロイ
 
 - `2️⃣ Board App Build & Deploy`
+
   - `app/board-app/**` や `app/board-api/**` に変更が入ると自動でトリガー (手動起動も可)。
   - **前半 (Build)**: Gitleaks / Trivy FS → Docker Build (board-app, board-api) → Trivy Image → SBOM/SARIF を生成し ACR へ push。
   - **後半 (Deploy)**: `scripts/sync-board-vars.ps1` で Bicep から Ingress DNS (`<label>.<region>.cloudapp.azure.com`) を同期し、ingress-nginx + Kustomize を AKS に適用。`dummy-secret.txt` ルートもこのとき公開されます。
@@ -220,12 +221,12 @@ pwsh ./scripts/setup-github-secrets_variables.ps1 -DryRun     # 設定内容の�
 ## 9. 動作確認
 
 1. AKS Ingress の DNS FQDN を取得
-  ```powershell
-  kubectl get ingress -n board-app board-app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
-  ```
-  もしくは `az network public-ip show -g <RG> -n pip-aks-ingress-dev --query dnsSettings.fqdn -o tsv` で Static IP の DNS ラベルを確認できます。
-2. ブラウザで `http://<FQDN>/` にアクセスし、掲示板 UI と `ダミーシークレットはこちら` のリンク (`/dummy-secret`) が表示されることを確認。
-3. 管理アプリの FQDN (`az containerapp show --name <app> --resource-group <RG> --query properties.configuration.ingress.fqdn -o tsv`) に Basic 認証でアクセスし、バックアップ一覧や投稿削除が機能することを確認。
+
+```powershell
+kubectl get ingress -n board-app board-app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
+
+もしくは `az network public-ip show -g <RG> -n pip-aks-ingress-dev --query dnsSettings.fqdn -o tsv` で Static IP の DNS ラベルを確認できます。 2. ブラウザで `http://<FQDN>/` にアクセスし、掲示板 UI と `ダミーシークレットはこちら` のリンク (`/dummy-secret`) が表示されることを確認。 3. 管理アプリの FQDN (`az containerapp show --name <app> --resource-group <RG> --query properties.configuration.ingress.fqdn -o tsv`) に Basic 認証でアクセスし、バックアップ一覧や投稿削除が機能することを確認。
 
 ## 10. 次のステップ
 
