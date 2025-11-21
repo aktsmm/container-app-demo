@@ -18,12 +18,12 @@
 
 ## 2. GitHub Actions での認証利用箇所
 
-| ワークフロー               | ログインステップ | 追加権限操作                                                                  |
-| -------------------------- | ---------------- | ----------------------------------------------------------------------------- |
-| `1️⃣ Infrastructure Deploy` | `azure/login@v2` | Service Principal への Policy ロール付与、Resource Group 作成                 |
+| ワークフロー                  | ログインステップ | 追加権限操作                                                                                                                                    |
+| ----------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `1️⃣ Infrastructure Deploy`    | `azure/login@v2` | Service Principal への Policy ロール付与、Resource Group 作成                                                                                   |
 | `2️⃣ Board App Build & Deploy` | `azure/login@v2` | ACR 管理者認証の一時有効化、`az acr update --admin-enabled true`、`az aks get-credentials`、`az aks update --attach-acr`、`kubectl`/`helm` 操作 |
-| `2️⃣ Admin App Build & Deploy` | `azure/login@v2` | Container Apps のシークレット更新、Managed Identity へのロール割り当て        |
-| `backup-upload`            | `azure/login@v2` | `az vm run-command invoke`, Storage コンテナ作成                              |
+| `2️⃣ Admin App Build & Deploy` | `azure/login@v2` | Container Apps のシークレット更新、Managed Identity へのロール割り当て                                                                          |
+| `backup-upload`               | `azure/login@v2` | `az vm run-command invoke`, Storage コンテナ作成                                                                                                |
 
 ## 3. Managed Identity の利用
 
@@ -53,11 +53,11 @@
 
 ## 4. Kubernetes シークレット / 認証素材
 
-| 名称                                | 作成箇所                                                       | 用途                                  |
-| ----------------------------------- | -------------------------------------------------------------- | ------------------------------------- |
+| 名称                                | 作成箇所                                                               | 用途                                  |
+| ----------------------------------- | ---------------------------------------------------------------------- | ------------------------------------- |
 | `acr-secret`                        | `2️⃣ Board App Build & Deploy` (ACR 資格情報。`az acr credential show`) | board-app / board-api のイメージ Pull |
-| `board-db-conn`                     | 同上 (GitHub Variables から DB 接続情報を注入)                 | board-api Pod が MySQL に接続するため |
-| `admin-username` / `admin-password` | `2️⃣ Admin App Build & Deploy` (`az containerapp secret set`)   | Container Apps の Basic 認証          |
+| `board-db-conn`                     | 同上 (GitHub Variables から DB 接続情報を注入)                         | board-api Pod が MySQL に接続するため |
+| `admin-username` / `admin-password` | `2️⃣ Admin App Build & Deploy` (`az containerapp secret set`)           | Container Apps の Basic 認証          |
 
 ## 5. GitHub PAT の利用 (任意)
 

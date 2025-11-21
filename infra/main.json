@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "380387020716070503"
+      "templateHash": "2021529922155376423"
     }
   },
   "parameters": {
@@ -358,6 +358,12 @@
     ]
   },
   "resources": {
+    "ingressPublicIp": {
+      "existing": true,
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2023-09-01",
+      "name": "[parameters('ingressPublicIpName')]"
+    },
     "storageAccountExisting": {
       "existing": true,
       "type": "Microsoft.Storage/storageAccounts",
@@ -1675,11 +1681,11 @@
     },
     "ingressPublicIpAddress": {
       "type": "string",
-      "value": "[if(parameters('aksSkipCreate'), reference(resourceId('Microsoft.Network/publicIPAddresses', parameters('ingressPublicIpName')), '2023-09-01', 'full').properties.ipAddress, reference('aks').outputs.ingressPublicIpAddress.value)]"
+      "value": "[if(parameters('aksSkipCreate'), reference('ingressPublicIp').ipAddress, reference('aks').outputs.ingressPublicIpAddress.value)]"
     },
     "ingressPublicIpFqdn": {
       "type": "string",
-      "value": "[if(parameters('aksSkipCreate'), reference(resourceId('Microsoft.Network/publicIPAddresses', parameters('ingressPublicIpName')), '2023-09-01', 'full').properties.dnsSettings.fqdn, reference('aks').outputs.ingressPublicIpFqdn.value)]"
+      "value": "[parameters('boardAppIngressHost')]"
     },
     "containerAppsEnvironmentId": {
       "type": "string",

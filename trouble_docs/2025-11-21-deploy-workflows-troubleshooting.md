@@ -483,14 +483,14 @@ module aks './modules/aks.bicep' = if (!aksSkipCreate) {
 
 ### 📊 修正前後の比較
 
-| 項目                       | 修正前（手動対応）                                     | 修正後（自動化）                                              |
-| -------------------------- | ---------------------------------------------------- | ------------------------------------------------------------- |
-| **ACR 認証**               | `az aks update --attach-acr` を手動実行              | Bicep で自動ロール割り当て                                    |
-| **Static IP 設定**         | 手動でノード RG に移動 or Dynamic IP に切替が必要     | Workflow がノード RG に Static IP を自動生成し Helm も参照     |
-| **NSG 設定**               | Azure Portal での確認や手動修正が必要                 | GitHub Actions が AzureLoadBalancer / NodePort ルールを冪等適用 |
-| **Helm の値保持問題**      | `--reuse-values` により `loadBalancerIP` が残存        | `--reset-values` + `STATIC_IP_ARGS` で毎回クリーンに適用        |
-| **新環境での動作**         | 毎回手動介入が必要                                   | 完全自動化（コード通り動作）                                    |
-| **トラブルシューティング** | kubectl 調査 → 手動修正 → ワークフロー再実行         | 初回デプロイから静的 IP 付きで正常動作                         |
+| 項目                       | 修正前（手動対応）                                | 修正後（自動化）                                                |
+| -------------------------- | ------------------------------------------------- | --------------------------------------------------------------- |
+| **ACR 認証**               | `az aks update --attach-acr` を手動実行           | Bicep で自動ロール割り当て                                      |
+| **Static IP 設定**         | 手動でノード RG に移動 or Dynamic IP に切替が必要 | Workflow がノード RG に Static IP を自動生成し Helm も参照      |
+| **NSG 設定**               | Azure Portal での確認や手動修正が必要             | GitHub Actions が AzureLoadBalancer / NodePort ルールを冪等適用 |
+| **Helm の値保持問題**      | `--reuse-values` により `loadBalancerIP` が残存   | `--reset-values` + `STATIC_IP_ARGS` で毎回クリーンに適用        |
+| **新環境での動作**         | 毎回手動介入が必要                                | 完全自動化（コード通り動作）                                    |
+| **トラブルシューティング** | kubectl 調査 → 手動修正 → ワークフロー再実行      | 初回デプロイから静的 IP 付きで正常動作                          |
 
 ### ✅ 効果
 

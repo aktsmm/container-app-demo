@@ -297,6 +297,12 @@ module vm './modules/vm.bicep' = {
   }
 }
 
+// 既存 Ingress Public IP (AKS スキップ時の出力用)
+resource ingressPublicIp 'Microsoft.Network/publicIPAddresses@2023-09-01' existing = {
+  name: ingressPublicIpName
+}
+
+
 // Diagnostic settings for Storage Account
 resource storageAccountExisting 'Microsoft.Storage/storageAccounts@2023-04-01' existing = {
   name: storageAccountName
@@ -397,12 +403,12 @@ output azureContainerRegistryId string = acr.outputs.id
 // 既存クラスタ再利用時も ID を一貫して出力 (aksSkipCreate=true の場合 module は作成されない)
 output aksClusterId string = resourceId('Microsoft.ContainerService/managedClusters', aksName)
 output aksNodeResourceGroup string = aksSkipCreate ? aksNodeResourceGroup : aks!.outputs.nodeResourceGroup
+// DNS ラベルを未設定でも評価が落ちないように既存 Public IP の参照をガード
 output ingressPublicIpAddress string = aksSkipCreate
-  ? reference(resourceId('Microsoft.Network/publicIPAddresses', ingressPublicIpName), '2023-09-01', 'full').properties.ipAddress
+  ? ingressPublicIp.properties.ipAddress
   : aks!.outputs.ingressPublicIpAddress
-output ingressPublicIpFqdn string = aksSkipCreate
-  ? reference(resourceId('Microsoft.Network/publicIPAddresses', ingressPublicIpName), '2023-09-01', 'full').properties.dnsSettings.fqdn
-  : aks!.outputs.ingressPublicIpFqdn
+// DNS ラベルの FQDN はパラメータ値から算出できるため Azure 側の dnsSettings を参照しない
+output ingressPublicIpFqdn string = boardAppIngressHost
 output containerAppsEnvironmentId string = containerAppsEnv.outputs.id
 output logAnalyticsId string = logAnalytics.outputs.id
 output virtualNetworkId string = vnet.outputs.id
