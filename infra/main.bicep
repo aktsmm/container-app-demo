@@ -63,6 +63,9 @@ param backupContainerName string = 'mysql-backups'
 @description('Container Apps Environment 名')
 param containerAppsEnvironmentName string
 
+@description('Container Apps が利用するユーザー割り当てマネージド ID 名')
+param containerAppManagedIdentityName string
+
 @description('AKS クラスタ名')
 param aksName string
 
@@ -247,6 +250,12 @@ module containerAppsEnv './modules/containerAppEnv.bicep' = {
   }
 }
 
+resource containerAppUserAssignedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: containerAppManagedIdentityName
+  location: location
+  tags: defaultTags
+}
+
 module aks './modules/aks.bicep' = if (!aksSkipCreate) {
   name: 'aks-${deploymentTimestamp}'
   params: {
@@ -315,6 +324,20 @@ resource vmStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-0
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor
     principalId: vm.outputs.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ACA 管理アプリが MySQL バックアップを操作できるよう Container Apps 用 ID にも権限を付与
+resource containerAppIdentityStorageRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccountExisting.id, containerAppManagedIdentityName, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+  scope: storageAccountExisting
+  dependsOn: [
+    storage
+  ]
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+    principalId: containerAppUserAssignedIdentity.properties.principalId
     principalType: 'ServicePrincipal'
   }
 }
@@ -415,3 +438,5 @@ output virtualNetworkId string = vnet.outputs.id
 output storageAccountId string = storage.outputs.id
 // GitHub Actions から DB 接続先を解決できるように MySQL VM の Private IP を出力
 output mysqlPrivateIp string = vm.outputs.privateIp
+output containerAppUserAssignedIdentityId string = containerAppUserAssignedIdentity.id
+output containerAppUserAssignedIdentityPrincipalId string = containerAppUserAssignedIdentity.properties.principalId
