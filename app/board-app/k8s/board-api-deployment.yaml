@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: board-api
+  namespace: board-app
+  labels:
+    app: board-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: board-api
+  template:
+    metadata:
+      labels:
+        app: board-api
+    spec:
+      imagePullSecrets:
+        - name: acr-secret
+      containers:
+        - name: board-api
+          image: acr-placeholder.azurecr.io/board-api:latest # ワークフローで本番タグへ置換
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            # GitHub Actions から k8s Secret を作成し参照予定。直接値は埋め込まない方針。
+            - name: DB_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: board-db-conn
+                  key: db-endpoint
+            - name: DB_APP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: board-db-conn
+                  key: db-username
+            - name: DB_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: board-db-conn
+                  key: db-password
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
