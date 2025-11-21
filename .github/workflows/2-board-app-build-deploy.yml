@@ -6,6 +6,12 @@ on:
       redeployTag:
         description: "ACR に既存タグがある場合に再デプロイする (空なら最新コミットをビルド)"
         required: false
+      resourceGroupName:
+        description: "既定値を上書きするデプロイ先のリソースグループ名"
+        required: false
+      aksClusterName:
+        description: "既定値を上書きする AKS クラスター名"
+        required: false
   push:
     branches:
       - master
@@ -23,10 +29,11 @@ on:
 permissions:
   contents: read
   id-token: write
+  security-events: write
 
 env:
-  RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
-  AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+  RESOURCE_GROUP_NAME: ${{ github.event.inputs.resourceGroupName || vars.RESOURCE_GROUP_NAME }}
+  AKS_CLUSTER_NAME: ${{ github.event.inputs.aksClusterName || vars.AKS_CLUSTER_NAME }}
   PARAM_FILE: infra/parameters/main-dev.parameters.json
   KUSTOMIZE_DIR: app/board-app/k8s
   ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
@@ -196,16 +203,18 @@ jobs:
       - name: Trivy SARIF をアップロード (FS)
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-fs-board.sarif
+          category: board-app-trivy-fs
 
       - name: Gitleaks SARIF をアップロード
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: gitleaks-board.sarif
+          category: board-app-gitleaks
 
   build-and-push:
     runs-on: ubuntu-latest
@@ -329,16 +338,18 @@ jobs:
       - name: Trivy SARIF をアップロード
         if: ${{ env.BUILD_REQUIRED == 'true' && always() }}
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-image-board.sarif
+          category: board-app-trivy-image
 
       - name: Trivy SARIF (Board API) をアップロード
         if: ${{ env.BUILD_REQUIRED == 'true' && always() }}
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-image-board-api.sarif
+          category: board-api-trivy-image
 
       - name: イメージを ACR へプッシュ
         if: ${{ env.BUILD_REQUIRED == 'true' }}
