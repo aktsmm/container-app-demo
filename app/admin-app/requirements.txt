@@ -1,0 +1,6 @@
+Flask==3.0.3
+gunicorn==23.0.0
+python-dotenv==1.0.1
+azure-storage-blob==12.19.0
+azure-identity==1.15.0
+PyMySQL==1.1.0

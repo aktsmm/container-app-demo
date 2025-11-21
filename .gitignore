@@ -1,0 +1,16 @@
+infra/aks_ssh
+infra/aks_ssh.pub
+
+# 生成した一時 SSH 鍵はコミットしない（公開鍵はパラメータ上書きで渡す）# Ignore local npm cache artifacts
+.npm-cache/
+ref/
+# Ignore sample assets placed under ignore/
+ignore/
+
+# Node.js build artifacts
+node_modules/
+dist/
+
+# Python bytecode
+__pycache__/
+*.pyc

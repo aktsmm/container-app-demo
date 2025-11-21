@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - board-api-deployment.yaml
+  - board-api-service.yaml
+# イメージの置換はワークフロー側の sed で実行するため、ここでは指定しない
+configMapGenerator:
+  - name: board-app-vars
+    envs:
+      - vars.env
+generatorOptions:
+  disableNameSuffixHash: true
+# replacements は削除: IP 直アクセスを使用するため Host ベースルーティング不要
+# Ingress に Host なしルールを追加したため、動的な Host 置換は不要

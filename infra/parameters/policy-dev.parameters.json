@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "policyAssignments": {
+      "value": [
+        {
+          "policySetDefinitionId": "/providers/Microsoft.Authorization/policySetDefinitions/e3ec7e09-768c-4b64-882c-fcada3772047",
+          "assignmentName": "initiative-container-app-demo",
+          "displayName": "Container App Demo ガードレール",
+          "assignmentDescription": "AKS/Container Apps/VM を利用するデモ環境に共通ガードレールを適用します。",
+          "nonComplianceMessage": "デモ環境のガードレールに従って設定を修正してください。",
+          "policyParameters": {},
+          "policyOverrides": [],
+          "enableManagedIdentity": true,
+          "managedIdentityLocation": ""
+        }
+      ]
+    }
+  }
+}

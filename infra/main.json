@@ -1,0 +1,1528 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "17973512593507693052"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "全リソースを展開するリージョン"
+      }
+    },
+    "environmentName": {
+      "type": "string",
+      "metadata": {
+        "description": "環境を識別する名前（タグなどに活用）"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "共通タグ"
+      }
+    },
+    "deploymentTimestamp": {
+      "type": "string",
+      "defaultValue": "[utcNow('yyyyMMddHHmmss')]",
+      "metadata": {
+        "description": "デプロイメント名を一意にするためのタイムスタンプ（既定: 現在時刻）"
+      }
+    },
+    "vnetName": {
+      "type": "string",
+      "metadata": {
+        "description": "仮想ネットワーク名"
+      }
+    },
+    "vnetAddressPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "VNet アドレス空間 (例: 10.0.0.0/16)"
+      }
+    },
+    "aksSubnetName": {
+      "type": "string",
+      "metadata": {
+        "description": "AKS 用サブネット名"
+      }
+    },
+    "aksSubnetPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "AKS 用サブネットの CIDR"
+      }
+    },
+    "vmSubnetName": {
+      "type": "string",
+      "metadata": {
+        "description": "VM 用サブネット名"
+      }
+    },
+    "vmSubnetPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "VM 用サブネットの CIDR"
+      }
+    },
+    "containerAppSubnetName": {
+      "type": "string",
+      "metadata": {
+        "description": "Container Apps 用サブネット名"
+      }
+    },
+    "containerAppSubnetPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "Container Apps 用サブネット CIDR"
+      }
+    },
+    "logAnalyticsName": {
+      "type": "string",
+      "metadata": {
+        "description": "Log Analytics ワークスペース名"
+      }
+    },
+    "logAnalyticsSku": {
+      "type": "string",
+      "defaultValue": "PerGB2018",
+      "metadata": {
+        "description": "Log Analytics SKU"
+      }
+    },
+    "logAnalyticsRetentionDays": {
+      "type": "int",
+      "defaultValue": 30,
+      "metadata": {
+        "description": "Log Analytics 保持日数"
+      }
+    },
+    "acrName": {
+      "type": "string",
+      "metadata": {
+        "description": "ACR 名 (Basic SKU)"
+      }
+    },
+    "storageAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Storage Account 名 (MySQL バックアップ用)"
+      }
+    },
+    "storageSku": {
+      "type": "string",
+      "defaultValue": "Standard_LRS",
+      "metadata": {
+        "description": "Storage SKU (例: Standard_LRS)"
+      }
+    },
+    "storageAccessTier": {
+      "type": "string",
+      "defaultValue": "Cool",
+      "metadata": {
+        "description": "Storage アクセス層"
+      }
+    },
+    "containerAppsEnvironmentName": {
+      "type": "string",
+      "metadata": {
+        "description": "Container Apps Environment 名"
+      }
+    },
+    "aksName": {
+      "type": "string",
+      "metadata": {
+        "description": "AKS クラスタ名"
+      }
+    },
+    "aksDnsPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "AKS DNS プレフィックス"
+      }
+    },
+    "aksKubernetesVersion": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "AKS 対象 Kubernetes バージョン (空文字で最新)"
+      }
+    },
+    "aksNodeResourceGroup": {
+      "type": "string",
+      "metadata": {
+        "description": "AKS ノードリソースグループ名"
+      }
+    },
+    "aksSystemPoolName": {
+      "type": "string",
+      "defaultValue": "systempool",
+      "metadata": {
+        "description": "AKS システムプール名"
+      }
+    },
+    "aksNodeVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_B2s",
+      "metadata": {
+        "description": "AKS ノード VM サイズ"
+      }
+    },
+    "aksNodeCount": {
+      "type": "int",
+      "defaultValue": 1,
+      "minValue": 1,
+      "metadata": {
+        "description": "AKS ノード数 (デモ用途なので最小構成)"
+      }
+    },
+    "aksNodeOsDiskSizeGB": {
+      "type": "int",
+      "defaultValue": 64,
+      "metadata": {
+        "description": "AKS ノード OS ディスクサイズ (GB)"
+      }
+    },
+    "aksAdminUsername": {
+      "type": "string",
+      "defaultValue": "aksadmin",
+      "metadata": {
+        "description": "AKS 管理者ユーザー名"
+      }
+    },
+    "aksSshPublicKey": {
+      "type": "string",
+      "metadata": {
+        "description": "AKS ノード用 SSH 公開鍵"
+      }
+    },
+    "aksSkipCreate": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "既存 AKS がある場合は true にして再作成をスキップ (SSH 公開鍵変更禁止エラーを回避)"
+      }
+    },
+    "aksServiceCidr": {
+      "type": "string",
+      "defaultValue": "10.10.0.0/24",
+      "metadata": {
+        "description": "AKS Service CIDR"
+      }
+    },
+    "aksDnsServiceIp": {
+      "type": "string",
+      "defaultValue": "10.10.0.10",
+      "metadata": {
+        "description": "AKS DNS Service IP"
+      }
+    },
+    "aksPodCidr": {
+      "type": "string",
+      "defaultValue": "10.244.0.0/16",
+      "metadata": {
+        "description": "AKS Pod CIDR (Overlay 利用時)"
+      }
+    },
+    "vmName": {
+      "type": "string",
+      "metadata": {
+        "description": "MySQL VM 名"
+      }
+    },
+    "vmSize": {
+      "type": "string",
+      "defaultValue": "Standard_B1ms",
+      "metadata": {
+        "description": "VM サイズ"
+      }
+    },
+    "vmAdminUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "VM 管理者ユーザー名"
+      }
+    },
+    "vmAdminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "VM 管理者パスワード"
+      }
+    },
+    "mysqlPort": {
+      "type": "int",
+      "defaultValue": 3306,
+      "metadata": {
+        "description": "MySQL ポート"
+      }
+    },
+    "sshPort": {
+      "type": "int",
+      "defaultValue": 22,
+      "metadata": {
+        "description": "SSH ポート"
+      }
+    },
+    "mysqlRootPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "MySQL の root パスワード (セキュア)"
+      }
+    },
+    "mysqlAppUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "アプリケーション用 MySQL ユーザー名"
+      }
+    },
+    "mysqlAppPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "アプリケーション用 MySQL パスワード (セキュア)"
+      }
+    },
+    "boardAppNamespace": {
+      "type": "string",
+      "metadata": {
+        "description": "掲示板アプリが使用する Kubernetes Namespace"
+      }
+    },
+    "boardAppIngressHost": {
+      "type": "string",
+      "metadata": {
+        "description": "掲示板アプリの Ingress ホスト名"
+      }
+    }
+  },
+  "variables": {
+    "defaultTags": "[union(parameters('tags'), createObject('environment', parameters('environmentName'), 'boardAppNamespace', parameters('boardAppNamespace'), 'boardAppIngressHost', parameters('boardAppIngressHost')))]",
+    "vnetSubnets": [
+      {
+        "name": "[parameters('aksSubnetName')]",
+        "properties": {
+          "addressPrefix": "[parameters('aksSubnetPrefix')]",
+          "delegations": [],
+          "privateEndpointNetworkPolicies": "Enabled",
+          "privateLinkServiceNetworkPolicies": "Enabled"
+        }
+      },
+      {
+        "name": "[parameters('vmSubnetName')]",
+        "properties": {
+          "addressPrefix": "[parameters('vmSubnetPrefix')]",
+          "delegations": []
+        }
+      },
+      {
+        "name": "[parameters('containerAppSubnetName')]",
+        "properties": {
+          "addressPrefix": "[parameters('containerAppSubnetPrefix')]",
+          "delegations": [
+            {
+              "name": "appsvc",
+              "properties": {
+                "serviceName": "Microsoft.App/environments"
+              }
+            }
+          ],
+          "privateEndpointNetworkPolicies": "Enabled",
+          "privateLinkServiceNetworkPolicies": "Enabled"
+        }
+      }
+    ]
+  },
+  "resources": {
+    "storageAccountExisting": {
+      "existing": true,
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-04-01",
+      "name": "[parameters('storageAccountName')]"
+    },
+    "storageDiagnostics": {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('storageAccountName'))]",
+      "name": "[format('{0}-diag', parameters('storageAccountName'))]",
+      "properties": {
+        "workspaceId": "[reference('logAnalytics').outputs.id.value]",
+        "logs": [],
+        "metrics": [
+          {
+            "category": "Transaction",
+            "enabled": true
+          }
+        ]
+      },
+      "dependsOn": [
+        "logAnalytics",
+        "storage"
+      ]
+    },
+    "aksExisting": {
+      "existing": true,
+      "type": "Microsoft.ContainerService/managedClusters",
+      "apiVersion": "2024-05-01",
+      "name": "[parameters('aksName')]"
+    },
+    "aksDiagnostics": {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[format('Microsoft.ContainerService/managedClusters/{0}', parameters('aksName'))]",
+      "name": "[format('{0}-diag', parameters('aksName'))]",
+      "properties": {
+        "workspaceId": "[reference('logAnalytics').outputs.id.value]",
+        "logs": [
+          {
+            "category": "kube-apiserver",
+            "enabled": true
+          },
+          {
+            "category": "kube-controller-manager",
+            "enabled": true
+          },
+          {
+            "category": "kube-scheduler",
+            "enabled": true
+          },
+          {
+            "category": "cluster-autoscaler",
+            "enabled": true
+          }
+        ],
+        "metrics": []
+      },
+      "dependsOn": [
+        "aks",
+        "logAnalytics"
+      ]
+    },
+    "caeExisting": {
+      "existing": true,
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2024-03-01",
+      "name": "[parameters('containerAppsEnvironmentName')]"
+    },
+    "caeDiagnostics": {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[format('Microsoft.App/managedEnvironments/{0}', parameters('containerAppsEnvironmentName'))]",
+      "name": "[format('{0}-diag', parameters('containerAppsEnvironmentName'))]",
+      "properties": {
+        "workspaceId": "[reference('logAnalytics').outputs.id.value]",
+        "logs": [
+          {
+            "category": "ContainerAppConsoleLogs",
+            "enabled": true
+          },
+          {
+            "category": "ContainerAppSystemLogs",
+            "enabled": true
+          }
+        ],
+        "metrics": []
+      },
+      "dependsOn": [
+        "containerAppsEnv",
+        "logAnalytics"
+      ]
+    },
+    "logAnalytics": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('logAnalytics-{0}', parameters('deploymentTimestamp'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[parameters('logAnalyticsName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "sku": {
+            "value": "[parameters('logAnalyticsSku')]"
+          },
+          "retentionInDays": {
+            "value": "[parameters('logAnalyticsRetentionDays')]"
+          },
+          "tags": {
+            "value": "[variables('defaultTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "14546524812688591924"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics ワークスペース名"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "リソースのリージョン"
+              }
+            },
+            "sku": {
+              "type": "string",
+              "defaultValue": "PerGB2018",
+              "metadata": {
+                "description": "SKU (例: PerGB2018)"
+              }
+            },
+            "retentionInDays": {
+              "type": "int",
+              "defaultValue": 30,
+              "metadata": {
+                "description": "データ保持日数"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "共通タグ"
+              }
+            }
+          },
+          "resources": {
+            "workspace": {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2022-10-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "sku": {
+                  "name": "[parameters('sku')]"
+                },
+                "retentionInDays": "[parameters('retentionInDays')]",
+                "features": {
+                  "enableLogAccessUsingOnlyResourcePermissions": true
+                }
+              }
+            }
+          },
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('name'))]"
+            },
+            "customerId": {
+              "type": "string",
+              "value": "[reference('workspace').customerId]"
+            },
+            "location": {
+              "type": "string",
+              "value": "[reference('workspace', '2022-10-01', 'full').location]"
+            },
+            "sharedKey": {
+              "type": "securestring",
+              "value": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', parameters('name')), '2020-08-01').primarySharedKey]"
+            }
+          }
+        }
+      }
+    },
+    "vnet": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('network-{0}', parameters('deploymentTimestamp'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[parameters('vnetName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "addressSpace": {
+            "value": "[parameters('vnetAddressPrefix')]"
+          },
+          "subnets": {
+            "value": "[variables('vnetSubnets')]"
+          },
+          "tags": {
+            "value": "[variables('defaultTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "7654518179113877492"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "仮想ネットワーク名"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "リソース配置リージョン"
+              }
+            },
+            "addressSpace": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet全体のアドレス空間（CIDR）"
+              }
+            },
+            "subnets": {
+              "type": "array",
+              "metadata": {
+                "description": "作成するサブネットの設定一覧（各要素に name と properties を含める）"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "共通タグ"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2023-09-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "copy": [
+                  {
+                    "name": "subnets",
+                    "count": "[length(parameters('subnets'))]",
+                    "input": {
+                      "name": "[parameters('subnets')[copyIndex('subnets')].name]",
+                      "properties": "[parameters('subnets')[copyIndex('subnets')].properties]"
+                    }
+                  }
+                ],
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('addressSpace')]"
+                  ]
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('name'))]"
+            },
+            "subnetIds": {
+              "type": "array",
+              "copy": {
+                "count": "[length(parameters('subnets'))]",
+                "input": {
+                  "name": "[parameters('subnets')[copyIndex()].name]",
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('name'), parameters('subnets')[copyIndex()].name)]"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "acr": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('acr-{0}', parameters('deploymentTimestamp'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[parameters('acrName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('defaultTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "17289165102341846030"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "ACR 名称"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "リージョン"
+              }
+            },
+            "sku": {
+              "type": "string",
+              "defaultValue": "Basic",
+              "metadata": {
+                "description": "SKU 名 (Basic 推奨)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "共通タグ"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ContainerRegistry/registries",
+              "apiVersion": "2023-01-01-preview",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "[parameters('sku')]"
+              },
+              "properties": {
+                "adminUserEnabled": false,
+                "dataEndpointEnabled": false,
+                "policies": {
+                  "quarantinePolicy": {
+                    "status": "disabled"
+                  },
+                  "trustPolicy": {
+                    "status": "disabled",
+                    "type": "Notary"
+                  },
+                  "retentionPolicy": {
+                    "status": "disabled",
+                    "days": 7
+                  }
+                },
+                "anonymousPullEnabled": false,
+                "publicNetworkAccess": "Enabled"
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('name'))]"
+            }
+          }
+        }
+      }
+    },
+    "storage": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('storage-{0}', parameters('deploymentTimestamp'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[parameters('storageAccountName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "sku": {
+            "value": "[parameters('storageSku')]"
+          },
+          "accessTier": {
+            "value": "[parameters('storageAccessTier')]"
+          },
+          "tags": {
+            "value": "[variables('defaultTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "9347732355872572090"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "ストレージアカウント名"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "リージョン"
+              }
+            },
+            "sku": {
+              "type": "string",
+              "defaultValue": "Standard_LRS",
+              "metadata": {
+                "description": "SKU (例: Standard_LRS)"
+              }
+            },
+            "accessTier": {
+              "type": "string",
+              "defaultValue": "Cool",
+              "allowedValues": [
+                "Hot",
+                "Cool"
+              ],
+              "metadata": {
+                "description": "アクセス層 (Hot/Cool)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "共通タグ"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Storage/storageAccounts",
+              "apiVersion": "2023-04-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "[parameters('sku')]"
+              },
+              "kind": "StorageV2",
+              "properties": {
+                "accessTier": "[parameters('accessTier')]",
+                "allowBlobPublicAccess": false,
+                "minimumTlsVersion": "TLS1_2",
+                "supportsHttpsTrafficOnly": true,
+                "encryption": {
+                  "services": {
+                    "file": {
+                      "keyType": "Account",
+                      "enabled": true
+                    },
+                    "blob": {
+                      "keyType": "Account",
+                      "enabled": true
+                    }
+                  },
+                  "keySource": "Microsoft.Storage"
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Storage/storageAccounts', parameters('name'))]"
+            },
+            "primaryEndpoints": {
+              "type": "object",
+              "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('name')), '2023-04-01').primaryEndpoints]"
+            }
+          }
+        }
+      }
+    },
+    "containerAppsEnv": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('containerAppsEnv-{0}', parameters('deploymentTimestamp'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[parameters('containerAppsEnvironmentName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "logAnalyticsCustomerId": {
+            "value": "[reference('logAnalytics').outputs.customerId.value]"
+          },
+          "logAnalyticsSharedKey": {
+            "value": "[listOutputsWithSecureValues('logAnalytics', '2025-04-01').sharedKey]"
+          },
+          "subnetResourceId": {
+            "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('containerAppSubnetName'))]"
+          },
+          "tags": {
+            "value": "[variables('defaultTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "14009247538966324528"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Container Apps Environment 名"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "リージョン"
+              }
+            },
+            "logAnalyticsCustomerId": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics ワークスペースの Customer ID"
+              }
+            },
+            "logAnalyticsSharedKey": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Log Analytics ワークスペースのプライマリキー"
+              }
+            },
+            "subnetResourceId": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet 連携に使用するサブネット ID (Delegation: Microsoft.App/environments)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "共通タグ"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/managedEnvironments",
+              "apiVersion": "2024-03-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "appLogsConfiguration": {
+                  "destination": "log-analytics",
+                  "logAnalyticsConfiguration": {
+                    "customerId": "[parameters('logAnalyticsCustomerId')]",
+                    "sharedKey": "[parameters('logAnalyticsSharedKey')]"
+                  }
+                },
+                "vnetConfiguration": {
+                  "infrastructureSubnetId": "[parameters('subnetResourceId')]"
+                },
+                "workloadProfiles": [
+                  {
+                    "name": "consumption",
+                    "workloadProfileType": "Consumption"
+                  }
+                ]
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.App/managedEnvironments', parameters('name'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "logAnalytics",
+        "vnet"
+      ]
+    },
+    "aks": {
+      "condition": "[not(parameters('aksSkipCreate'))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('aks-{0}', parameters('deploymentTimestamp'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[parameters('aksName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "dnsPrefix": {
+            "value": "[parameters('aksDnsPrefix')]"
+          },
+          "kubernetesVersion": {
+            "value": "[parameters('aksKubernetesVersion')]"
+          },
+          "nodeResourceGroup": {
+            "value": "[parameters('aksNodeResourceGroup')]"
+          },
+          "systemPool": {
+            "value": {
+              "name": "[parameters('aksSystemPoolName')]",
+              "count": "[parameters('aksNodeCount')]",
+              "vmSize": "[parameters('aksNodeVmSize')]",
+              "osDiskSizeGB": "[parameters('aksNodeOsDiskSizeGB')]",
+              "adminUsername": "[parameters('aksAdminUsername')]",
+              "sshPublicKey": "[parameters('aksSshPublicKey')]",
+              "serviceCidr": "[parameters('aksServiceCidr')]",
+              "dnsServiceIp": "[parameters('aksDnsServiceIp')]",
+              "podCidr": "[parameters('aksPodCidr')]"
+            }
+          },
+          "subnetId": {
+            "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('aksSubnetName'))]"
+          },
+          "logAnalyticsWorkspaceId": {
+            "value": "[reference('logAnalytics').outputs.id.value]"
+          },
+          "tags": {
+            "value": "[variables('defaultTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "819669361105815399"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "AKS クラスタ名"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "リージョン"
+              }
+            },
+            "dnsPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "DNS プレフィックス"
+              }
+            },
+            "kubernetesVersion": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Kubernetes バージョン。空文字の場合は最新安定版"
+              }
+            },
+            "nodeResourceGroup": {
+              "type": "string",
+              "metadata": {
+                "description": "ノードリソースグループ名"
+              }
+            },
+            "systemPool": {
+              "type": "object",
+              "metadata": {
+                "description": "システムプール設定"
+              }
+            },
+            "subnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet 接続に使用するサブネット ID"
+              }
+            },
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Log Analytics Workspace Resource ID"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "共通タグ"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ContainerService/managedClusters",
+              "apiVersion": "2024-05-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "sku": {
+                "name": "Base",
+                "tier": "Standard"
+              },
+              "properties": {
+                "dnsPrefix": "[parameters('dnsPrefix')]",
+                "kubernetesVersion": "[if(empty(parameters('kubernetesVersion')), null(), parameters('kubernetesVersion'))]",
+                "nodeResourceGroup": "[parameters('nodeResourceGroup')]",
+                "addonProfiles": {
+                  "omsagent": {
+                    "enabled": true,
+                    "config": {
+                      "logAnalyticsWorkspaceResourceID": "[parameters('logAnalyticsWorkspaceId')]"
+                    }
+                  }
+                },
+                "agentPoolProfiles": [
+                  {
+                    "name": "[parameters('systemPool').name]",
+                    "mode": "System",
+                    "count": "[parameters('systemPool').count]",
+                    "vmSize": "[parameters('systemPool').vmSize]",
+                    "osDiskSizeGB": "[parameters('systemPool').osDiskSizeGB]",
+                    "osType": "Linux",
+                    "type": "VirtualMachineScaleSets",
+                    "availabilityZones": [],
+                    "vnetSubnetID": "[parameters('subnetId')]",
+                    "enableAutoScaling": false,
+                    "orchestratorVersion": "[if(empty(parameters('kubernetesVersion')), null(), parameters('kubernetesVersion'))]"
+                  }
+                ],
+                "linuxProfile": {
+                  "adminUsername": "[parameters('systemPool').adminUsername]",
+                  "ssh": {
+                    "publicKeys": [
+                      {
+                        "keyData": "[parameters('systemPool').sshPublicKey]"
+                      }
+                    ]
+                  }
+                },
+                "enableRBAC": true,
+                "enablePodSecurityPolicy": false,
+                "networkProfile": {
+                  "networkPlugin": "azure",
+                  "networkPluginMode": "Overlay",
+                  "loadBalancerSku": "standard",
+                  "outboundType": "loadBalancer",
+                  "podCidr": "[if(empty(parameters('systemPool').podCidr), null(), parameters('systemPool').podCidr)]",
+                  "serviceCidrs": [
+                    "[parameters('systemPool').serviceCidr]"
+                  ],
+                  "dnsServiceIP": "[parameters('systemPool').dnsServiceIp]"
+                }
+              },
+              "tags": "[parameters('tags')]"
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.ContainerService/managedClusters', parameters('name'))]"
+            },
+            "principalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('name')), '2024-05-01', 'full').identity.principalId]"
+            },
+            "kubeletIdentity": {
+              "type": "object",
+              "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('name')), '2024-05-01').identityProfile.kubeletidentity]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "logAnalytics"
+      ]
+    },
+    "vm": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('vm-{0}', parameters('deploymentTimestamp'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[parameters('vmName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "vmSize": {
+            "value": "[parameters('vmSize')]"
+          },
+          "subnetId": {
+            "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('vmSubnetName'))]"
+          },
+          "adminUsername": {
+            "value": "[parameters('vmAdminUsername')]"
+          },
+          "adminPassword": {
+            "value": "[parameters('vmAdminPassword')]"
+          },
+          "mysqlPort": {
+            "value": "[parameters('mysqlPort')]"
+          },
+          "sshPort": {
+            "value": "[parameters('sshPort')]"
+          },
+          "mysqlRootPassword": {
+            "value": "[parameters('mysqlRootPassword')]"
+          },
+          "mysqlAppUsername": {
+            "value": "[parameters('mysqlAppUsername')]"
+          },
+          "mysqlAppPassword": {
+            "value": "[parameters('mysqlAppPassword')]"
+          },
+          "tags": {
+            "value": "[variables('defaultTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "9615721353764157521"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "仮想マシン名"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "リージョン"
+              }
+            },
+            "vmSize": {
+              "type": "string",
+              "defaultValue": "Standard_B1ms",
+              "metadata": {
+                "description": "サイズ (例: Standard_B1ms)"
+              }
+            },
+            "subnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "サブネット ID"
+              }
+            },
+            "adminUsername": {
+              "type": "string",
+              "metadata": {
+                "description": "管理者ユーザー名"
+              }
+            },
+            "adminPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "管理者パスワード"
+              }
+            },
+            "mysqlPort": {
+              "type": "int",
+              "defaultValue": 3306,
+              "metadata": {
+                "description": "MySQL 用ポート (例: 3306)"
+              }
+            },
+            "sshPort": {
+              "type": "int",
+              "defaultValue": 22,
+              "metadata": {
+                "description": "SSH ポート"
+              }
+            },
+            "mysqlRootPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "MySQL の root パスワード (セキュア)"
+              }
+            },
+            "mysqlAppUsername": {
+              "type": "string",
+              "metadata": {
+                "description": "アプリケーション用 MySQL ユーザー名"
+              }
+            },
+            "mysqlAppPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "アプリケーション用 MySQL パスワード (セキュア)"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "共通タグ"
+              }
+            }
+          },
+          "variables": {
+            "mysqlInitScript": "#!/usr/bin/env bash\nset -euo pipefail\n\n# 引数が base64 エンコードされている場合はデコード\nif [[ \"${1:-}\" =~ ^[A-Za-z0-9+/=]+$ ]]; then\n    ROOT_PASSWORD=$(echo \"$1\" | base64 -d)\n    APP_USER=$(echo \"$2\" | base64 -d)\n    APP_PASSWORD=$(echo \"$3\" | base64 -d)\nelse\n    ROOT_PASSWORD=\"${1:-}\"\n    APP_USER=\"${2:-}\"\n    APP_PASSWORD=\"${3:-}\"\nfi\n\nif [[ -z \"$ROOT_PASSWORD\" || -z \"$APP_USER\" || -z \"$APP_PASSWORD\" ]]; then\n    echo \"[mysql-init] Required arguments are missing\" >&2\n    exit 1\nfi\n\nlog() {\n    echo \"[mysql-init] $1\"\n}\n\nescape_sql() {\n    # Escapes single quotes for SQL statements\n    printf \"%s\" \"$1\" | sed \"s/'/''/g\"\n}\n\nCONFIG_FILE='/etc/mysql/mysql.conf.d/mysqld.cnf'\n\nensure_bind_address() {\n    local key=\"$1\"\n    if sudo grep -q \"^[[:space:]]*${key}[[:space:]]*=\" \"$CONFIG_FILE\"; then\n        sudo sed -i \"s/^[[:space:]]*${key}[[:space:]]*=.*/${key} = 0.0.0.0/\" \"$CONFIG_FILE\"\n    else\n        echo \"${key} = 0.0.0.0\" | sudo tee -a \"$CONFIG_FILE\" >/dev/null\n    fi\n}\n\nROOT_ESC=\"$(escape_sql \"$ROOT_PASSWORD\")\"\nAPP_USER_ESC=\"$(escape_sql \"$APP_USER\")\"\nAPP_PASS_ESC=\"$(escape_sql \"$APP_PASSWORD\")\"\n\nlog \"Updating apt cache\"\n# cnf-update-db のエラーを回避: APT::Update::Post-Invoke-Success を一時的に無効化\nsudo DEBIAN_FRONTEND=noninteractive apt-get update -y -o APT::Update::Post-Invoke-Success::=\n\n# MySQL パッケージが配布されていないイメージ向けに段階的なフォールバックを実装\ninstall_mysql_server() {\n    log \"Installing mysql-server (with automatic fallback)\"\n    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server; then\n        return 0\n    fi\n\n    log \"mysql-server パッケージが標準リポジトリに無いため Universe を再有効化して再試行\"\n    sudo apt-get install -y software-properties-common >/dev/null 2>&1 || true\n    sudo add-apt-repository -y universe >/dev/null 2>&1 || true\n    sudo DEBIAN_FRONTEND=noninteractive apt-get update -y -o APT::Update::Post-Invoke-Success::=\n    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server; then\n        return 0\n    fi\n\n    log \"mysql-server メタパッケージが取得できないため mysql-server-8.0 で再試行\"\n    if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server-8.0 mysql-client-8.0; then\n        return 0\n    fi\n\n    log \"MySQL パッケージのインストールに失敗しました\"\n    return 1\n}\n\ninstall_mysql_server\n\nlog \"Enabling MySQL service\"\nsudo systemctl enable --now mysql\n\nlog \"Applying user configuration\"\ncat <<SQL | sudo mysql\nALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${ROOT_ESC}';\nCREATE USER IF NOT EXISTS '${APP_USER_ESC}'@'%' IDENTIFIED WITH mysql_native_password BY '${APP_PASS_ESC}';\nGRANT ALL PRIVILEGES ON *.* TO '${APP_USER_ESC}'@'%' WITH GRANT OPTION;\nFLUSH PRIVILEGES;\nSQL\n\nlog \"Enabling remote MySQL connections\"\nensure_bind_address 'bind-address'\nensure_bind_address 'mysqlx-bind-address'\n\nlog \"Restarting MySQL to apply configuration\"\nsudo systemctl restart mysql\n\nlog \"MySQL initialization complete\"\n",
+            "mysqlInitCommand": "[format('bash -c \"echo {0} | base64 -d > /tmp/mysql-init.sh && chmod +x /tmp/mysql-init.sh && /tmp/mysql-init.sh {1} {2} {3}\"', base64(variables('mysqlInitScript')), base64(parameters('mysqlRootPassword')), base64(parameters('mysqlAppUsername')), base64(parameters('mysqlAppPassword')))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/publicIPAddresses",
+              "apiVersion": "2023-09-01",
+              "name": "[format('{0}-pip', parameters('name'))]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Basic"
+              },
+              "properties": {
+                "publicIPAllocationMethod": "Dynamic"
+              },
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2023-09-01",
+              "name": "[format('{0}-nsg', parameters('name'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "securityRules": [
+                  {
+                    "name": "AllowSSH",
+                    "properties": {
+                      "access": "Allow",
+                      "direction": "Inbound",
+                      "priority": 100,
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "[string(parameters('sshPort'))]",
+                      "sourceAddressPrefix": "*",
+                      "destinationAddressPrefix": "*"
+                    }
+                  },
+                  {
+                    "name": "AllowMySQL",
+                    "properties": {
+                      "access": "Allow",
+                      "direction": "Inbound",
+                      "priority": 110,
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "[string(parameters('mysqlPort'))]",
+                      "sourceAddressPrefix": "*",
+                      "destinationAddressPrefix": "*"
+                    }
+                  }
+                ]
+              },
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/networkInterfaces",
+              "apiVersion": "2023-09-01",
+              "name": "[format('{0}-nic', parameters('name'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "ipConfigurations": [
+                  {
+                    "name": "ipconfig1",
+                    "properties": {
+                      "subnet": {
+                        "id": "[parameters('subnetId')]"
+                      },
+                      "privateIPAllocationMethod": "Dynamic",
+                      "publicIPAddress": {
+                        "id": "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-pip', parameters('name')))]"
+                      }
+                    }
+                  }
+                ],
+                "networkSecurityGroup": {
+                  "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-nsg', parameters('name')))]"
+                }
+              },
+              "tags": "[parameters('tags')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-nsg', parameters('name')))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-pip', parameters('name')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Compute/virtualMachines",
+              "apiVersion": "2023-09-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "hardwareProfile": {
+                  "vmSize": "[parameters('vmSize')]"
+                },
+                "storageProfile": {
+                  "osDisk": {
+                    "createOption": "FromImage",
+                    "managedDisk": {
+                      "storageAccountType": "Standard_LRS"
+                    }
+                  },
+                  "imageReference": {
+                    "publisher": "Canonical",
+                    "offer": "0001-com-ubuntu-server-jammy",
+                    "sku": "22_04-lts-gen2",
+                    "version": "latest"
+                  }
+                },
+                "osProfile": {
+                  "computerName": "[parameters('name')]",
+                  "adminUsername": "[parameters('adminUsername')]",
+                  "adminPassword": "[parameters('adminPassword')]",
+                  "linuxConfiguration": {
+                    "patchSettings": {
+                      "patchMode": "ImageDefault"
+                    }
+                  }
+                },
+                "networkProfile": {
+                  "networkInterfaces": [
+                    {
+                      "id": "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic', parameters('name')))]"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic', parameters('name')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Compute/virtualMachines/extensions",
+              "apiVersion": "2022-11-01",
+              "name": "[format('{0}/{1}', parameters('name'), 'MysqlInit')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "publisher": "Microsoft.Azure.Extensions",
+                "type": "CustomScript",
+                "typeHandlerVersion": "2.1",
+                "autoUpgradeMinorVersion": true,
+                "settings": {
+                  "fileUris": []
+                },
+                "protectedSettings": {
+                  "commandToExecute": "[variables('mysqlInitCommand')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', parameters('name'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Compute/virtualMachines', parameters('name'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "logAnalytics"
+      ]
+    }
+  },
+  "outputs": {
+    "azureContainerRegistryId": {
+      "type": "string",
+      "value": "[reference('acr').outputs.id.value]"
+    },
+    "aksClusterId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.ContainerService/managedClusters', parameters('aksName'))]"
+    },
+    "containerAppsEnvironmentId": {
+      "type": "string",
+      "value": "[reference('containerAppsEnv').outputs.id.value]"
+    },
+    "logAnalyticsId": {
+      "type": "string",
+      "value": "[reference('logAnalytics').outputs.id.value]"
+    },
+    "virtualNetworkId": {
+      "type": "string",
+      "value": "[reference('vnet').outputs.id.value]"
+    },
+    "storageAccountId": {
+      "type": "string",
+      "value": "[reference('storage').outputs.id.value]"
+    }
+  }
+}
