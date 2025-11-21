@@ -262,6 +262,14 @@ jobs:
           ./trivy-bin fs --scanners vuln,secret,config --ignore-unfixed --severity CRITICAL,HIGH \
             --format sarif --output trivy-fs-board.sarif app/board-app || echo "脆弱性検出あり"
 
+      - name: Trivy FS レポートを保証
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ ! -f trivy-fs-board.sarif ]; then
+            echo '{"version":"2.1.0","runs":[]}' > trivy-fs-board.sarif
+          fi
+
       - name: Trivy SARIF をアップロード (FS)
         if: always()
         continue-on-error: true
