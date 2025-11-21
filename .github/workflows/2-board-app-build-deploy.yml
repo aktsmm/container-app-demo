@@ -564,24 +564,26 @@ jobs:
             az acr import --name "$ACR_NAME" --source "mcr.microsoft.com/oss/kubernetes/${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --image "${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --force
 
           VALUES_FILE="app/board-app/k8s/ingress-nginx-values.yaml"
-          OVERRIDE_ARGS="--set controller.image.registry=$ACR_LOGIN_SERVER --set controller.image.image=$CONTROLLER_IMAGE --set controller.image.tag=$CONTROLLER_TAG"
-          OVERRIDE_ARGS="$OVERRIDE_ARGS --set controller.service.loadBalancerIP=$INGRESS_STATIC_IP"
-          OVERRIDE_ARGS="$OVERRIDE_ARGS --set controller.service.annotations.\"service.beta.kubernetes.io/azure-load-balancer-resource-group\"=$NODE_RESOURCE_GROUP"
+          OVERRIDE_FILE=$(mktemp)
+          export OVERRIDE_FILE
+          python -c 'import os, pathlib; content = "controller:\n  image:\n    registry: \"{ACR_LOGIN_SERVER}\"\n    image: \"{CONTROLLER_IMAGE}\"\n    tag: \"{CONTROLLER_TAG}\"\n  service:\n    loadBalancerIP: \"{INGRESS_STATIC_IP}\"\n    annotations:\n      service.beta.kubernetes.io/azure-load-balancer-resource-group: \"{NODE_RESOURCE_GROUP}\"\n".format(**os.environ); pathlib.Path(os.environ["OVERRIDE_FILE"]).write_text(content)'
 
           if helm status ingress-nginx -n ingress-nginx &>/dev/null; then
             kubectl delete svc ingress-nginx-controller -n ingress-nginx --ignore-not-found=true
             sleep 5
-            if ! helm upgrade ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" $OVERRIDE_ARGS --wait --timeout=10m; then
+            if ! helm upgrade ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" --values "$OVERRIDE_FILE" --wait --timeout=10m; then
               helm uninstall ingress-nginx -n ingress-nginx --wait || true
               kubectl delete ns ingress-nginx --ignore-not-found=true
               sleep 5
               kubectl create namespace ingress-nginx
-              helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" $OVERRIDE_ARGS --wait --timeout=10m
+              helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" --values "$OVERRIDE_FILE" --wait --timeout=10m
             fi
           else
             kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
-            helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" $OVERRIDE_ARGS --wait --timeout=10m
+            helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" --values "$OVERRIDE_FILE" --wait --timeout=10m
           fi
+
+          rm -f "$OVERRIDE_FILE"
 
           kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=600s
           for i in $(seq 1 60); do
