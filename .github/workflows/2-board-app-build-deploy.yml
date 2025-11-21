@@ -56,6 +56,10 @@ jobs:
       acr_login_server: ${{ steps.resolve_acr.outputs.acr_login_server }}
       resource_group_name: ${{ steps.resolve_rg.outputs.resource_group_name }}
       db_endpoint: ${{ steps.mysql_endpoint.outputs.db_endpoint }}
+      aks_location: ${{ steps.aks_info.outputs.aks_location }}
+      node_resource_group: ${{ steps.aks_info.outputs.node_resource_group }}
+      ingress_ip: ${{ steps.mysql_endpoint.outputs.ingress_ip }}
+      ingress_fqdn: ${{ steps.mysql_endpoint.outputs.ingress_fqdn }}
     env:
       REDEPLOY_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.redeployTag || '' }}
     steps:
@@ -130,15 +134,45 @@ jobs:
           echo "acr_login_server=${ACR_NAME}.azurecr.io" >> "$GITHUB_OUTPUT"
           echo "resource_group_name=$RESOLVED_RG" >> "$GITHUB_OUTPUT"
 
+      - name: AKS メタデータを取得
+        id: aks_info
+        env:
+          RESOLVED_RG: ${{ steps.resolve_rg.outputs.resource_group_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "$AKS_CLUSTER_NAME" ]; then
+            echo "AKS クラスター名が未設定です" >&2
+            exit 1
+          fi
+          AKS_JSON=$(az aks show --resource-group "$RESOLVED_RG" --name "$AKS_CLUSTER_NAME" 2>/dev/null || true)
+          if [ -z "$AKS_JSON" ]; then
+            echo "AKS クラスター $AKS_CLUSTER_NAME を RG=$RESOLVED_RG で取得できません" >&2
+            exit 1
+          fi
+          NODE_RG=$(echo "$AKS_JSON" | jq -r '.nodeResourceGroup // empty')
+          AKS_LOCATION=$(echo "$AKS_JSON" | jq -r '.location // empty')
+          if [ -z "$NODE_RG" ]; then
+            echo "AKS ノードリソースグループを解決できません" >&2
+            exit 1
+          fi
+          echo "node_resource_group=$NODE_RG" >> "$GITHUB_OUTPUT"
+          if [ -n "$AKS_LOCATION" ]; then
+            echo "aks_location=$AKS_LOCATION" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: インフラ出力から MySQL Private IP を取得
         id: mysql_endpoint
         env:
           INFRA_WORKFLOW_NAME: "1️⃣ Infrastructure Deploy"
           RESOLVED_RG: ${{ steps.resolve_rg.outputs.resource_group_name }}
+          NODE_RESOURCE_GROUP: ${{ steps.aks_info.outputs.node_resource_group }}
         run: |
           set -euo pipefail
           mkdir -p infra-output
           MYSQL_IP=""
+          INGRESS_IP=""
+          INGRESS_FQDN=""
+          OUTPUT_FILE=""
           if [ "${{ github.event_name }}" = "workflow_run" ] && [ "${{ github.event.workflow_run.name }}" = "$INFRA_WORKFLOW_NAME" ]; then
             TARGET_RUN_ID='${{ github.event.workflow_run.id }}'
           else
@@ -151,6 +185,8 @@ jobs:
               OUTPUT_FILE=$(find infra-output -name '*.json' | head -n1)
               if [ -n "$OUTPUT_FILE" ]; then
                 MYSQL_IP=$(jq -r '.mysqlPrivateIp.value // empty' "$OUTPUT_FILE")
+                INGRESS_IP=$(jq -r '.ingressPublicIpAddress.value // empty' "$OUTPUT_FILE")
+                INGRESS_FQDN=$(jq -r '.ingressPublicIpFqdn.value // empty' "$OUTPUT_FILE")
               fi
             fi
           fi
@@ -163,16 +199,42 @@ jobs:
             fi
             MYSQL_IP=$(az vm list-ip-addresses --resource-group "$RESOLVED_RG" --name "$VM_NAME" --query "[0].virtualMachine.network.privateIpAddresses[0]" -o tsv || true)
           fi
+          if [ -z "$INGRESS_IP" ]; then
+            PIP_NAME=$(jq -r '.parameters.ingressPublicIpName.value // empty' "$PARAM_FILE")
+            EXTRA_PIP_RG=$(jq -r '.parameters.ingressPublicIpResourceGroup.value // empty' "$PARAM_FILE" 2>/dev/null || true)
+            for RG in "$EXTRA_PIP_RG" "$NODE_RESOURCE_GROUP" "$RESOLVED_RG"; do
+              if [ -z "$RG" ] || [ "$RG" = "null" ]; then
+                continue
+              fi
+              if IP_JSON=$(az network public-ip show --resource-group "$RG" --name "$PIP_NAME" 2>/dev/null); then
+                INGRESS_IP=$(echo "$IP_JSON" | jq -r '.properties.ipAddress // empty')
+                INGRESS_FQDN=$(echo "$IP_JSON" | jq -r '.properties.dnsSettings.fqdn // empty')
+                break
+              fi
+            done
+          fi
+          if [ -z "$INGRESS_FQDN" ] || [ "$INGRESS_FQDN" = "null" ]; then
+            INGRESS_FQDN=$(jq -r '.parameters.boardAppIngressHost.value // empty' "$PARAM_FILE")
+          fi
           MYSQL_PORT=$(jq -r '.parameters.mysqlPort.value // 3306' "$PARAM_FILE")
           if [ -z "$MYSQL_IP" ] || [ "$MYSQL_IP" = "null" ]; then
             echo "MySQL Private IP を Azure から取得できませんでした" >&2
             exit 1
           fi
+          if [ -z "$INGRESS_IP" ] || [ "$INGRESS_IP" = "null" ]; then
+            echo "Ingress 用の Public IP を解決できませんでした。infra-deploy の出力を確認してください" >&2
+            exit 1
+          fi
           echo "db_endpoint=${MYSQL_IP}:${MYSQL_PORT}" >> "$GITHUB_OUTPUT"
+          echo "ingress_ip=$INGRESS_IP" >> "$GITHUB_OUTPUT"
+          echo "ingress_fqdn=${INGRESS_FQDN:-}" >> "$GITHUB_OUTPUT"
           echo "Resolved MySQL endpoint: ${MYSQL_IP}:${MYSQL_PORT}"
 
   code-security-scans:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # SARIF アップロードで必要
     needs: prepare-context
     if: ${{ needs.prepare-context.outputs.build_required == 'true' }}
     steps:
@@ -218,6 +280,9 @@ jobs:
 
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # SARIF アップロードで必要
     needs:
       - prepare-context
       - code-security-scans
@@ -383,6 +448,9 @@ jobs:
       DB_ENDPOINT: ${{ needs.prepare-context.outputs.db_endpoint }}
       IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag || needs.prepare-context.outputs.image_tag }}
       CHECKOUT_REF: ${{ needs.prepare-context.outputs.checkout_ref }}
+      NODE_RESOURCE_GROUP: ${{ needs.prepare-context.outputs.node_resource_group }}
+      INGRESS_STATIC_IP: ${{ needs.prepare-context.outputs.ingress_ip }}
+      INGRESS_FQDN: ${{ needs.prepare-context.outputs.ingress_fqdn }}
     steps:
       - name: コードを取得
         uses: actions/checkout@v4
@@ -394,6 +462,17 @@ jobs:
         with:
           creds: >-
             {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
+      - name: 取得済み Ingress 情報を検証
+        run: |
+          set -euo pipefail
+          for var_name in NODE_RESOURCE_GROUP INGRESS_STATIC_IP; do
+            val=$(eval echo "\${$var_name}")
+            if [ -z "$val" ] || [ "$val" = "null" ]; then
+              echo "$var_name が解決できませんでした。最新の infra-deploy の出力を確認してください" >&2
+              exit 1
+            fi
+          done
 
       - name: kubectl を準備
         run: az aks install-cli
@@ -412,50 +491,6 @@ jobs:
             --name "$AKS_CLUSTER_NAME" \
             --resource-group "$RESOURCE_GROUP_NAME" \
             --overwrite-existing
-
-      - name: Ingress 用 Public IP 情報を取得
-        id: pip
-        run: |
-          set -euo pipefail
-          AKS_LOCATION=$(az aks show --resource-group "$RESOURCE_GROUP_NAME" --name "$AKS_CLUSTER_NAME" --query location -o tsv)
-          NODE_RG=$(az aks show --resource-group "$RESOURCE_GROUP_NAME" --name "$AKS_CLUSTER_NAME" --query nodeResourceGroup -o tsv)
-          if [ -z "$NODE_RG" ]; then
-            echo "ノードリソースグループを取得できません" >&2
-            exit 1
-          fi
-          PIP_NAME=$(jq -r '.parameters.ingressPublicIpName.value // empty' "$PARAM_FILE")
-          if [ -z "$PIP_NAME" ]; then
-            echo "parameters に ingressPublicIpName がありません" >&2
-            exit 1
-          fi
-          # AKS の node RG が再生成されても追従できるよう、複数 RG を順番に探索する
-          EXTRA_PIP_RG=$(jq -r '.parameters.ingressPublicIpResourceGroup.value // empty' "$PARAM_FILE" 2>/dev/null || true)
-          IP_JSON=""
-          RESOLVED_PIP_RG=""
-          for RG in "$EXTRA_PIP_RG" "$NODE_RG" "$RESOURCE_GROUP_NAME"; do
-            if [ -z "$RG" ] || [ "$RG" = "null" ]; then
-              continue
-            fi
-            if IP_JSON=$(az network public-ip show --resource-group "$RG" --name "$PIP_NAME" 2>/dev/null); then
-              RESOLVED_PIP_RG="$RG"
-              break
-            fi
-          done
-          if [ -z "$RESOLVED_PIP_RG" ] || [ -z "$IP_JSON" ]; then
-            echo "Public IP ($PIP_NAME) が node RG や指定 RG で見つかりません" >&2
-            exit 1
-          fi
-          STATIC_IP=$(echo "$IP_JSON" | jq -r '.properties.ipAddress')
-          FQDN=$(echo "$IP_JSON" | jq -r '.properties.dnsSettings.fqdn')
-          if [ -z "$STATIC_IP" ] || [ "$STATIC_IP" = "null" ]; then
-            echo "Public IP が存在しません。infra-deploy を再実行してください" >&2
-            exit 1
-          fi
-          echo "INGRESS_PIP_RESOURCE_GROUP=$RESOLVED_PIP_RG" >> "$GITHUB_ENV"
-          echo "NODE_RESOURCE_GROUP=$NODE_RG" >> "$GITHUB_ENV"
-          echo "INGRESS_STATIC_IP=$STATIC_IP" >> "$GITHUB_ENV"
-          echo "INGRESS_FQDN=${FQDN:-N/A}" >> "$GITHUB_ENV"
-          echo "AKS_LOCATION=$AKS_LOCATION" >> "$GITHUB_ENV"
 
       - name: NSG に Load Balancer 通信用ルールを適用
         run: |
