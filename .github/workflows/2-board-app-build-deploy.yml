@@ -267,22 +267,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -f trivy-fs-board.sarif ]; then
-            cat <<'EOF' > trivy-fs-board.sarif
-            {
-              "version": "2.1.0",
-              "runs": [
-                {
-                  "tool": {
-                    "driver": {
-                      "name": "trivy",
-                      "informationUri": "https://github.com/aquasecurity/trivy"
-                    }
-                  },
-                  "results": []
-                }
-              ]
-            }
-            EOF
+            python -c 'import json, pathlib; payload = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "trivy", "informationUri": "https://github.com/aquasecurity/trivy"}}, "results": []}]}; pathlib.Path("trivy-fs-board.sarif").write_text(json.dumps(payload, indent=2))'
           fi
 
       - name: Trivy SARIF をアップロード (FS)
