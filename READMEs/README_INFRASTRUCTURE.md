@@ -68,16 +68,16 @@ VNet 10.0.0.0/16
 
 ### 6.1 適用中のポリシーイニシアチブ
 
-| 項目                     | 値                                                                                   |
-| ------------------------ | ------------------------------------------------------------------------------------ |
-| **イニシアチブ名**       | **Microsoft Cloud Security Benchmark v2 (Preview)**                                 |
-| **ID**                   | `e3ec7e09-768c-4b64-882c-fcada3772047`                                               |
-| **割り当て名**           | `initiative-container-app-demo`                                                      |
-| **表示名**               | Container App Demo ガードレール                                                      |
-| **含まれるポリシー数**   | 約200以上のセキュリティポリシー                                                      |
-| **主なカバー範囲**       | コンテナセキュリティ、ネットワーク、ID管理、データ保護、監視・ログ                  |
-| **Managed Identity**     | 有効（修復アクションに必要）                                                         |
-| **参考リンク**           | [Microsoft Cloud Security Benchmark](https://aka.ms/azsecbm)                         |
+| 項目                   | 値                                                                  |
+| ---------------------- | ------------------------------------------------------------------- |
+| **イニシアチブ名**     | **Microsoft Cloud Security Benchmark v2 (Preview)**                 |
+| **ID**                 | `e3ec7e09-768c-4b64-882c-fcada3772047`                              |
+| **割り当て名**         | `initiative-container-app-demo`                                     |
+| **表示名**             | Container App Demo ガードレール                                     |
+| **含まれるポリシー数** | 約 200 以上のセキュリティポリシー                                   |
+| **主なカバー範囲**     | コンテナセキュリティ、ネットワーク、ID 管理、データ保護、監視・ログ |
+| **Managed Identity**   | 有効（修復アクションに必要）                                        |
+| **参考リンク**         | [Microsoft Cloud Security Benchmark](https://aka.ms/azsecbm)        |
 
 ### 6.2 主なポリシーカテゴリ
 
