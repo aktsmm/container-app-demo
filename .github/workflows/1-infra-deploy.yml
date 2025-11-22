@@ -212,6 +212,8 @@ jobs:
             --parameters containerAppsEnvironmentName="$CONTAINER_APPS_ENV_NAME"
 
       - name: Bicep What-If
+        # 既存 AKS クラスターがある場合は What-If で SSH キー変更エラーが出るためスキップ
+        if: ${{ needs.prepare.outputs.aks_skip_create == 'false' }}
         run: |
           az deployment group what-if \
             --resource-group "$RESOURCE_GROUP_NAME" \
