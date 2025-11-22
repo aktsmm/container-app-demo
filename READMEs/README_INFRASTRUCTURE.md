@@ -37,16 +37,16 @@ VNet 10.0.0.0/16
 
 ## 3. Kubernetes (app/board-app/k8s) の構造
 
-| ファイル                    | 役割                                                                                                                                              |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `namespace.yaml`            | `board-app` Namespace を作成。ワークフローで `kubectl apply` し、再実行に備えて宣言的に維持                                                       |
-| `deployment.yaml`           | React/Vite UI の Deployment。`acr-secret` 参照、`dummy-secret.txt` を静的配信するため `public/` 以下を含んだ Docker イメージを利用                |
-| `service.yaml`              | UI 用 ClusterIP Service。Ingress から 80/TCP で参照                                                                                               |
-| `board-api-deployment.yaml` | Node/Express API。DB 接続情報は Secret `board-db-conn` から `env` 経由で注入。`readinessProbe` `/health`                                          |
-| `board-api-service.yaml`    | API 用 ClusterIP Service (3000/TCP)。Ingress の `/api` パスで利用                                                                                 |
-| `ingress.yaml`              | nginx Ingress。Host 指定なし（LoadBalancer IP 直アクセス専用）。`/dummy-secret.txt` も UI から直接参照できます                                   |
-| `kustomization.yaml`        | Namespace/Ingress/Deployments/Services を束ね、`configMapGenerator` で `vars.env` を注入。イメージタグは GitHub Actions の `sed` で差し替え       |
-| `vars.env`                  | `scripts/sync-board-vars.ps1` が `infra/parameters/main-dev.parameters.json` から Namespace のみを同期                                           |
+| ファイル                    | 役割                                                                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `namespace.yaml`            | `board-app` Namespace を作成。ワークフローで `kubectl apply` し、再実行に備えて宣言的に維持                                                 |
+| `deployment.yaml`           | React/Vite UI の Deployment。`acr-secret` 参照、`dummy-secret.txt` を静的配信するため `public/` 以下を含んだ Docker イメージを利用          |
+| `service.yaml`              | UI 用 ClusterIP Service。Ingress から 80/TCP で参照                                                                                         |
+| `board-api-deployment.yaml` | Node/Express API。DB 接続情報は Secret `board-db-conn` から `env` 経由で注入。`readinessProbe` `/health`                                    |
+| `board-api-service.yaml`    | API 用 ClusterIP Service (3000/TCP)。Ingress の `/api` パスで利用                                                                           |
+| `ingress.yaml`              | nginx Ingress。Host 指定なし（LoadBalancer IP 直アクセス専用）。`/dummy-secret.txt` も UI から直接参照できます                              |
+| `kustomization.yaml`        | Namespace/Ingress/Deployments/Services を束ね、`configMapGenerator` で `vars.env` を注入。イメージタグは GitHub Actions の `sed` で差し替え |
+| `vars.env`                  | `scripts/sync-board-vars.ps1` が `infra/parameters/main-dev.parameters.json` から Namespace のみを同期                                      |
 
 ## 4. dummy-secret.txt の扱い
 
