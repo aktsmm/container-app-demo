@@ -9,26 +9,8 @@ metadata:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
 spec:
   rules:
-    # Host 指定なし: Load Balancer IP への直接アクセス用
+    # Host 指定なし: LoadBalancer IP への直接アクセス専用
     - http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: board-app
-                port:
-                  number: 80
-          - path: /api
-            pathType: Prefix
-            backend:
-              service:
-                name: board-api
-                port:
-                  number: 3000
-    # Host 指定あり: Bicep で確保した Public IP の DNS 名を使用
-    - host: $(BOARD_APP_INGRESS_HOST)
-      http:
         paths:
           - path: /
             pathType: Prefix
