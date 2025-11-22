@@ -45,6 +45,13 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 【準備フェーズ】デプロイコンテキスト収集
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 目的: デプロイに必要な全コンテキスト情報を Azure から動的に収集・検証
+  # 出力: ACR名、DB endpoint、Ingress IP、ノードRG、FQDN など
+  # 依存: Azure CLI, jq, gh CLI
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   prepare-context:
     runs-on: ubuntu-latest
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
@@ -149,7 +156,12 @@ jobs:
             echo "AKS クラスター $AKS_CLUSTER_NAME を RG=$RESOLVED_RG で取得できません" >&2
             exit 1
           fi
+          
+          # AKS メタデータから自動生成されたノードリソースグループ名を抽出
+          # 例: MC_RG-demo-app1111_aks-demo-dev_japaneast
           NODE_RG=$(echo "$AKS_JSON" | jq -r '.nodeResourceGroup // empty')
+          
+          # AKS のデプロイリージョンを取得（Public IP 検索時のヒントとして利用）
           AKS_LOCATION=$(echo "$AKS_JSON" | jq -r '.location // empty')
           if [ -z "$NODE_RG" ]; then
             echo "AKS ノードリソースグループを解決できません" >&2
@@ -184,8 +196,13 @@ jobs:
             if gh run download "$TARGET_RUN_ID" --name infra-outputs --dir infra-output >/dev/null 2>&1; then
               OUTPUT_FILE=$(find infra-output -name '*.json' | head -n1)
               if [ -n "$OUTPUT_FILE" ]; then
+                # Bicep デプロイ出力から MySQL VM のプライベート IP を取得
                 MYSQL_IP=$(jq -r '.mysqlPrivateIp.value // empty' "$OUTPUT_FILE")
+                
+                # Bicep デプロイ出力から Ingress 用 Public IP アドレスを取得
                 INGRESS_IP=$(jq -r '.ingressPublicIpAddress.value // empty' "$OUTPUT_FILE")
+                
+                # Bicep デプロイ出力から Public IP の FQDN を取得（DNS 名）
                 INGRESS_FQDN=$(jq -r '.ingressPublicIpFqdn.value // empty' "$OUTPUT_FILE")
               fi
             fi
@@ -240,12 +257,20 @@ jobs:
           echo "ingress_fqdn=${INGRESS_FQDN:-}" >> "$GITHUB_OUTPUT"
           echo "Resolved MySQL endpoint: ${MYSQL_IP}:${MYSQL_PORT}"
 
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 【セキュリティフェーズ】ソースコード脆弱性スキャン
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 目的: ソースコードとコンテナイメージの脆弱性・秘密情報を検出
+  # ツール: Trivy (FS/Image scan), Gitleaks (secret detection)
+  # 成果物: SARIF レポート → GitHub Security タブに自動アップロード
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   code-security-scans:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write # SARIF アップロードで必要
     needs: prepare-context
+    # 実行条件: ビルドが必要な場合のみ（再デプロイ時はスキップ）
     if: ${{ needs.prepare-context.outputs.build_required == 'true' }}
     steps:
       - name: コードを取得
@@ -319,6 +344,13 @@ jobs:
           sarif_file: gitleaks-board.sarif
           category: board-app-gitleaks
 
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 【ビルドフェーズ】コンテナイメージビルド & ACR プッシュ
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 目的: Board App/API のコンテナイメージをビルドして ACR にプッシュ
+  # セキュリティ: Trivy でイメージスキャン、SBOM 生成
+  # 成果物: コンテナイメージ、SBOM (CycloneDX)、SARIF レポート
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
@@ -327,6 +359,12 @@ jobs:
     needs:
       - prepare-context
       - code-security-scans
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 実行条件:
+    #   - prepare-context が成功
+    #   AND
+    #   - code-security-scans が成功 OR スキップ（再デプロイ時）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if: ${{ needs.prepare-context.result == 'success' && (needs.code-security-scans.result == 'success' || needs.code-security-scans.result == 'skipped') }}
     outputs:
       image_tag: ${{ steps.metadata.outputs.image_tag }}
@@ -476,11 +514,27 @@ jobs:
             trivy-image-board.sarif
             trivy-image-board-api.sarif
 
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 【デプロイフェーズ】AKS へのアプリケーションデプロイ
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 目的: Board App/API を AKS にデプロイし、Ingress 経由で公開
+  # 処理:
+  #   1. NGINX Ingress Controller インストール/更新
+  #   2. LoadBalancer IP 割り当て待機
+  #   3. Board App/API Deployment 適用
+  #   4. ヘルスチェック & 接続確認
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   deploy:
     runs-on: ubuntu-latest
     needs:
       - prepare-context
       - build-and-push
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 実行条件:
+    #   - prepare-context が成功
+    #   AND
+    #   - build-and-push が成功 OR スキップ（既存イメージ使用時）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if: ${{ needs.prepare-context.result == 'success' && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') }}
     env:
       RESOURCE_GROUP_NAME: ${{ needs.prepare-context.outputs.resource_group_name }}
@@ -631,16 +685,22 @@ jobs:
 
           kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=600s
 
-          # LoadBalancer IP 取得（最大12分待機）
-          for i in $(seq 1 72); do
+          # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          # LoadBalancer IP 割り当て待機
+          # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          readonly LB_IP_TIMEOUT_MINUTES=12
+          readonly LB_IP_POLL_INTERVAL=10
+          LB_IP_ATTEMPTS=$((LB_IP_TIMEOUT_MINUTES * 60 / LB_IP_POLL_INTERVAL))
+          
+          for i in $(seq 1 $LB_IP_ATTEMPTS); do
             LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
             if [ -n "$LB_IP" ]; then
               echo "ACTUAL_LB_IP=$LB_IP" >> "$GITHUB_ENV"
               echo "✅ LoadBalancer IP を取得: $LB_IP"
               break
             fi
-            echo "[$i/72] LoadBalancer IP 割り当て待機中..."
-            sleep 10
+            echo "[$i/$LB_IP_ATTEMPTS] LoadBalancer IP 割り当て待機中... (最大${LB_IP_TIMEOUT_MINUTES}分)"
+            sleep $LB_IP_POLL_INTERVAL
           done
 
           if [ -z "${LB_IP:-}" ]; then
@@ -658,17 +718,24 @@ jobs:
             exit 1
           fi
 
+          # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          # Ingress Controller ヘルスチェック (/healthz エンドポイント確認)
+          # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           echo "LoadBalancer ($LB_IP) のヘルスプローブを検証します"
-          HEALTH_CHECK_ATTEMPTS=36
+          
+          readonly HEALTH_CHECK_TIMEOUT_MINUTES=3
+          readonly HEALTH_CHECK_INTERVAL=5
+          HEALTH_CHECK_ATTEMPTS=$((HEALTH_CHECK_TIMEOUT_MINUTES * 60 / HEALTH_CHECK_INTERVAL))
           HEALTH_CHECK_SUCCESS=false
+          
           for i in $(seq 1 $HEALTH_CHECK_ATTEMPTS); do
             if kubectl exec -n ingress-nginx deployment/ingress-nginx-controller -- curl -s -o /dev/null -w "%{http_code}" http://localhost:10254/healthz | grep -q "200"; then
               echo "✅ [$i/$HEALTH_CHECK_ATTEMPTS] Ingress Controller ヘルスチェック成功"
               HEALTH_CHECK_SUCCESS=true
               break
             fi
-            echo "[$i/$HEALTH_CHECK_ATTEMPTS] ヘルスチェック待機中..."
-            sleep 5
+            echo "[$i/$HEALTH_CHECK_ATTEMPTS] ヘルスチェック待機中... (最大${HEALTH_CHECK_TIMEOUT_MINUTES}分)"
+            sleep $HEALTH_CHECK_INTERVAL
           done
 
           if [ "$HEALTH_CHECK_SUCCESS" != "true" ]; then
@@ -683,16 +750,22 @@ jobs:
             echo "現在のヘルスプローブ:" && echo "$PROBE_INFO" | jq '.'
           fi
 
-          CONNECTIVITY_ATTEMPTS=36
+          # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          # LoadBalancer ポート 80 接続確認（外部からの疎通テスト）
+          # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          readonly CONNECTIVITY_TIMEOUT_MINUTES=6
+          readonly CONNECTIVITY_INTERVAL=10
+          CONNECTIVITY_ATTEMPTS=$((CONNECTIVITY_TIMEOUT_MINUTES * 60 / CONNECTIVITY_INTERVAL))
           CONNECTIVITY_SUCCESS=false
+          
           for i in $(seq 1 $CONNECTIVITY_ATTEMPTS); do
             if timeout 5 bash -c "echo > /dev/tcp/$LB_IP/80" 2>/dev/null; then
               echo "✅ [$i/$CONNECTIVITY_ATTEMPTS] LoadBalancer ポート 80 への接続成功"
               CONNECTIVITY_SUCCESS=true
               break
             fi
-            echo "[$i/$CONNECTIVITY_ATTEMPTS] LoadBalancer ポート 80 接続待機中..."
-            sleep 10
+            echo "[$i/$CONNECTIVITY_ATTEMPTS] LoadBalancer ポート 80 接続待機中... (最大${CONNECTIVITY_TIMEOUT_MINUTES}分)"
+            sleep $CONNECTIVITY_INTERVAL
           done
 
           if [ "$CONNECTIVITY_SUCCESS" != "true" ]; then
