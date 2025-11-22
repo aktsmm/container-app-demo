@@ -35,7 +35,7 @@ Error: Process completed with exit code 1.
 - name: 既存 AKS クラスタ確認
   if: ${{ steps.aks_check.outputs.skip_create == 'false' }}
   # 新規作成時のみ SSH キーを生成
-  
+
 # しかし What-If では aksSkipCreate に関わらず全パラメータを検証
 - name: Bicep What-If
   run: |
@@ -69,11 +69,11 @@ Error: Process completed with exit code 1.
 
 ### 📋 修正の詳細
 
-| 項目 | 内容 |
-|------|------|
-| **条件追加** | `if: ${{ needs.prepare.outputs.aks_skip_create == 'false' }}` |
-| **動作** | 既存 AKS クラスターがある場合（`aks_skip_create=true`）は What-If ステップ全体をスキップ |
-| **新規作成時** | 引き続き What-If で事前検証を実行（SSH キー変更がないため正常動作） |
+| 項目                 | 内容                                                                                                              |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **条件追加**         | `if: ${{ needs.prepare.outputs.aks_skip_create == 'false' }}`                                                     |
+| **動作**             | 既存 AKS クラスターがある場合（`aks_skip_create=true`）は What-If ステップ全体をスキップ                          |
+| **新規作成時**       | 引き続き What-If で事前検証を実行（SSH キー変更がないため正常動作）                                               |
 | **既存クラスター時** | What-If をスキップして直接 Bicep Deploy を実行（AKS モジュールは `if (!aksSkipCreate)` でスキップされるため安全） |
 
 ## ✅ 最終的な動作フロー
@@ -163,7 +163,8 @@ resource cluster 'Microsoft.ContainerService/managedClusters@2024-05-02-preview'
 }
 ```
 
-**不採用理由**: 
+**不採用理由**:
+
 - Preview API は安定性が保証されていない
 - デモ環境では SSH キー変更が不要
 - GA API で解決可能（What-If スキップ）
@@ -184,6 +185,7 @@ linuxProfile: aksSkipCreate ? null : {
 ```
 
 **不採用理由**:
+
 - Bicep が複雑化する
 - `null` を指定しても What-If で差分検出される可能性
 - ワークフローレベルの対応の方がシンプル
@@ -191,6 +193,7 @@ linuxProfile: aksSkipCreate ? null : {
 ### 代替案 3: AKS を毎回削除・再作成
 
 **不採用理由**:
+
 - クラスター作成に 10-15 分かかる
 - コスト増加（削除時の課金、作成時の初期化）
 - デモ環境の迅速な検証に適さない
