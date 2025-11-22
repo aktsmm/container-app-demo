@@ -65,8 +65,29 @@ VNet 10.0.0.0/16
 ## 6. Azure Policy
 
 - `infra/policy.bicep` + `infra/parameters/policy-dev.parameters.json` で Resource Group スコープのポリシー イニシアチブを割り当てます。
-- `policySetDefinitionId`: `/providers/Microsoft.Authorization/policySetDefinitions/e3ec7e09-768c-4b64-882c-fcada3772047`
-- Managed Identity を必須とし、`managedIdentityLocation` は `LOCATION` 変数から注入。
+
+### 6.1 適用中のポリシーイニシアチブ
+
+| 項目                     | 値                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------ |
+| **イニシアチブ名**       | **Microsoft Cloud Security Benchmark v2 (Preview)**                                 |
+| **ID**                   | `e3ec7e09-768c-4b64-882c-fcada3772047`                                               |
+| **割り当て名**           | `initiative-container-app-demo`                                                      |
+| **表示名**               | Container App Demo ガードレール                                                      |
+| **含まれるポリシー数**   | 約200以上のセキュリティポリシー                                                      |
+| **主なカバー範囲**       | コンテナセキュリティ、ネットワーク、ID管理、データ保護、監視・ログ                  |
+| **Managed Identity**     | 有効（修復アクションに必要）                                                         |
+| **参考リンク**           | [Microsoft Cloud Security Benchmark](https://aka.ms/azsecbm)                         |
+
+### 6.2 主なポリシーカテゴリ
+
+- **コンテナセキュリティ**: AKS 特権コンテナ制限、イメージスキャン、ネットワークポリシー
+- **ネットワークセキュリティ**: NSG 構成、パブリックアクセス制限、TLS/SSL 強制
+- **ID とアクセス管理**: Managed Identity 推奨、RBAC 構成、特権アクセス監査
+- **データ保護**: ストレージ・データベース暗号化、診断ログ有効化
+- **監視とログ**: Log Analytics 接続、アクティビティログ保持、セキュリティアラート
+
+**Note**: このイニシアチブは Microsoft Defender for Cloud のデフォルトポリシーであり、多くのポリシーは監査（Audit）モードで動作します。
 
 ## 7. テキストアーキテクチャ図
 
