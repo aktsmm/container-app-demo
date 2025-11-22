@@ -404,17 +404,54 @@ jobs:
         if: ${{ env.BUILD_REQUIRED == 'true' }}
         run: az acr update --name "$ACR_NAME" --admin-enabled true
 
-      - name: ACR へログイン
+      - name: ACR 管理者資格情報を取得
         if: ${{ env.BUILD_REQUIRED == 'true' }}
-        run: az acr login --name "$ACR_NAME"
-
-      - name: コンテナイメージをビルド
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        id: acr_creds
         run: |
-          docker build --file app/board-app/Dockerfile --tag "$IMAGE_FULL" app/board-app
-          docker tag "$IMAGE_FULL" "$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:latest"
-          docker build --file app/board-api/Dockerfile --tag "$BOARD_API_IMAGE_FULL" app/board-api
-          docker tag "$BOARD_API_IMAGE_FULL" "$ACR_LOGIN_SERVER/$BOARD_API_IMAGE_NAME:latest"
+          set -euo pipefail
+          USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
+          PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+          echo "::add-mask::$PASSWORD"
+          echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
+          echo "password=$PASSWORD" >> "$GITHUB_OUTPUT"
+
+      - name: Docker にログイン (ACR)
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_LOGIN_SERVER }}
+          username: ${{ steps.acr_creds.outputs.username }}
+          password: ${{ steps.acr_creds.outputs.password }}
+
+      - name: Docker Buildx をセットアップ
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: docker/setup-buildx-action@v3
+
+      - name: Board App イメージをビルド&プッシュ (キャッシュ有効)
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: docker/build-push-action@v5
+        with:
+          context: app/board-app
+          file: app/board-app/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.metadata.outputs.board_image_full }}
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.BOARD_IMAGE_NAME }}:latest
+          cache-from: type=gha,scope=board-app
+          cache-to: type=gha,scope=board-app,mode=max
+
+      - name: Board API イメージをビルド&プッシュ (キャッシュ有効)
+        if: ${{ env.BUILD_REQUIRED == 'true' }}
+        uses: docker/build-push-action@v5
+        with:
+          context: app/board-api
+          file: app/board-api/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.metadata.outputs.board_api_image_full }}
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.BOARD_API_IMAGE_NAME }}:latest
+          cache-from: type=gha,scope=board-api
+          cache-to: type=gha,scope=board-api,mode=max
 
       - name: Trivy DB キャッシュ復元
         if: ${{ env.BUILD_REQUIRED == 'true' }}
@@ -429,7 +466,7 @@ jobs:
         if: ${{ env.BUILD_REQUIRED == 'true' }}
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ env.IMAGE_FULL }}
+          image-ref: ${{ steps.metadata.outputs.board_image_full }}
           format: "cyclonedx"
           output: "sbom-board.cdx.json"
           hide-progress: true
@@ -442,7 +479,7 @@ jobs:
         if: ${{ env.BUILD_REQUIRED == 'true' }}
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ env.BOARD_API_IMAGE_FULL }}
+          image-ref: ${{ steps.metadata.outputs.board_api_image_full }}
           format: "cyclonedx"
           output: "sbom-board-api.cdx.json"
           hide-progress: true
@@ -456,7 +493,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.28.0
         continue-on-error: true
         with:
-          image-ref: ${{ env.IMAGE_FULL }}
+          image-ref: ${{ steps.metadata.outputs.board_image_full }}
           format: "sarif"
           output: "trivy-image-board.sarif"
           hide-progress: true
@@ -470,7 +507,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.28.0
         continue-on-error: true
         with:
-          image-ref: ${{ env.BOARD_API_IMAGE_FULL }}
+          image-ref: ${{ steps.metadata.outputs.board_api_image_full }}
           format: "sarif"
           output: "trivy-image-board-api.sarif"
           hide-progress: true
@@ -494,14 +531,6 @@ jobs:
         with:
           sarif_file: trivy-image-board-api.sarif
           category: board-api-trivy-image
-
-      - name: イメージを ACR へプッシュ
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
-        run: |
-          docker push "$IMAGE_FULL"
-          docker push "$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:latest"
-          docker push "$BOARD_API_IMAGE_FULL"
-          docker push "$ACR_LOGIN_SERVER/$BOARD_API_IMAGE_NAME:latest"
 
       - name: 成果メタデータを保存
         if: ${{ env.BUILD_REQUIRED == 'true' }}
@@ -639,14 +668,14 @@ jobs:
           VALUES_FILE="app/board-app/k8s/ingress-nginx-values.yaml"
           OVERRIDE_FILE=$(mktemp)
           export OVERRIDE_FILE
-          
+
           # 固定 Public IP 指定を削除し、AKS に自動作成させる
           # 理由: 指定した IP が存在しないと LoadBalancer が <pending> のまま固まる
           python -c 'import os, pathlib; content = "controller:\n  image:\n    registry: \"{ACR_LOGIN_SERVER}\"\n    image: \"{CONTROLLER_IMAGE}\"\n    tag: \"{CONTROLLER_TAG}\"\n  service:\n    annotations:\n      service.beta.kubernetes.io/azure-load-balancer-resource-group: \"{NODE_RESOURCE_GROUP}\"\n".format(**os.environ); pathlib.Path(os.environ["OVERRIDE_FILE"]).write_text(content)'
 
           # Namespace を事前作成（冪等性を確保）
           kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
-          
+
           # 固まっている Helm Release をクリーンアップ
           if helm status ingress-nginx -n ingress-nginx &>/dev/null; then
             HELM_STATUS=$(helm status ingress-nginx -n ingress-nginx -o json | jq -r '.info.status // empty')
@@ -862,6 +891,52 @@ jobs:
           wait_rollout "board-api" 600 warn
           kubectl get ingress -n "$BOARD_NS"
 
+      - name: デプロイ後の疎通確認
+        run: |
+          set -euo pipefail
+          BOARD_NS=$(grep kubernetesNamespace "$KUSTOMIZE_DIR/vars.env" | cut -d'=' -f2)
+          LB_IP=${ACTUAL_LB_IP:-$INGRESS_STATIC_IP}
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "デプロイ後の疎通確認"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          # クラスタ内から Service への直接アクセステスト
+          echo "\n[1/4] クラスタ内から board-app Service へアクセス"
+          if kubectl run tmp-curl --rm -i --restart=Never --image=curlimages/curl -n "$BOARD_NS" -- curl -sI http://board-app.board-app.svc.cluster.local/ | head -n1; then
+            echo "✅ board-app Service 疎通成功"
+          else
+            echo "⚠️ board-app Service 疎通失敗（警告）"
+          fi
+
+          echo "\n[2/4] クラスタ内から board-api Service へアクセス"
+          if kubectl run tmp-curl2 --rm -i --restart=Never --image=curlimages/curl -n "$BOARD_NS" -- curl -sI http://board-api.board-app.svc.cluster.local:3000/api/posts | head -n1; then
+            echo "✅ board-api Service 疎通成功"
+          else
+            echo "⚠️ board-api Service 疎通失敗（警告）"
+          fi
+
+          # LoadBalancer 経由の外部アクセステスト
+          echo "\n[3/4] LoadBalancer 経由で HTML を取得"
+          if curl -sf "http://${LB_IP}/" -o /dev/null; then
+            echo "✅ HTML 配信成功"
+            curl -s "http://${LB_IP}/" | grep -o '<title>.*</title>' || echo "タイトルタグなし"
+          else
+            echo "❌ HTML 配信失敗"
+            exit 1
+          fi
+
+          echo "\n[4/4] LoadBalancer 経由で API エンドポイントを確認"
+          API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://${LB_IP}/api/posts" || echo "000")
+          echo "API レスポンス: $API_STATUS"
+          if [ "$API_STATUS" = "200" ] || [ "$API_STATUS" = "304" ]; then
+            echo "✅ API エンドポイント疎通成功"
+          else
+            echo "⚠️ API エンドポイント応答異常 (HTTP $API_STATUS)。Ingress ルーティング設定を確認してください"
+          fi
+
+          echo "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
       - name: デプロイサマリを出力
         run: |
           BOARD_NS=$(grep kubernetesNamespace "$KUSTOMIZE_DIR/vars.env" | cut -d'=' -f2)
@@ -889,6 +964,15 @@ jobs:
           echo "```" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🌐 Ingress 状態" >> $GITHUB_STEP_SUMMARY
-          echo "```" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           kubectl get ingress -n "$BOARD_NS" >> $GITHUB_STEP_SUMMARY
-          echo "```" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 疎通確認" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://${LB_IP}/api/posts" || echo "000")
+          if [ "$API_STATUS" = "200" ] || [ "$API_STATUS" = "304" ]; then
+            echo "- ✅ API エンドポイント: HTTP $API_STATUS" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️ API エンドポイント: HTTP $API_STATUS (要確認)" >> $GITHUB_STEP_SUMMARY
+          fi
