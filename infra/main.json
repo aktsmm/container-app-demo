@@ -5,8 +5,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.39.26.7824",
-      "templateHash": "2021529922155376423"
+      "version": "0.38.33.27573",
+      "templateHash": "8808618965116519756"
     }
   },
   "parameters": {
@@ -238,18 +238,6 @@
         "description": "AKS Pod CIDR (Overlay 利用時)"
       }
     },
-    "ingressPublicIpName": {
-      "type": "string",
-      "metadata": {
-        "description": "Ingress用Static Public IP名"
-      }
-    },
-    "ingressPublicIpDnsLabel": {
-      "type": "string",
-      "metadata": {
-        "description": "Ingress 用 Public IP に付与する DNS ラベル（<label>.<region>.cloudapp.azure.com を生成）"
-      }
-    },
     "vmName": {
       "type": "string",
       "metadata": {
@@ -312,16 +300,10 @@
       "metadata": {
         "description": "掲示板アプリが使用する Kubernetes Namespace"
       }
-    },
-    "boardAppIngressHost": {
-      "type": "string",
-      "metadata": {
-        "description": "掲示板アプリの Ingress ホスト名"
-      }
     }
   },
   "variables": {
-    "defaultTags": "[union(parameters('tags'), createObject('environment', parameters('environmentName'), 'boardAppNamespace', parameters('boardAppNamespace'), 'boardAppIngressHost', parameters('boardAppIngressHost')))]",
+    "defaultTags": "[union(parameters('tags'), createObject('environment', parameters('environmentName'), 'boardAppNamespace', parameters('boardAppNamespace')))]",
     "vnetSubnets": [
       {
         "name": "[parameters('aksSubnetName')]",
@@ -358,12 +340,6 @@
     ]
   },
   "resources": {
-    "ingressPublicIp": {
-      "existing": true,
-      "type": "Microsoft.Network/publicIPAddresses",
-      "apiVersion": "2023-09-01",
-      "name": "[parameters('ingressPublicIpName')]"
-    },
     "storageAccountExisting": {
       "existing": true,
       "type": "Microsoft.Storage/storageAccounts",
@@ -505,8 +481,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "14546524812688591924"
+              "version": "0.38.33.27573",
+              "templateHash": "3061852460675427483"
             }
           },
           "parameters": {
@@ -615,8 +591,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "7654518179113877492"
+              "version": "0.38.33.27573",
+              "templateHash": "8892795511005536407"
             }
           },
           "parameters": {
@@ -723,8 +699,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "17289165102341846030"
+              "version": "0.38.33.27573",
+              "templateHash": "605192393319835508"
             }
           },
           "parameters": {
@@ -830,8 +806,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "4796759553817442287"
+              "version": "0.38.33.27573",
+              "templateHash": "47249221299947223"
             }
           },
           "parameters": {
@@ -896,6 +872,12 @@
                 "allowBlobPublicAccess": false,
                 "minimumTlsVersion": "TLS1_2",
                 "supportsHttpsTrafficOnly": true,
+                "networkAcls": {
+                  "defaultAction": "Deny",
+                  "bypass": "AzureServices",
+                  "virtualNetworkRules": [],
+                  "ipRules": []
+                },
                 "encryption": {
                   "services": {
                     "file": {
@@ -983,8 +965,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "14009247538966324528"
+              "version": "0.38.33.27573",
+              "templateHash": "11553574863340130957"
             }
           },
           "parameters": {
@@ -1111,12 +1093,6 @@
           "logAnalyticsWorkspaceId": {
             "value": "[reference('logAnalytics').outputs.id.value]"
           },
-          "ingressPublicIpName": {
-            "value": "[parameters('ingressPublicIpName')]"
-          },
-          "ingressPublicIpDnsLabel": {
-            "value": "[parameters('ingressPublicIpDnsLabel')]"
-          },
           "acrId": {
             "value": "[reference('acr').outputs.id.value]"
           },
@@ -1130,8 +1106,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "14168388495665055089"
+              "version": "0.38.33.27573",
+              "templateHash": "6040289944375763152"
             }
           },
           "parameters": {
@@ -1184,18 +1160,6 @@
                 "description": "Log Analytics Workspace Resource ID"
               }
             },
-            "ingressPublicIpName": {
-              "type": "string",
-              "metadata": {
-                "description": "Ingress用Static Public IP名"
-              }
-            },
-            "ingressPublicIpDnsLabel": {
-              "type": "string",
-              "metadata": {
-                "description": "Ingress 用 Public IP に付与する DNS ラベル（地域内で一意）"
-              }
-            },
             "acrId": {
               "type": "string",
               "defaultValue": "",
@@ -1215,23 +1179,6 @@
             "acrName": "[if(not(empty(parameters('acrId'))), last(split(parameters('acrId'), '/')), '')]"
           },
           "resources": [
-            {
-              "type": "Microsoft.Network/publicIPAddresses",
-              "apiVersion": "2023-09-01",
-              "name": "[parameters('ingressPublicIpName')]",
-              "location": "[parameters('location')]",
-              "sku": {
-                "name": "Standard"
-              },
-              "properties": {
-                "publicIPAllocationMethod": "Static",
-                "publicIPAddressVersion": "IPv4",
-                "dnsSettings": {
-                  "domainNameLabel": "[parameters('ingressPublicIpDnsLabel')]"
-                }
-              },
-              "tags": "[parameters('tags')]"
-            },
             {
               "type": "Microsoft.ContainerService/managedClusters",
               "apiVersion": "2024-05-01",
@@ -1329,18 +1276,6 @@
             "nodeResourceGroup": {
               "type": "string",
               "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', parameters('name')), '2024-05-01').nodeResourceGroup]"
-            },
-            "ingressPublicIpAddress": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', parameters('ingressPublicIpName')), '2023-09-01').ipAddress]"
-            },
-            "ingressPublicIpId": {
-              "type": "string",
-              "value": "[resourceId('Microsoft.Network/publicIPAddresses', parameters('ingressPublicIpName'))]"
-            },
-            "ingressPublicIpFqdn": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', parameters('ingressPublicIpName')), '2023-09-01').dnsSettings.fqdn]"
             }
           }
         }
@@ -1403,8 +1338,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.39.26.7824",
-              "templateHash": "14595126643836999119"
+              "version": "0.38.33.27573",
+              "templateHash": "4543960059551696249"
             }
           },
           "parameters": {
@@ -1678,14 +1613,6 @@
     "aksNodeResourceGroup": {
       "type": "string",
       "value": "[if(parameters('aksSkipCreate'), parameters('aksNodeResourceGroup'), reference('aks').outputs.nodeResourceGroup.value)]"
-    },
-    "ingressPublicIpAddress": {
-      "type": "string",
-      "value": "[if(parameters('aksSkipCreate'), reference('ingressPublicIp').ipAddress, reference('aks').outputs.ingressPublicIpAddress.value)]"
-    },
-    "ingressPublicIpFqdn": {
-      "type": "string",
-      "value": "[parameters('boardAppIngressHost')]"
     },
     "containerAppsEnvironmentId": {
       "type": "string",
