@@ -44,9 +44,9 @@ VNet 10.0.0.0/16
 | `service.yaml`              | UI 用 ClusterIP Service。Ingress から 80/TCP で参照                                                                                               |
 | `board-api-deployment.yaml` | Node/Express API。DB 接続情報は Secret `board-db-conn` から `env` 経由で注入。`readinessProbe` `/health`                                          |
 | `board-api-service.yaml`    | API 用 ClusterIP Service (3000/TCP)。Ingress の `/api` パスで利用                                                                                 |
-| `ingress.yaml`              | nginx Ingress。Host なしルート (IP 直アクセス) と `board.localdemo.internal` の将来用ルールを併記。`/dummy-secret.txt` も UI から直接参照できます |
+| `ingress.yaml`              | nginx Ingress。Host 指定なし（LoadBalancer IP 直アクセス専用）。`/dummy-secret.txt` も UI から直接参照できます                                   |
 | `kustomization.yaml`        | Namespace/Ingress/Deployments/Services を束ね、`configMapGenerator` で `vars.env` を注入。イメージタグは GitHub Actions の `sed` で差し替え       |
-| `vars.env`                  | `scripts/sync-board-vars.ps1` が `infra/parameters/main-dev.parameters.json` から Namespace と Ingress Host を同期                                |
+| `vars.env`                  | `scripts/sync-board-vars.ps1` が `infra/parameters/main-dev.parameters.json` から Namespace のみを同期                                           |
 
 ## 4. dummy-secret.txt の扱い
 

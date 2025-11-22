@@ -28,10 +28,11 @@
   - Trivy FS が失敗した場合でも空の `trivy-fs-board.sarif` を自動生成し、Step Summary へフォールバック理由を明記して Security タブのノイズを防止。
   - `app/board-app` と `app/board-api` の Docker Build → `<short_sha>` + `latest` タグ付与 → Trivy Image Scan / SBOM 生成。
   - ACR プッシュ後に Step Summary へ SBOM/SARIF のダウンロードリンクを掲示。
-  - `scripts/sync-board-vars.ps1` で Kustomize 変数 (`vars.env`) を Bicep パラメーターと同期。ここで Ingress の DNS FQDN (Static IP + DNS label) を取得。
-  - AKS へ `az aks get-credentials`、ingress-nginx を Helm でデプロイ/更新し、ACR Pull と DB 接続 Secret を apply。
+  - `scripts/sync-board-vars.ps1` で Kustomize 変数 (`vars.env`) を Bicep パラメーターと同期（Namespace のみ）。
+  - AKS へ `az aks get-credentials`、ingress-nginx を Helm でデプロイ/更新し、LoadBalancer IP を自動割り当て。
+  - ACR Pull と DB 接続 Secret を apply。
   - `kubectl kustomize app/board-app/k8s` → イメージ名差し替え → `kubectl apply`。`dummy-secret.txt` 公開ルートもこの段階で有効化。
-  - Step Summary で `https://<dnsLabel>.<region>.cloudapp.azure.com` や Pod/Ingress 状態を報告し、`dummy-secret` の URL を明示。
+  - Step Summary で LoadBalancer IP (`http://<LB_IP>`) や Pod/Ingress 状態を報告し、`dummy-secret` の URL を明示。
 - **成果物**: `sbom-board.cdx.json`, `sbom-board-api.cdx.json`, 各種 SARIF, Docker build log, K8s manifest snapshot。
 
 ## 3. `2️⃣ Admin App Build & Deploy` (`.github/workflows/2-admin-app-build-deploy.yml`)
@@ -61,7 +62,7 @@
 - **処理内容**:
   - `gh run list` / `gh api` を駆使して古い実行を削除
   - 保持ポリシー: 成功 (人間) 7 件、成功 (Dependabot) 3 件、失敗 1 件
-  - `GH_PAT_ACTIONS_DELETE` があれば優先利用し、無ければ `GITHUB_TOKEN`
+  - `GITHUB_TOKEN` を使用（PAT は不要）
 
 ## 6. `🔐 Security Scan (CodeQL + Trivy + Gitleaks)` (`.github/workflows/security-scan.yml`)
 

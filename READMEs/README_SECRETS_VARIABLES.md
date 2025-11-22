@@ -27,9 +27,7 @@
 | `AKS_CLUSTER_NAME`                          | `2-board-app-build-deploy` (AKS 認証)                                        |
 | `ACA_ENVIRONMENT_NAME`                      | `2-admin-app-build-deploy` (初期値。実際は RG から再解決)                    |
 | `ADMIN_CONTAINER_APP_NAME`                  | `2-admin-app-build-deploy`                                                   |
-| `BOARD_IMAGE_NAME` / `BOARD_API_IMAGE_NAME` | Build/Deploy Board ワークフロー内の `env` で定義済み                         |
-| `ADMIN_IMAGE_NAME`                          | Build/Admin ワークフロー内                                                   |
-| `VM_NAME`                                   | `2-admin-app-build-deploy` (DB IP 取得), `backup-upload`                     |
+| `VM_NAME`                                   | `backup-upload` (VM コマンド実行)                                            |
 | `VM_ADMIN_USERNAME` / `VM_ADMIN_PASSWORD`   | `1-infra-deploy.yml` (Bicep パラメーター)                                    |
 | `MYSQL_ROOT_PASSWORD`                       | `1-infra-deploy.yml`, `backup-upload.yml`                                    |
 | `DB_APP_USERNAME` / `DB_APP_PASSWORD`       | `1-infra-deploy.yml`, `2-board-app-build-deploy`, `2-admin-app-build-deploy` |
