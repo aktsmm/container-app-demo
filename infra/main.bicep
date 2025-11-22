@@ -107,12 +107,6 @@ param aksDnsServiceIp string = '10.10.0.10'
 @description('AKS Pod CIDR (Overlay 利用時)')
 param aksPodCidr string = '10.244.0.0/16'
 
-@description('Ingress用Static Public IP名')
-param ingressPublicIpName string
-
-@description('Ingress 用 Public IP に付与する DNS ラベル（<label>.<region>.cloudapp.azure.com を生成）')
-param ingressPublicIpDnsLabel string
-
 @description('MySQL VM 名')
 param vmName string
 
@@ -146,13 +140,9 @@ param mysqlAppPassword string
 @description('掲示板アプリが使用する Kubernetes Namespace')
 param boardAppNamespace string
 
-@description('掲示板アプリの Ingress ホスト名')
-param boardAppIngressHost string
-
 var defaultTags = union(tags, {
   environment: environmentName
   boardAppNamespace: boardAppNamespace
-  boardAppIngressHost: boardAppIngressHost
 })
 
 var vnetSubnets = [
@@ -270,8 +260,6 @@ module aks './modules/aks.bicep' = if (!aksSkipCreate) {
     }
     subnetId: resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, aksSubnetName)
     logAnalyticsWorkspaceId: logAnalytics.outputs.id
-    ingressPublicIpName: ingressPublicIpName
-    ingressPublicIpDnsLabel: ingressPublicIpDnsLabel
     acrId: acr.outputs.id
     tags: defaultTags
   }
@@ -298,12 +286,6 @@ module vm './modules/vm.bicep' = {
     tags: defaultTags
   }
 }
-
-// 既存 Ingress Public IP (AKS スキップ時の出力用)
-resource ingressPublicIp 'Microsoft.Network/publicIPAddresses@2023-09-01' existing = {
-  name: ingressPublicIpName
-}
-
 
 // Diagnostic settings for Storage Account
 resource storageAccountExisting 'Microsoft.Storage/storageAccounts@2023-04-01' existing = {
@@ -406,12 +388,6 @@ output azureContainerRegistryId string = acr.outputs.id
 // 既存クラスタ再利用時も ID を一貫して出力 (aksSkipCreate=true の場合 module は作成されない)
 output aksClusterId string = resourceId('Microsoft.ContainerService/managedClusters', aksName)
 output aksNodeResourceGroup string = aksSkipCreate ? aksNodeResourceGroup : aks!.outputs.nodeResourceGroup
-// DNS ラベルを未設定でも評価が落ちないように既存 Public IP の参照をガード
-output ingressPublicIpAddress string = aksSkipCreate
-  ? ingressPublicIp.properties.ipAddress
-  : aks!.outputs.ingressPublicIpAddress
-// DNS ラベルの FQDN はパラメータ値から算出できるため Azure 側の dnsSettings を参照しない
-output ingressPublicIpFqdn string = boardAppIngressHost
 output containerAppsEnvironmentId string = containerAppsEnv.outputs.id
 output logAnalyticsId string = logAnalytics.outputs.id
 output virtualNetworkId string = vnet.outputs.id

@@ -24,35 +24,11 @@ param subnetId string
 @description('Log Analytics Workspace Resource ID')
 param logAnalyticsWorkspaceId string
 
-@description('Ingress用Static Public IP名')
-param ingressPublicIpName string
-
-@description('Ingress 用 Public IP に付与する DNS ラベル（地域内で一意）')
-param ingressPublicIpDnsLabel string
-
 @description('ACR Resource ID (AKS に AcrPull ロールを付与するため)')
 param acrId string = ''
 
 @description('共通タグ')
 param tags object = {}
-
-// Ingress Controller用のStatic Public IP（Standard SKU必須）
-resource ingressPublicIp 'Microsoft.Network/publicIPAddresses@2023-09-01' = {
-  name: ingressPublicIpName
-  location: location
-  sku: {
-    name: 'Standard'  // AKS Standard Load Balancerに必須
-  }
-  properties: {
-    publicIPAllocationMethod: 'Static'  // Standard SKUではStaticのみ可
-    publicIPAddressVersion: 'IPv4'
-    dnsSettings: {
-      // DNS ラベルは cloudapp.azure.com の FQDN 生成に使用（IP 直打ちを避ける）
-      domainNameLabel: ingressPublicIpDnsLabel
-    }
-  }
-  tags: tags
-}
 
 resource cluster 'Microsoft.ContainerService/managedClusters@2024-05-01' = {
   name: name
@@ -140,6 +116,3 @@ output id string = cluster.id
 output principalId string = cluster.identity.principalId
 output kubeletIdentity object = cluster.properties.identityProfile.kubeletidentity
 output nodeResourceGroup string = cluster.properties.nodeResourceGroup
-output ingressPublicIpAddress string = ingressPublicIp.properties.ipAddress
-output ingressPublicIpId string = ingressPublicIp.id
-output ingressPublicIpFqdn string = ingressPublicIp.properties.dnsSettings.fqdn

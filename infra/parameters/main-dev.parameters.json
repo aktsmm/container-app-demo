@@ -104,12 +104,6 @@
     "aksPodCidr": {
       "value": "10.244.0.0/16"
     },
-    "ingressPublicIpName": {
-      "value": "pip-aks-ingress-dev"
-    },
-    "ingressPublicIpDnsLabel": {
-      "value": "aksdemodevingress"
-    },
     "vmName": {
       "value": "vm-mysql-demo"
     },
@@ -139,9 +133,6 @@
     },
     "boardAppNamespace": {
       "value": "board-app"
-    },
-    "boardAppIngressHost": {
-      "value": "aksdemodevingress.japaneast.cloudapp.azure.com"
     }
   }
 }
