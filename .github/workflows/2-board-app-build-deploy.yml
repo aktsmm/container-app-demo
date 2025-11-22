@@ -580,16 +580,16 @@ jobs:
           if helm status ingress-nginx -n ingress-nginx &>/dev/null; then
             kubectl delete svc ingress-nginx-controller -n ingress-nginx --ignore-not-found=true
             sleep 5
-            if ! helm upgrade ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" --values "$OVERRIDE_FILE" --wait --timeout=10m; then
+            if ! helm upgrade ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" --values "$OVERRIDE_FILE" --wait --timeout=15m; then
               helm uninstall ingress-nginx -n ingress-nginx --wait || true
               kubectl delete ns ingress-nginx --ignore-not-found=true
               sleep 5
               kubectl create namespace ingress-nginx
-              helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" --values "$OVERRIDE_FILE" --wait --timeout=10m
+              helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" --values "$OVERRIDE_FILE" --wait --timeout=15m
             fi
           else
             kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
-            helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" --values "$OVERRIDE_FILE" --wait --timeout=10m
+            helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --values "$VALUES_FILE" --values "$OVERRIDE_FILE" --wait --timeout=15m
           fi
 
           rm -f "$OVERRIDE_FILE"
