@@ -254,7 +254,7 @@ jobs:
             GITLEAKS_ISSUES=$(jq '[.runs[].results // []] | add | length' gitleaks-admin.sarif 2>/dev/null || echo "0")
           fi
           echo "gitleaks_issues=$GITLEAKS_ISSUES" >> "$GITHUB_OUTPUT"
-          
+
           # Trivy FS結果
           TRIVY_FS_CRITICAL=0
           TRIVY_FS_HIGH=0
@@ -541,7 +541,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🔒 セキュリティスキャン結果" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           # Gitleaksスキャン結果
           GITLEAKS_ISSUES="${{ needs.code-security-scans.outputs.gitleaks_issues }}"
           if [ "$GITLEAKS_ISSUES" = "0" ]; then
@@ -549,7 +549,7 @@ jobs:
           else
             echo "- **Gitleaks (シークレット検出)**: ⚠️ $GITLEAKS_ISSUES 件検出" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           # Trivy FS スキャン結果
           TRIVY_FS_CRITICAL="${{ needs.code-security-scans.outputs.trivy_fs_critical }}"
           TRIVY_FS_HIGH="${{ needs.code-security-scans.outputs.trivy_fs_high }}"
@@ -558,7 +558,7 @@ jobs:
           else
             echo "- **Trivy FS (ソース/設定)**: ⚠️ CRITICAL:$TRIVY_FS_CRITICAL / HIGH:$TRIVY_FS_HIGH" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           # Trivy Image スキャン結果 (Admin App)
           ADMIN_IMAGE_CRITICAL="${{ needs.build-and-push.outputs.admin_image_critical }}"
           ADMIN_IMAGE_HIGH="${{ needs.build-and-push.outputs.admin_image_high }}"
@@ -567,7 +567,7 @@ jobs:
           else
             echo "- **Trivy Image (Admin App)**: ⚠️ CRITICAL:$ADMIN_IMAGE_CRITICAL / HIGH:$ADMIN_IMAGE_HIGH" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "詳細なセキュリティスキャン結果は [Security タブ](../../security/code-scanning) を参照してください" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
