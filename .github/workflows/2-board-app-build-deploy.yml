@@ -595,7 +595,7 @@ jobs:
           rm -f "$OVERRIDE_FILE"
 
           kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=600s
-          
+
           # LoadBalancer IP 取得（最大12分待機）
           for i in $(seq 1 72); do
             LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
@@ -607,7 +607,7 @@ jobs:
             echo "[$i/72] LoadBalancer IP 割り当て待機中..."
             sleep 10
           done
-          
+
           if [ -z "${LB_IP:-}" ]; then
             echo "❌ LoadBalancer IP が割り当てられませんでした" >&2
             kubectl get svc -n ingress-nginx ingress-nginx-controller
@@ -635,7 +635,7 @@ jobs:
             echo "[$i/$HEALTH_CHECK_ATTEMPTS] ヘルスチェック待機中..."
             sleep 5
           done
-          
+
           if [ "$HEALTH_CHECK_SUCCESS" != "true" ]; then
             echo "⚠️ ヘルスチェックが成功しませんでしたが、続行します" >&2
             kubectl get pods -n ingress-nginx
@@ -659,7 +659,7 @@ jobs:
             echo "[$i/$CONNECTIVITY_ATTEMPTS] LoadBalancer ポート 80 接続待機中..."
             sleep 10
           done
-          
+
           if [ "$CONNECTIVITY_SUCCESS" != "true" ]; then
             echo "⚠️ LoadBalancer ポート 80 への接続が確認できませんでしたが、続行します" >&2
             az network lb probe list --resource-group "$NODE_RG" --lb-name kubernetes -o table || true
