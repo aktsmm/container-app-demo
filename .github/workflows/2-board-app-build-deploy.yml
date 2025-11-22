@@ -65,8 +65,6 @@ jobs:
       db_endpoint: ${{ steps.mysql_endpoint.outputs.db_endpoint }}
       aks_location: ${{ steps.aks_info.outputs.aks_location }}
       node_resource_group: ${{ steps.aks_info.outputs.node_resource_group }}
-      ingress_ip: ${{ steps.mysql_endpoint.outputs.ingress_ip }}
-      ingress_fqdn: ${{ steps.mysql_endpoint.outputs.ingress_fqdn }}
     env:
       REDEPLOY_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.redeployTag || '' }}
     steps:
@@ -182,8 +180,6 @@ jobs:
           set -euo pipefail
           mkdir -p infra-output
           MYSQL_IP=""
-          INGRESS_IP=""
-          INGRESS_FQDN=""
           OUTPUT_FILE=""
           if [ "${{ github.event_name }}" = "workflow_run" ] && [ "${{ github.event.workflow_run.name }}" = "$INFRA_WORKFLOW_NAME" ]; then
             TARGET_RUN_ID='${{ github.event.workflow_run.id }}'
@@ -198,12 +194,6 @@ jobs:
               if [ -n "$OUTPUT_FILE" ]; then
                 # Bicep デプロイ出力から MySQL VM のプライベート IP を取得
                 MYSQL_IP=$(jq -r '.mysqlPrivateIp.value // empty' "$OUTPUT_FILE")
-                
-                # Bicep デプロイ出力から Ingress 用 Public IP アドレスを取得
-                INGRESS_IP=$(jq -r '.ingressPublicIpAddress.value // empty' "$OUTPUT_FILE")
-                
-                # Bicep デプロイ出力から Public IP の FQDN を取得（DNS 名）
-                INGRESS_FQDN=$(jq -r '.ingressPublicIpFqdn.value // empty' "$OUTPUT_FILE")
               fi
             fi
           fi
@@ -216,45 +206,12 @@ jobs:
             fi
             MYSQL_IP=$(az vm list-ip-addresses --resource-group "$RESOLVED_RG" --name "$VM_NAME" --query "[0].virtualMachine.network.privateIpAddresses[0]" -o tsv || true)
           fi
-          if [ -z "$INGRESS_IP" ]; then
-            PIP_NAME=$(jq -r '.parameters.ingressPublicIpName.value // empty' "$PARAM_FILE")
-            EXTRA_PIP_RG=$(jq -r '.parameters.ingressPublicIpResourceGroup.value // empty' "$PARAM_FILE" 2>/dev/null || true)
-            for RG in "$EXTRA_PIP_RG" "$NODE_RESOURCE_GROUP" "$RESOLVED_RG"; do
-              if [ -z "$RG" ] || [ "$RG" = "null" ]; then
-                continue
-              fi
-              if IP_JSON=$(az network public-ip show --resource-group "$RG" --name "$PIP_NAME" 2>/dev/null); then
-                INGRESS_IP=$(echo "$IP_JSON" | jq -r '.properties.ipAddress // empty')
-                INGRESS_FQDN=$(echo "$IP_JSON" | jq -r '.properties.dnsSettings.fqdn // empty')
-                PIP_SKU=$(echo "$IP_JSON" | jq -r '.sku.name // empty')
-                PIP_RG_FOUND="$RG"
-                break
-              fi
-            done
-            
-            # Public IP SKU を検証（AKS Standard Load Balancer には Standard SKU が必須）
-            if [ -n "$INGRESS_IP" ] && [ "$PIP_SKU" != "Standard" ]; then
-              echo "❌ Public IP '$PIP_NAME' (RG: $PIP_RG_FOUND) の SKU が '$PIP_SKU' です" >&2
-              echo "AKS Standard Load Balancer には Standard SKU の Public IP が必須です" >&2
-              echo "対処方法: Bicep で Public IP を sku: { name: 'Standard' } で作成してください" >&2
-              exit 1
-            fi
-          fi
-          if [ -z "$INGRESS_FQDN" ] || [ "$INGRESS_FQDN" = "null" ]; then
-            INGRESS_FQDN=$(jq -r '.parameters.boardAppIngressHost.value // empty' "$PARAM_FILE")
-          fi
           MYSQL_PORT=$(jq -r '.parameters.mysqlPort.value // 3306' "$PARAM_FILE")
           if [ -z "$MYSQL_IP" ] || [ "$MYSQL_IP" = "null" ]; then
             echo "MySQL Private IP を Azure から取得できませんでした" >&2
             exit 1
           fi
-          if [ -z "$INGRESS_IP" ] || [ "$INGRESS_IP" = "null" ]; then
-            echo "Ingress 用の Public IP を解決できませんでした。infra-deploy の出力を確認してください" >&2
-            exit 1
-          fi
           echo "db_endpoint=${MYSQL_IP}:${MYSQL_PORT}" >> "$GITHUB_OUTPUT"
-          echo "ingress_ip=$INGRESS_IP" >> "$GITHUB_OUTPUT"
-          echo "ingress_fqdn=${INGRESS_FQDN:-}" >> "$GITHUB_OUTPUT"
           echo "Resolved MySQL endpoint: ${MYSQL_IP}:${MYSQL_PORT}"
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -573,8 +530,6 @@ jobs:
       IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag || needs.prepare-context.outputs.image_tag }}
       CHECKOUT_REF: ${{ needs.prepare-context.outputs.checkout_ref }}
       NODE_RESOURCE_GROUP: ${{ needs.prepare-context.outputs.node_resource_group }}
-      INGRESS_STATIC_IP: ${{ needs.prepare-context.outputs.ingress_ip }}
-      INGRESS_FQDN: ${{ needs.prepare-context.outputs.ingress_fqdn }}
     steps:
       - name: コードを取得
         uses: actions/checkout@v4
@@ -586,17 +541,6 @@ jobs:
         with:
           creds: >-
             {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
-
-      - name: 取得済み Ingress 情報を検証
-        run: |
-          set -euo pipefail
-          for var_name in NODE_RESOURCE_GROUP INGRESS_STATIC_IP; do
-            val=$(eval echo "\${$var_name}")
-            if [ -z "$val" ] || [ "$val" = "null" ]; then
-              echo "$var_name が解決できませんでした。最新の infra-deploy の出力を確認してください" >&2
-              exit 1
-            fi
-          done
 
       - name: kubectl を準備
         run: az aks install-cli
@@ -807,7 +751,7 @@ jobs:
       - name: LoadBalancer 健康チェック
         run: |
           set -euo pipefail
-          LB_IP=${ACTUAL_LB_IP:-$INGRESS_STATIC_IP}
+          LB_IP=${ACTUAL_LB_IP:-}
           if [ -z "$LB_IP" ]; then
             echo "LoadBalancer IP が取得できません" >&2
             exit 1
@@ -993,8 +937,7 @@ jobs:
       - name: デプロイサマリを出力
         run: |
           BOARD_NS=$(grep kubernetesNamespace "$KUSTOMIZE_DIR/vars.env" | cut -d'=' -f2)
-          INGRESS_HOST=$(grep ingressHost "$KUSTOMIZE_DIR/vars.env" | cut -d'=' -f2)
-          LB_IP=${ACTUAL_LB_IP:-$INGRESS_STATIC_IP}
+          LB_IP=${ACTUAL_LB_IP:-}
           echo "## 🎯 掲示板アプリ AKS デプロイ完了" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Namespace**: \`$BOARD_NS\`" >> $GITHUB_STEP_SUMMARY
@@ -1003,12 +946,11 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📍 アクセス" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -n "$INGRESS_HOST" ]; then
-            echo "- **DNS**: http://$INGRESS_HOST" >> $GITHUB_STEP_SUMMARY
-            echo "- **ダミーシークレット**: http://$INGRESS_HOST/dummy-secret.txt" >> $GITHUB_STEP_SUMMARY
-          fi
           if [ -n "$LB_IP" ]; then
             echo "- **Load Balancer IP**: http://$LB_IP" >> $GITHUB_STEP_SUMMARY
+            echo "- **ダミーシークレット**: http://$LB_IP/dummy-secret.txt" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️ LoadBalancer IP 取得待機中" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📦 Pod 状態" >> $GITHUB_STEP_SUMMARY
