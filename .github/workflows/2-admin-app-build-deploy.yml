@@ -227,9 +227,12 @@ jobs:
           if [ -z "$ID_NAME" ]; then
             ID_NAME="${ID_RESOURCE_ID##*/}"
           fi
-          echo "identity_resource_id=$ID_RESOURCE_ID" >> "$GITHUB_OUTPUT"
-          echo "identity_principal_id=$PRINCIPAL_ID" >> "$GITHUB_OUTPUT"
-          echo "identity_name=$ID_NAME" >> "$GITHUB_OUTPUT"
+          encode() {
+            printf '%s' "$1" | base64 | tr -d '\n'
+          }
+          echo "identity_resource_id=$(encode "$ID_RESOURCE_ID")" >> "$GITHUB_OUTPUT"
+          echo "identity_principal_id=$(encode "$PRINCIPAL_ID")" >> "$GITHUB_OUTPUT"
+          echo "identity_name=$(encode "$ID_NAME")" >> "$GITHUB_OUTPUT"
 
   code-security-scans:
     runs-on: ubuntu-latest
@@ -412,14 +415,27 @@ jobs:
       DB_ENDPOINT: ${{ needs.prepare-context.outputs.db_endpoint }}
       IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag || needs.prepare-context.outputs.image_tag }}
       CHECKOUT_REF: ${{ needs.prepare-context.outputs.checkout_ref }}
-      USER_ASSIGNED_IDENTITY_ID: ${{ needs.prepare-context.outputs.identity_resource_id }}
-      PRINCIPAL_ID: ${{ needs.prepare-context.outputs.identity_principal_id }}
-      ACA_USER_ASSIGNED_IDENTITY_NAME: ${{ needs.prepare-context.outputs.identity_name }}
+      USER_ASSIGNED_IDENTITY_ID_ENCODED: ${{ needs.prepare-context.outputs.identity_resource_id }}
+      PRINCIPAL_ID_ENCODED: ${{ needs.prepare-context.outputs.identity_principal_id }}
+      ACA_USER_ASSIGNED_IDENTITY_NAME_ENCODED: ${{ needs.prepare-context.outputs.identity_name }}
     steps:
       - name: コードを取得
         uses: actions/checkout@v4
         with:
           ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Managed Identity 情報をデコード
+        run: |
+          set -euo pipefail
+          for decoded_name in USER_ASSIGNED_IDENTITY_ID PRINCIPAL_ID ACA_USER_ASSIGNED_IDENTITY_NAME; do
+            encoded_var="${decoded_name}_ENCODED"
+            encoded_value=$(printenv "$encoded_var" || true)
+            if [ -z "$encoded_value" ]; then
+              continue
+            fi
+            decoded_value=$(printf '%s' "$encoded_value" | base64 --decode)
+            echo "${decoded_name}=${decoded_value}" >> "$GITHUB_ENV"
+          done
 
       - name: Azure に Service Principal でログイン
         uses: azure/login@v2
