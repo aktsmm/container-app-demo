@@ -156,11 +156,11 @@ jobs:
             echo "AKS クラスター $AKS_CLUSTER_NAME を RG=$RESOLVED_RG で取得できません" >&2
             exit 1
           fi
-          
+
           # AKS メタデータから自動生成されたノードリソースグループ名を抽出
           # 例: MC_RG-demo-app1111_aks-demo-dev_japaneast
           NODE_RG=$(echo "$AKS_JSON" | jq -r '.nodeResourceGroup // empty')
-          
+
           # AKS のデプロイリージョンを取得（Public IP 検索時のヒントとして利用）
           AKS_LOCATION=$(echo "$AKS_JSON" | jq -r '.location // empty')
           if [ -z "$NODE_RG" ]; then
@@ -639,18 +639,31 @@ jobs:
           VALUES_FILE="app/board-app/k8s/ingress-nginx-values.yaml"
           OVERRIDE_FILE=$(mktemp)
           export OVERRIDE_FILE
-          python -c 'import os, pathlib; content = "controller:\n  image:\n    registry: \"{ACR_LOGIN_SERVER}\"\n    image: \"{CONTROLLER_IMAGE}\"\n    tag: \"{CONTROLLER_TAG}\"\n  service:\n    loadBalancerIP: \"{INGRESS_STATIC_IP}\"\n    annotations:\n      service.beta.kubernetes.io/azure-load-balancer-resource-group: \"{NODE_RESOURCE_GROUP}\"\n".format(**os.environ); pathlib.Path(os.environ["OVERRIDE_FILE"]).write_text(content)'
+          
+          # 固定 Public IP 指定を削除し、AKS に自動作成させる
+          # 理由: 指定した IP が存在しないと LoadBalancer が <pending> のまま固まる
+          python -c 'import os, pathlib; content = "controller:\n  image:\n    registry: \"{ACR_LOGIN_SERVER}\"\n    image: \"{CONTROLLER_IMAGE}\"\n    tag: \"{CONTROLLER_TAG}\"\n  service:\n    annotations:\n      service.beta.kubernetes.io/azure-load-balancer-resource-group: \"{NODE_RESOURCE_GROUP}\"\n".format(**os.environ); pathlib.Path(os.environ["OVERRIDE_FILE"]).write_text(content)'
 
           # Namespace を事前作成（冪等性を確保）
           kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
+          
+          # 固まっている Helm Release をクリーンアップ
+          if helm status ingress-nginx -n ingress-nginx &>/dev/null; then
+            HELM_STATUS=$(helm status ingress-nginx -n ingress-nginx -o json | jq -r '.info.status // empty')
+            if [ "$HELM_STATUS" = "pending-install" ] || [ "$HELM_STATUS" = "pending-upgrade" ]; then
+              echo "⚠️ Helm Release が ${HELM_STATUS} 状態で固まっています。クリーンアップします..."
+              helm uninstall ingress-nginx -n ingress-nginx --wait || true
+              sleep 5
+            fi
+          fi
 
           # helm upgrade --install --atomic で冪等にインストール/アップグレード
           # --atomic: 失敗時に自動ロールバック、Service 削除なしで安全に更新
           # --cleanup-on-fail: 失敗時のリソースクリーンアップ
-          # --force: 既存リソースの置き換えを許可
           if ! helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
             --install \
             --namespace ingress-nginx \
+            --create-namespace \
             --values "$VALUES_FILE" \
             --values "$OVERRIDE_FILE" \
             --atomic \
@@ -668,7 +681,7 @@ jobs:
             kubectl -n ingress-nginx get svc,deploy,po || true
             
             echo "--- 最新イベント ---"
-            kubectl -n ingress-nginx get events --sort-by=.metadata.creationTimestamp --tail=30 || true
+            kubectl -n ingress-nginx get events --sort-by=.metadata.creationTimestamp | tail -30 || true
             
             echo "--- Service 詳細 ---"
             kubectl -n ingress-nginx describe svc ingress-nginx-controller || true
@@ -691,7 +704,7 @@ jobs:
           readonly LB_IP_TIMEOUT_MINUTES=12
           readonly LB_IP_POLL_INTERVAL=10
           LB_IP_ATTEMPTS=$((LB_IP_TIMEOUT_MINUTES * 60 / LB_IP_POLL_INTERVAL))
-          
+
           for i in $(seq 1 $LB_IP_ATTEMPTS); do
             LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
             if [ -n "$LB_IP" ]; then
@@ -722,12 +735,12 @@ jobs:
           # Ingress Controller ヘルスチェック (/healthz エンドポイント確認)
           # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           echo "LoadBalancer ($LB_IP) のヘルスプローブを検証します"
-          
+
           readonly HEALTH_CHECK_TIMEOUT_MINUTES=3
           readonly HEALTH_CHECK_INTERVAL=5
           HEALTH_CHECK_ATTEMPTS=$((HEALTH_CHECK_TIMEOUT_MINUTES * 60 / HEALTH_CHECK_INTERVAL))
           HEALTH_CHECK_SUCCESS=false
-          
+
           for i in $(seq 1 $HEALTH_CHECK_ATTEMPTS); do
             if kubectl exec -n ingress-nginx deployment/ingress-nginx-controller -- curl -s -o /dev/null -w "%{http_code}" http://localhost:10254/healthz | grep -q "200"; then
               echo "✅ [$i/$HEALTH_CHECK_ATTEMPTS] Ingress Controller ヘルスチェック成功"
@@ -757,7 +770,7 @@ jobs:
           readonly CONNECTIVITY_INTERVAL=10
           CONNECTIVITY_ATTEMPTS=$((CONNECTIVITY_TIMEOUT_MINUTES * 60 / CONNECTIVITY_INTERVAL))
           CONNECTIVITY_SUCCESS=false
-          
+
           for i in $(seq 1 $CONNECTIVITY_ATTEMPTS); do
             if timeout 5 bash -c "echo > /dev/tcp/$LB_IP/80" 2>/dev/null; then
               echo "✅ [$i/$CONNECTIVITY_ATTEMPTS] LoadBalancer ポート 80 への接続成功"
