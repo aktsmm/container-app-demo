@@ -267,8 +267,31 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -f trivy-fs-board.sarif ]; then
-            # Python で空の SARIF を生成して YAML インデント崩れを回避
-            python -c 'import json, pathlib; payload = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "trivy", "informationUri": "https://github.com/aquasecurity/trivy"}}, "results": []}]}; pathlib.Path("trivy-fs-board.sarif").write_text(json.dumps(payload, indent=2))'
+            MESSAGE="Trivy FS が失敗/結果なしでも SARIF を欠かさずアップロードするため空ファイルを生成しました (Board App)"
+            echo "$MESSAGE"
+            cat <<'JSON' > trivy-fs-board.sarif
+            {
+              "version": "2.1.0",
+              "runs": [
+                {
+                  "tool": {
+                    "driver": {
+                      "name": "trivy",
+                      "informationUri": "https://github.com/aquasecurity/trivy"
+                    }
+                  },
+                  "results": []
+                }
+              ]
+            }
+            JSON
+            if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+              cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+              ### Trivy FS フォールバック (Board App)
+              - $MESSAGE
+              - レポート: \`trivy-fs-board.sarif\`
+              EOF
+            fi
           fi
 
       - name: Trivy SARIF をアップロード (FS)

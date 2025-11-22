@@ -25,6 +25,7 @@
 - **トリガー**: `push` (`app/board-app/**`, `app/board-api/**`, `app/board-app/k8s/**`), `workflow_run` (1️⃣ 完了時), `workflow_dispatch`
 - **主なステップ**:
   - Gitleaks / Trivy FS でソースと IaC をスキャン。
+  - Trivy FS が失敗した場合でも空の `trivy-fs-board.sarif` を自動生成し、Step Summary へフォールバック理由を明記して Security タブのノイズを防止。
   - `app/board-app` と `app/board-api` の Docker Build → `<short_sha>` + `latest` タグ付与 → Trivy Image Scan / SBOM 生成。
   - ACR プッシュ後に Step Summary へ SBOM/SARIF のダウンロードリンクを掲示。
   - `scripts/sync-board-vars.ps1` で Kustomize 変数 (`vars.env`) を Bicep パラメーターと同期。ここで Ingress の DNS FQDN (Static IP + DNS label) を取得。
@@ -38,6 +39,7 @@
 - **トリガー**: `push` (`app/admin-app/**`), `workflow_run` (1️⃣ 完了時), `workflow_dispatch`
 - **主なステップ**:
   - Gitleaks / Trivy FS / Trivy Image で Flask 管理アプリをスキャンしつつ Docker Build。
+  - Trivy FS のレポートが不足する場合は空 SARIF を生成してアップロードし、検出結果がゼロでも監査証跡を欠かさない。
   - `<short_sha>` と `latest` タグを ACR へプッシュ、SBOM/SARIF を成果物へアップロード。
   - Container Apps Environment の状態を監視しつつ `az containerapp create`/`az containerapp update` で外部 Ingress (port 8000) を更新。Basic 認証情報と DB 接続設定を Secret として注入。
   - Managed Identity へ Contributor + Storage Blob Data Contributor を割り当て、バックアップ閲覧や Blob 操作を最小権限で実現。
