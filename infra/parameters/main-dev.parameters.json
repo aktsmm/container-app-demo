@@ -65,9 +65,6 @@
     "containerAppsEnvironmentName": {
       "value": "__PIPELINE_OVERRIDDEN__"
     },
-    "containerAppManagedIdentityName": {
-      "value": "demo6268"
-    },
     "aksName": {
       "value": "aks-demo-dev"
     },
