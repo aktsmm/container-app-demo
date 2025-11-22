@@ -14,11 +14,3 @@ configMapGenerator:
       - vars.env
 generatorOptions:
   disableNameSuffixHash: true
-vars:
-  - name: BOARD_APP_INGRESS_HOST
-    objref:
-      apiVersion: v1
-      kind: ConfigMap
-      name: board-app-vars
-    fieldref:
-      fieldpath: data.ingressHost
