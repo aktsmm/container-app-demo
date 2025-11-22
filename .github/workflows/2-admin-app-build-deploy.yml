@@ -36,7 +36,6 @@ env:
   DB_APP_PASSWORD: ${{ vars.DB_APP_PASSWORD }}
   ACA_ADMIN_USERNAME: ${{ vars.ACA_ADMIN_USERNAME }}
   ACA_ADMIN_PASSWORD: ${{ vars.ACA_ADMIN_PASSWORD }}
-  ACA_USER_ASSIGNED_IDENTITY_NAME: ${{ vars.ACA_USER_ASSIGNED_IDENTITY_NAME }}
   PARAM_FILE: infra/parameters/main-dev.parameters.json
   GH_TOKEN: ${{ github.token }}
 
@@ -54,9 +53,6 @@ jobs:
       storage_account_name: ${{ steps.resolve_storage.outputs.storage_account_name }}
       aca_environment_name: ${{ steps.resolve_env.outputs.aca_environment_name }}
       db_endpoint: ${{ steps.mysql_endpoint.outputs.db_endpoint }}
-      identity_resource_id: ${{ steps.resolve_identity.outputs.identity_resource_id }}
-      identity_principal_id: ${{ steps.resolve_identity.outputs.identity_principal_id }}
-      identity_name: ${{ steps.resolve_identity.outputs.identity_name }}
     env:
       REDEPLOY_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.redeployTag || '' }}
     steps:
@@ -188,51 +184,6 @@ jobs:
           fi
           echo "db_endpoint=${MYSQL_IP}:${MYSQL_PORT}" >> "$GITHUB_OUTPUT"
 
-      - name: Container Apps 用ユーザー割当 ID を解決
-        id: resolve_identity
-        env:
-          INFRA_OUTPUT_FILE: ${{ steps.mysql_endpoint.outputs.infra_output_path }}
-          RESOLVED_RG: ${{ steps.resolve_rg.outputs.resource_group_name }}
-        run: |
-          set -euo pipefail
-          ID_RESOURCE_ID=""
-          PRINCIPAL_ID=""
-          ID_NAME=""
-          if [ -n "$INFRA_OUTPUT_FILE" ] && [ -f "$INFRA_OUTPUT_FILE" ]; then
-            ID_RESOURCE_ID=$(jq -r '.containerAppUserAssignedIdentityId.value // empty' "$INFRA_OUTPUT_FILE")
-            PRINCIPAL_ID=$(jq -r '.containerAppUserAssignedIdentityPrincipalId.value // empty' "$INFRA_OUTPUT_FILE")
-          fi
-          if [ -n "$ID_RESOURCE_ID" ] && [ -z "$ID_NAME" ]; then
-            ID_NAME="${ID_RESOURCE_ID##*/}"
-          fi
-          if [ -z "$ID_NAME" ]; then
-            ID_NAME=$(jq -r '.parameters.containerAppManagedIdentityName.value // empty' "$PARAM_FILE")
-          fi
-          if [ -z "$ID_NAME" ]; then
-            ID_NAME="${ACA_USER_ASSIGNED_IDENTITY_NAME:-}"
-          fi
-          if [ -z "$ID_RESOURCE_ID" ] || [ -z "$PRINCIPAL_ID" ]; then
-            if [ -z "$ID_NAME" ]; then
-              echo "Managed Identity 名を parameters または変数から解決できません" >&2
-              exit 1
-            fi
-            ID_JSON=$(az identity show --name "$ID_NAME" --resource-group "$RESOLVED_RG" -o json)
-            ID_RESOURCE_ID=$(echo "$ID_JSON" | jq -r '.id // empty')
-            PRINCIPAL_ID=$(echo "$ID_JSON" | jq -r '.principalId // empty')
-          fi
-          if [ -z "$ID_RESOURCE_ID" ] || [ -z "$PRINCIPAL_ID" ]; then
-            echo "Managed Identity を特定できません" >&2
-            exit 1
-          fi
-          if [ -z "$ID_NAME" ]; then
-            ID_NAME="${ID_RESOURCE_ID##*/}"
-          fi
-          encode() {
-            printf '%s' "$1" | base64 | tr -d '\n'
-          }
-          echo "identity_resource_id=$(encode "$ID_RESOURCE_ID")" >> "$GITHUB_OUTPUT"
-          echo "identity_principal_id=$(encode "$PRINCIPAL_ID")" >> "$GITHUB_OUTPUT"
-          echo "identity_name=$(encode "$ID_NAME")" >> "$GITHUB_OUTPUT"
 
   code-security-scans:
     runs-on: ubuntu-latest
@@ -415,27 +366,11 @@ jobs:
       DB_ENDPOINT: ${{ needs.prepare-context.outputs.db_endpoint }}
       IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag || needs.prepare-context.outputs.image_tag }}
       CHECKOUT_REF: ${{ needs.prepare-context.outputs.checkout_ref }}
-      USER_ASSIGNED_IDENTITY_ID_ENCODED: ${{ needs.prepare-context.outputs.identity_resource_id }}
-      PRINCIPAL_ID_ENCODED: ${{ needs.prepare-context.outputs.identity_principal_id }}
-      ACA_USER_ASSIGNED_IDENTITY_NAME_ENCODED: ${{ needs.prepare-context.outputs.identity_name }}
     steps:
       - name: コードを取得
         uses: actions/checkout@v4
         with:
           ref: ${{ env.CHECKOUT_REF }}
-
-      - name: Managed Identity 情報をデコード
-        run: |
-          set -euo pipefail
-          for decoded_name in USER_ASSIGNED_IDENTITY_ID PRINCIPAL_ID ACA_USER_ASSIGNED_IDENTITY_NAME; do
-            encoded_var="${decoded_name}_ENCODED"
-            encoded_value=$(printenv "$encoded_var" || true)
-            if [ -z "$encoded_value" ]; then
-              continue
-            fi
-            decoded_value=$(printf '%s' "$encoded_value" | base64 --decode)
-            echo "${decoded_name}=${decoded_value}" >> "$GITHUB_ENV"
-          done
 
       - name: Azure に Service Principal でログイン
         uses: azure/login@v2
@@ -474,36 +409,6 @@ jobs:
           ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
           echo "ACR_USERNAME=$ACR_USERNAME" >> "$GITHUB_ENV"
           echo "ACR_PASSWORD=$ACR_PASSWORD" >> "$GITHUB_ENV"
-
-      - name: Managed Identity 情報を補完
-        run: |
-          set -euo pipefail
-          CURRENT_ID="${USER_ASSIGNED_IDENTITY_ID:-}"
-          CURRENT_PRINCIPAL="${PRINCIPAL_ID:-}"
-          if [ -n "$CURRENT_ID" ] && [ "$CURRENT_ID" != "null" ] && [ -n "$CURRENT_PRINCIPAL" ] && [ "$CURRENT_PRINCIPAL" != "null" ]; then
-            echo "Managed Identity context is already populated"
-            exit 0
-          fi
-          ID_NAME_SOURCE="${ACA_USER_ASSIGNED_IDENTITY_NAME:-}"
-          if [ -z "$ID_NAME_SOURCE" ]; then
-            echo "ACA_USER_ASSIGNED_IDENTITY_NAME が未設定のため Managed Identity を特定できません" >&2
-            exit 1
-          fi
-          ID_JSON=$(az identity show --name "$ID_NAME_SOURCE" --resource-group "$RESOURCE_GROUP_NAME" -o json)
-          RES_ID=$(echo "$ID_JSON" | jq -r '.id // empty')
-          PRI_ID=$(echo "$ID_JSON" | jq -r '.principalId // empty')
-          if [ -z "$RES_ID" ] || [ -z "$PRI_ID" ]; then
-            echo "az identity show から必要な情報を取得できません" >&2
-            exit 1
-          fi
-          {
-            if [ -z "$CURRENT_ID" ] || [ "$CURRENT_ID" = "null" ]; then
-              echo "USER_ASSIGNED_IDENTITY_ID=$RES_ID"
-            fi
-            if [ -z "$CURRENT_PRINCIPAL" ] || [ "$CURRENT_PRINCIPAL" = "null" ]; then
-              echo "PRINCIPAL_ID=$PRI_ID"
-            fi
-          } >> "$GITHUB_ENV"
 
       - name: Container App を作成/更新
         run: |
@@ -546,31 +451,33 @@ jobs:
           fi
           az containerapp revision set-mode --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --mode single
 
-      - name: Container App 用ユーザー割当 ID を検証
+      - name: Container App にシステム割当 ID を付与
         run: |
           set -euo pipefail
-          for var_name in USER_ASSIGNED_IDENTITY_ID PRINCIPAL_ID; do
-            val="${!var_name:-}"
-            if [ -z "$val" ] || [ "$val" = "null" ]; then
-              echo "$var_name が解決できません。infra-deploy の出力を確認してください" >&2
-              exit 1
-            fi
-          done
-          FALLBACK_ID="${USER_ASSIGNED_IDENTITY_ID:-}"
-          if [ -n "$FALLBACK_ID" ]; then
-            FALLBACK_ID="${FALLBACK_ID##*/}"
-          fi
-          echo "Managed Identity: ${ACA_USER_ASSIGNED_IDENTITY_NAME:-$FALLBACK_ID}"
-
-      - name: Container App にユーザー割当 ID を付与
-        run: |
-          set -euo pipefail
-          if [ -z "${USER_ASSIGNED_IDENTITY_ID:-}" ]; then
-            echo "USER_ASSIGNED_IDENTITY_ID が未解決です" >&2
+          az containerapp identity assign --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --system-assigned >/dev/null
+          PRINCIPAL=$(az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query identity.principalId -o tsv)
+          if [ -z "$PRINCIPAL" ] || [ "$PRINCIPAL" = "None" ]; then
+            echo "system-assigned Managed Identity の Principal ID を取得できません" >&2
             exit 1
           fi
-          az containerapp identity assign --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP_NAME" --user-assigned "$USER_ASSIGNED_IDENTITY_ID"
-          echo "Managed Identity Principal ID: ${PRINCIPAL_ID:-}"
+          echo "SYSTEM_IDENTITY_PRINCIPAL_ID=$PRINCIPAL" >> "$GITHUB_ENV"
+
+      - name: Storage へ Managed Identity 権限を付与
+        run: |
+          set -euo pipefail
+          if [ -z "${SYSTEM_IDENTITY_PRINCIPAL_ID:-}" ]; then
+            echo "SYSTEM_IDENTITY_PRINCIPAL_ID が未設定です" >&2
+            exit 1
+          fi
+          STORAGE_SCOPE=$(az storage account show --name "$STORAGE_ACCOUNT_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query id -o tsv)
+          ROLE_DEFINITION_ID='ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+          ASSIGNMENT_EXISTS=$(az role assignment list --assignee-object-id "$SYSTEM_IDENTITY_PRINCIPAL_ID" --scope "$STORAGE_SCOPE" --role "$ROLE_DEFINITION_ID" --query "[0]" -o tsv)
+          if [ -n "$ASSIGNMENT_EXISTS" ]; then
+            echo "Storage Blob Data Contributor は既に付与済み"
+          else
+            az role assignment create --assignee-object-id "$SYSTEM_IDENTITY_PRINCIPAL_ID" --assignee-principal-type ServicePrincipal --role "$ROLE_DEFINITION_ID" --scope "$STORAGE_SCOPE" >/dev/null
+            echo "Storage Blob Data Contributor を付与しました"
+          fi
 
       - name: デプロイサマリを出力
         run: |
@@ -590,5 +497,5 @@ jobs:
           echo "- Basic 認証: $ACA_ADMIN_USERNAME / (GitHub Variables)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🔐 Managed Identity" >> $GITHUB_STEP_SUMMARY
-          echo "- Principal ID: \`$PRINCIPAL_ID\`" >> $GITHUB_STEP_SUMMARY
-          echo "- 付与ロール: Storage Blob Data Contributor (Bicep で付与)" >> $GITHUB_STEP_SUMMARY
+          echo "- Principal ID: \`${SYSTEM_IDENTITY_PRINCIPAL_ID:-取得失敗}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 付与ロール: Storage Blob Data Contributor (GitHub Actions で冪等付与)" >> $GITHUB_STEP_SUMMARY

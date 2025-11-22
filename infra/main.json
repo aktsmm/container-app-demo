@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.39.26.7824",
-      "templateHash": "13029658642148664979"
+      "templateHash": "2021529922155376423"
     }
   },
   "parameters": {
@@ -141,12 +141,6 @@
       "type": "string",
       "metadata": {
         "description": "Container Apps Environment 名"
-      }
-    },
-    "containerAppManagedIdentityName": {
-      "type": "string",
-      "metadata": {
-        "description": "Container Apps が利用するユーザー割り当てマネージド ID 名"
       }
     },
     "aksName": {
@@ -364,13 +358,6 @@
     ]
   },
   "resources": {
-    "containerAppUserAssignedIdentity": {
-      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
-      "apiVersion": "2023-01-31",
-      "name": "[parameters('containerAppManagedIdentityName')]",
-      "location": "[parameters('location')]",
-      "tags": "[variables('defaultTags')]"
-    },
     "ingressPublicIp": {
       "existing": true,
       "type": "Microsoft.Network/publicIPAddresses",
@@ -395,21 +382,6 @@
       },
       "dependsOn": [
         "vm"
-      ]
-    },
-    "containerAppIdentityStorageRole": {
-      "type": "Microsoft.Authorization/roleAssignments",
-      "apiVersion": "2022-04-01",
-      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('storageAccountName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), parameters('containerAppManagedIdentityName'), 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
-      "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
-        "principalId": "[reference('containerAppUserAssignedIdentity').principalId]",
-        "principalType": "ServicePrincipal"
-      },
-      "dependsOn": [
-        "containerAppUserAssignedIdentity",
-        "storage"
       ]
     },
     "storageDiagnostics": {
@@ -1734,14 +1706,6 @@
     "mysqlPrivateIp": {
       "type": "string",
       "value": "[reference('vm').outputs.privateIp.value]"
-    },
-    "containerAppUserAssignedIdentityId": {
-      "type": "string",
-      "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('containerAppManagedIdentityName'))]"
-    },
-    "containerAppUserAssignedIdentityPrincipalId": {
-      "type": "string",
-      "value": "[reference('containerAppUserAssignedIdentity').principalId]"
     }
   }
 }
