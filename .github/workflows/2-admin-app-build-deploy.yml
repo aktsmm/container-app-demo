@@ -184,7 +184,6 @@ jobs:
           fi
           echo "db_endpoint=${MYSQL_IP}:${MYSQL_PORT}" >> "$GITHUB_OUTPUT"
 
-
   code-security-scans:
     runs-on: ubuntu-latest
     permissions:

@@ -269,28 +269,27 @@ jobs:
           if [ ! -f trivy-fs-board.sarif ]; then
             MESSAGE="Trivy FS が失敗/結果なしでも SARIF を欠かさずアップロードするため空ファイルを生成しました (Board App)"
             echo "$MESSAGE"
-            cat <<'JSON' > trivy-fs-board.sarif
-            {
-              "version": "2.1.0",
-              "runs": [
-                {
-                  "tool": {
-                    "driver": {
-                      "name": "trivy",
-                      "informationUri": "https://github.com/aquasecurity/trivy"
-                    }
-                  },
-                  "results": []
-                }
-              ]
-            }
-            JSON
+            printf '%s\n' \
+              '{' \
+              '  "version": "2.1.0",' \
+              '  "runs": [' \
+              '    {' \
+              '      "tool": {' \
+              '        "driver": {' \
+              '          "name": "trivy",' \
+              '          "informationUri": "https://github.com/aquasecurity/trivy"' \
+              '        }' \
+              '      },' \
+              '      "results": []' \
+              '    }' \
+              '  ]' \
+              '}' > trivy-fs-board.sarif
             if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-              cat <<EOF >> "$GITHUB_STEP_SUMMARY"
-              ### Trivy FS フォールバック (Board App)
-              - $MESSAGE
-              - レポート: \`trivy-fs-board.sarif\`
-              EOF
+              {
+                echo "### Trivy FS フォールバック (Board App)"
+                echo "- $MESSAGE"
+                echo "- レポート: \`trivy-fs-board.sarif\`"
+              } >> "$GITHUB_STEP_SUMMARY"
             fi
           fi
 
