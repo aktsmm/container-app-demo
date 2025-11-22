@@ -209,9 +209,19 @@ jobs:
               if IP_JSON=$(az network public-ip show --resource-group "$RG" --name "$PIP_NAME" 2>/dev/null); then
                 INGRESS_IP=$(echo "$IP_JSON" | jq -r '.properties.ipAddress // empty')
                 INGRESS_FQDN=$(echo "$IP_JSON" | jq -r '.properties.dnsSettings.fqdn // empty')
+                PIP_SKU=$(echo "$IP_JSON" | jq -r '.sku.name // empty')
+                PIP_RG_FOUND="$RG"
                 break
               fi
             done
+            
+            # Public IP SKU を検証（AKS Standard Load Balancer には Standard SKU が必須）
+            if [ -n "$INGRESS_IP" ] && [ "$PIP_SKU" != "Standard" ]; then
+              echo "❌ Public IP '$PIP_NAME' (RG: $PIP_RG_FOUND) の SKU が '$PIP_SKU' です" >&2
+              echo "AKS Standard Load Balancer には Standard SKU の Public IP が必須です" >&2
+              echo "対処方法: Bicep で Public IP を sku: { name: 'Standard' } で作成してください" >&2
+              exit 1
+            fi
           fi
           if [ -z "$INGRESS_FQDN" ] || [ "$INGRESS_FQDN" = "null" ]; then
             INGRESS_FQDN=$(jq -r '.parameters.boardAppIngressHost.value // empty' "$PARAM_FILE")
