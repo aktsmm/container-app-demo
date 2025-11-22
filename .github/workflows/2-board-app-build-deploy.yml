@@ -229,6 +229,10 @@ jobs:
     needs: prepare-context
     # 実行条件: ビルドが必要な場合のみ（再デプロイ時はスキップ）
     if: ${{ needs.prepare-context.outputs.build_required == 'true' }}
+    outputs:
+      gitleaks_issues: ${{ steps.scan_summary.outputs.gitleaks_issues }}
+      trivy_fs_critical: ${{ steps.scan_summary.outputs.trivy_fs_critical }}
+      trivy_fs_high: ${{ steps.scan_summary.outputs.trivy_fs_high }}
     steps:
       - name: コードを取得
         uses: actions/checkout@v4
@@ -301,6 +305,28 @@ jobs:
           sarif_file: gitleaks-board.sarif
           category: board-app-gitleaks
 
+      - name: セキュリティスキャン結果を集計
+        id: scan_summary
+        if: always()
+        run: |
+          set +e
+          # Gitleaks結果
+          GITLEAKS_ISSUES=0
+          if [ -f gitleaks-board.sarif ]; then
+            GITLEAKS_ISSUES=$(jq '[.runs[].results // []] | add | length' gitleaks-board.sarif 2>/dev/null || echo "0")
+          fi
+          echo "gitleaks_issues=$GITLEAKS_ISSUES" >> "$GITHUB_OUTPUT"
+          
+          # Trivy FS結果
+          TRIVY_FS_CRITICAL=0
+          TRIVY_FS_HIGH=0
+          if [ -f trivy-fs-board.sarif ]; then
+            TRIVY_FS_CRITICAL=$(jq '[.runs[].results[] | select(.level == "error")] | length' trivy-fs-board.sarif 2>/dev/null || echo "0")
+            TRIVY_FS_HIGH=$(jq '[.runs[].results[] | select(.level == "warning")] | length' trivy-fs-board.sarif 2>/dev/null || echo "0")
+          fi
+          echo "trivy_fs_critical=$TRIVY_FS_CRITICAL" >> "$GITHUB_OUTPUT"
+          echo "trivy_fs_high=$TRIVY_FS_HIGH" >> "$GITHUB_OUTPUT"
+
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 【ビルドフェーズ】コンテナイメージビルド & ACR プッシュ
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -327,6 +353,10 @@ jobs:
       image_tag: ${{ steps.metadata.outputs.image_tag }}
       board_image_full: ${{ steps.metadata.outputs.board_image_full }}
       board_api_image_full: ${{ steps.metadata.outputs.board_api_image_full }}
+      board_image_critical: ${{ steps.image_scan_summary.outputs.board_image_critical }}
+      board_image_high: ${{ steps.image_scan_summary.outputs.board_image_high }}
+      api_image_critical: ${{ steps.image_scan_summary.outputs.api_image_critical }}
+      api_image_high: ${{ steps.image_scan_summary.outputs.api_image_high }}
     env:
       CHECKOUT_REF: ${{ needs.prepare-context.outputs.checkout_ref }}
       IMAGE_TAG: ${{ needs.prepare-context.outputs.image_tag }}
@@ -489,6 +519,31 @@ jobs:
           sarif_file: trivy-image-board-api.sarif
           category: board-api-trivy-image
 
+      - name: コンテナイメージスキャン結果を集計
+        id: image_scan_summary
+        if: ${{ env.BUILD_REQUIRED == 'true' && always() }}
+        run: |
+          set +e
+          # Trivy Image (Board) 結果
+          BOARD_IMAGE_CRITICAL=0
+          BOARD_IMAGE_HIGH=0
+          if [ -f trivy-image-board.sarif ]; then
+            BOARD_IMAGE_CRITICAL=$(jq '[.runs[].results[] | select(.level == "error")] | length' trivy-image-board.sarif 2>/dev/null || echo "0")
+            BOARD_IMAGE_HIGH=$(jq '[.runs[].results[] | select(.level == "warning")] | length' trivy-image-board.sarif 2>/dev/null || echo "0")
+          fi
+          echo "board_image_critical=$BOARD_IMAGE_CRITICAL" >> "$GITHUB_OUTPUT"
+          echo "board_image_high=$BOARD_IMAGE_HIGH" >> "$GITHUB_OUTPUT"
+          
+          # Trivy Image (Board API) 結果
+          API_IMAGE_CRITICAL=0
+          API_IMAGE_HIGH=0
+          if [ -f trivy-image-board-api.sarif ]; then
+            API_IMAGE_CRITICAL=$(jq '[.runs[].results[] | select(.level == "error")] | length' trivy-image-board-api.sarif 2>/dev/null || echo "0")
+            API_IMAGE_HIGH=$(jq '[.runs[].results[] | select(.level == "warning")] | length' trivy-image-board-api.sarif 2>/dev/null || echo "0")
+          fi
+          echo "api_image_critical=$API_IMAGE_CRITICAL" >> "$GITHUB_OUTPUT"
+          echo "api_image_high=$API_IMAGE_HIGH" >> "$GITHUB_OUTPUT"
+
       - name: 成果メタデータを保存
         if: ${{ env.BUILD_REQUIRED == 'true' }}
         uses: actions/upload-artifact@v4
@@ -514,6 +569,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - prepare-context
+      - code-security-scans
       - build-and-push
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 実行条件:
@@ -903,6 +959,51 @@ jobs:
           else
             echo "- ⚠️ LoadBalancer IP 取得待機中" >> $GITHUB_STEP_SUMMARY
           fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔒 セキュリティスキャン結果" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # code-security-scans job の結果
+          GITLEAKS="${{ needs.code-security-scans.outputs.gitleaks_issues || '0' }}"
+          FS_CRITICAL="${{ needs.code-security-scans.outputs.trivy_fs_critical || '0' }}"
+          FS_HIGH="${{ needs.code-security-scans.outputs.trivy_fs_high || '0' }}"
+          
+          # build-and-push job の結果
+          IMG_CRITICAL="${{ needs.build-and-push.outputs.board_image_critical || '0' }}"
+          IMG_HIGH="${{ needs.build-and-push.outputs.board_image_high || '0' }}"
+          API_CRITICAL="${{ needs.build-and-push.outputs.api_image_critical || '0' }}"
+          API_HIGH="${{ needs.build-and-push.outputs.api_image_high || '0' }}"
+          
+          # Gitleaks
+          if [ "$GITLEAKS" = "0" ]; then
+            echo "- ✅ **Gitleaks**: 秘密情報なし" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️ **Gitleaks**: $GITLEAKS 件の秘密情報検出" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Trivy FS
+          if [ "$FS_CRITICAL" = "0" ] && [ "$FS_HIGH" = "0" ]; then
+            echo "- ✅ **Trivy FS** (ソース): CRITICAL 0件、HIGH 0件" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️ **Trivy FS** (ソース): CRITICAL $FS_CRITICAL 件、HIGH $FS_HIGH 件" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Trivy Image (Board)
+          if [ "$IMG_CRITICAL" = "0" ] && [ "$IMG_HIGH" = "0" ]; then
+            echo "- ✅ **Trivy Image** (Board App): CRITICAL 0件、HIGH 0件" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️ **Trivy Image** (Board App): CRITICAL $IMG_CRITICAL 件、HIGH $IMG_HIGH 件" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Trivy Image (Board API)
+          if [ "$API_CRITICAL" = "0" ] && [ "$API_HIGH" = "0" ]; then
+            echo "- ✅ **Trivy Image** (Board API): CRITICAL 0件、HIGH 0件" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️ **Trivy Image** (Board API): CRITICAL $API_CRITICAL 件、HIGH $API_HIGH 件" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> 詳細は [Security タブ](https://github.com/${{ github.repository }}/security/code-scanning) を確認してください" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📦 Pod 状態" >> $GITHUB_STEP_SUMMARY
           echo "```" >> $GITHUB_STEP_SUMMARY
