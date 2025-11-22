@@ -569,6 +569,7 @@ jobs:
             CONTROLLER_TAG="v${INGRESS_APP_VERSION}"
           fi
           CONTROLLER_IMAGE="ingress-nginx/controller"
+          export CONTROLLER_IMAGE CONTROLLER_TAG
           az acr import --name "$ACR_NAME" --source "registry.k8s.io/${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --image "${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --force || \
             az acr import --name "$ACR_NAME" --source "mcr.microsoft.com/oss/kubernetes/${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --image "${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --force
 
