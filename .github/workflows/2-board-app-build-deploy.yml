@@ -595,14 +595,24 @@ jobs:
           rm -f "$OVERRIDE_FILE"
 
           kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=600s
-          for i in $(seq 1 60); do
+          
+          # LoadBalancer IP 取得（最大12分待機）
+          for i in $(seq 1 72); do
             LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
             if [ -n "$LB_IP" ]; then
               echo "ACTUAL_LB_IP=$LB_IP" >> "$GITHUB_ENV"
+              echo "✅ LoadBalancer IP を取得: $LB_IP"
               break
             fi
+            echo "[$i/72] LoadBalancer IP 割り当て待機中..."
             sleep 10
           done
+          
+          if [ -z "${LB_IP:-}" ]; then
+            echo "❌ LoadBalancer IP が割り当てられませんでした" >&2
+            kubectl get svc -n ingress-nginx ingress-nginx-controller
+            exit 1
+          fi
 
       - name: LoadBalancer 健康チェック
         run: |
@@ -614,15 +624,23 @@ jobs:
           fi
 
           echo "LoadBalancer ($LB_IP) のヘルスプローブを検証します"
-          HEALTH_CHECK_ATTEMPTS=30
+          HEALTH_CHECK_ATTEMPTS=36
+          HEALTH_CHECK_SUCCESS=false
           for i in $(seq 1 $HEALTH_CHECK_ATTEMPTS); do
             if kubectl exec -n ingress-nginx deployment/ingress-nginx-controller -- curl -s -o /dev/null -w "%{http_code}" http://localhost:10254/healthz | grep -q "200"; then
               echo "✅ [$i/$HEALTH_CHECK_ATTEMPTS] Ingress Controller ヘルスチェック成功"
+              HEALTH_CHECK_SUCCESS=true
               break
             fi
             echo "[$i/$HEALTH_CHECK_ATTEMPTS] ヘルスチェック待機中..."
             sleep 5
           done
+          
+          if [ "$HEALTH_CHECK_SUCCESS" != "true" ]; then
+            echo "⚠️ ヘルスチェックが成功しませんでしたが、続行します" >&2
+            kubectl get pods -n ingress-nginx
+            kubectl logs -n ingress-nginx deployment/ingress-nginx-controller --tail=50 || true
+          fi
 
           NODE_RG="${NODE_RESOURCE_GROUP}"
           if [ -n "$NODE_RG" ]; then
@@ -630,14 +648,22 @@ jobs:
             echo "現在のヘルスプローブ:" && echo "$PROBE_INFO" | jq '.'
           fi
 
-          CONNECTIVITY_ATTEMPTS=30
+          CONNECTIVITY_ATTEMPTS=36
+          CONNECTIVITY_SUCCESS=false
           for i in $(seq 1 $CONNECTIVITY_ATTEMPTS); do
             if timeout 5 bash -c "echo > /dev/tcp/$LB_IP/80" 2>/dev/null; then
               echo "✅ [$i/$CONNECTIVITY_ATTEMPTS] LoadBalancer ポート 80 への接続成功"
+              CONNECTIVITY_SUCCESS=true
               break
             fi
+            echo "[$i/$CONNECTIVITY_ATTEMPTS] LoadBalancer ポート 80 接続待機中..."
             sleep 10
           done
+          
+          if [ "$CONNECTIVITY_SUCCESS" != "true" ]; then
+            echo "⚠️ LoadBalancer ポート 80 への接続が確認できませんでしたが、続行します" >&2
+            az network lb probe list --resource-group "$NODE_RG" --lb-name kubernetes -o table || true
+          fi
 
       - name: ACR Pull 権限を再確認
         run: |
@@ -696,17 +722,23 @@ jobs:
             local deploy=$1
             local timeout=$2
             local mode=${3:-fail}
+            echo "📦 Deployment $deploy のロールアウトを監視（タイムアウト: ${timeout}秒）"
             if ! kubectl rollout status deployment/"$deploy" -n "$BOARD_NS" --timeout="${timeout}s"; then
-              kubectl get pods -n "$BOARD_NS" -l app="$deploy" || true
+              echo "❌ Deployment $deploy のロールアウトが失敗しました" >&2
+              kubectl get pods -n "$BOARD_NS" -l app="$deploy" -o wide || true
               kubectl describe deployment "$deploy" -n "$BOARD_NS" || true
+              echo "直近のログ:"
+              kubectl logs -n "$BOARD_NS" -l app="$deploy" --tail=50 --all-containers=true || true
               if [ "$mode" = "fail" ]; then
                 exit 1
+              else
+                echo "⚠️ 警告モードのため続行します"
               fi
             fi
           }
 
-          wait_rollout "board-app" 420 fail
-          wait_rollout "board-api" 420 warn
+          wait_rollout "board-app" 600 fail
+          wait_rollout "board-api" 600 warn
           kubectl get ingress -n "$BOARD_NS"
 
       - name: デプロイサマリを出力
