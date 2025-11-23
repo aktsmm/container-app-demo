@@ -20,4 +20,3 @@ docker build -t board-app:dev .
 - 投稿データは `board-api` (REST API) を介して MySQL VM に保存される。
 - Ingress 経由で NGINX から配信され、`/api/*` へのリクエストは `board-api` サービスへルーティングされる。
 - 将来的な API 拡張や認証機能の追加も容易に実装可能。
-```
