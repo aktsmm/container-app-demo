@@ -74,7 +74,7 @@ jobs:
 
           # Managed Identity で Azure にログイン
           echo "Managed Identity でログイン中..."
-          az login --identity --allow-no-subscriptions >/dev/null 2>&1
+          az login --identity --allow-no-subscriptions >/dev/null
 
           # バックアップコンテナの存在確認と作成
           echo "バックアップコンテナを確認中..."
@@ -82,7 +82,7 @@ jobs:
             --account-name "$STORAGE_ACCOUNT_NAME" \
             --name "$BACKUP_CONTAINER_NAME" \
             --auth-mode login \
-            --query exists -o tsv 2>/dev/null || echo "false")
+            --query exists -o tsv || echo "false")
           
           if [ "$EXISTS" != "true" ]; then
             echo "コンテナ $BACKUP_CONTAINER_NAME を作成中..."
@@ -90,7 +90,7 @@ jobs:
               --account-name "$STORAGE_ACCOUNT_NAME" \
               --name "$BACKUP_CONTAINER_NAME" \
               --auth-mode login \
-              --public-access off >/dev/null
+              --public-access off
             echo "コンテナ $BACKUP_CONTAINER_NAME を作成しました"
           else
             echo "コンテナ $BACKUP_CONTAINER_NAME は既に存在しています"
