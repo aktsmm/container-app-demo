@@ -35,12 +35,11 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-04-01' = {
     allowBlobPublicAccess: false
     minimumTlsVersion: 'TLS1_2'
     supportsHttpsTrafficOnly: true
-    // ネットワークルールを設定：デモ環境のため全アクセスを許可
-    // GitHub Actions ホステッドランナーは Azure Services に含まれないため、
-    // Deny + AzureServices バイパスではアクセスできない
-    // 本番環境では Private Endpoint または特定 IP の許可を検討すること
+    // ネットワークルールを設定：デフォルトで拒否し、Azure サービスからのアクセスは許可
+    // VM の Managed Identity は AzureServices バイパスで動作する
+    // コンテナ作成とバックアップアップロードの両方を VM 内で実行
     networkAcls: {
-      defaultAction: 'Allow'
+      defaultAction: 'Deny'
       bypass: 'AzureServices'
       virtualNetworkRules: []
       ipRules: []
