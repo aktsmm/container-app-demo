@@ -8,6 +8,8 @@
 - セキュリティスキャン (Trivy, Gitleaks, CodeQL) は可能な限り **SARIF** を生成して Security タブへアップロードします (公開リポジトリ、または GitHub Advanced Security 契約済みプライベートリポジトリが対象)。
 - ビルド系ワークフローは成果物 (SBOM, SARIF, image metadata) を `actions/upload-artifact` で保存し、後続のデプロイ/セキュリティワークフローが参照できるようにしています。
 
+## ワークフロー一覧（全 6 本）
+
 ## 1. `1️⃣ Infrastructure Deploy` (`.github/workflows/1-infra-deploy.yml`)
 
 - **トリガー**: `workflow_dispatch`, `push` (infra や自身の変更)
@@ -26,14 +28,15 @@
 - **主なステップ**:
   - Gitleaks / Trivy FS でソースと IaC をスキャン。
   - Trivy FS が失敗した場合でも空の `trivy-fs-board.sarif` を自動生成し、Step Summary へフォールバック理由を明記して Security タブのノイズを防止。
-  - `app/board-app` と `app/board-api` の Docker Build → `<short_sha>` + `latest` タグ付与 → Trivy Image Scan / SBOM 生成。
+  - `app/board-app` (React/Vite) と `app/board-api` (Node.js/Express) の Docker Build → `<short_sha>` + `latest` タグ付与 → Trivy Image Scan / SBOM 生成。
   - ACR プッシュ後に Step Summary へ SBOM/SARIF のダウンロードリンクを掲示。
   - `scripts/sync-board-vars.ps1` で Kustomize 変数 (`vars.env`) を Bicep パラメーターと同期（Namespace のみ）。
   - AKS へ `az aks get-credentials`、ingress-nginx を Helm でデプロイ/更新し、LoadBalancer IP を自動割り当て。
-  - ACR Pull と DB 接続 Secret を apply。
+  - ACR Pull と DB 接続 Secret (`board-db-conn`) を apply。
   - `kubectl kustomize app/board-app/k8s` → イメージ名差し替え → `kubectl apply`。`dummy-secret.txt` 公開ルートもこの段階で有効化。
   - Step Summary で LoadBalancer IP (`http://<LB_IP>`) や Pod/Ingress 状態を報告し、`dummy-secret` の URL を明示。
 - **成果物**: `sbom-board.cdx.json`, `sbom-board-api.cdx.json`, 各種 SARIF, Docker build log, K8s manifest snapshot。
+- **ポイント**: ビルドとデプロイを 1 つのワークフローに統合し、board-app と board-api を一括でデプロイします。
 
 ## 3. `2️⃣ Admin App Build & Deploy` (`.github/workflows/2-admin-app-build-deploy.yml`)
 
@@ -46,6 +49,7 @@
   - Managed Identity へ Contributor + Storage Blob Data Contributor を割り当て、バックアップ閲覧や Blob 操作を最小権限で実現。
   - Step Summary で FQDN、Revision、ProvisioningState、最近のログ (console tail) を提示。
 - **成果物**: `sbom-admin.cdx.json`, SARIF, `admin-app-image` アーカイブ。
+- **ポイント**: ビルドとデプロイを 1 つのワークフローに統合し、管理アプリを Container Apps へデプロイします。
 
 ## 4. `🔄 MySQL Backup Upload (Scheduled)` (`.github/workflows/backup-upload.yml`)
 

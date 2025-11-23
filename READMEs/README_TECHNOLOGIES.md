@@ -26,7 +26,7 @@
 
 | コンポーネント        | 役割                                                                                                          |
 | --------------------- | ------------------------------------------------------------------------------------------------------------- |
-| GitHub Actions (8 本) | `README_WORKFLOWS.md` 参照。Validate→Deploy、Build→Deploy、バックアップ、クリーンアップ、セキュリティスキャン |
+| GitHub Actions (6 本) | `README_WORKFLOWS.md` 参照。Validate→Deploy、Build→Deploy（統合）、バックアップ、クリーンアップ、セキュリティスキャン |
 | Trivy                 | コンテナ/ファイルシステム/IaC/Kubernetes の脆弱性・シークレット検知 (`0.28.0` アクション)                     |
 | Gitleaks              | ソース全体のシークレットリーク検出 (`8.18.4`)                                                                 |
 | CodeQL                | JavaScript + Python コードの SAST (`security-extended` クエリ)                                                |

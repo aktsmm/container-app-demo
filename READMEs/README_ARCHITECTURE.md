@@ -4,9 +4,9 @@
 
 ```
                            ┌────────────────────────────────────┐
-                           │  GitHub Actions (8 workflows)     │
+                           │  GitHub Actions (6 workflows)     │
                            │  - IaC (Bicep) Deploy             │
-                           │  - App Build / Deploy             │
+                           │  - Board/Admin App Build & Deploy │
                            │  - Backup / Security / Cleanup    │
                            └────────────────────────────────────┘
                                            │ Service Principal
