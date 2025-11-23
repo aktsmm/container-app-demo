@@ -628,6 +628,89 @@ jobs:
             --resource-group "$RESOURCE_GROUP_NAME" \
             --overwrite-existing
 
+      - name: AKS クラスターの状態を確認
+        run: |
+          set -euo pipefail
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔍 AKS クラスター状態確認"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          # AKS クラスター情報を取得
+          AKS_INFO=$(az aks show \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --name "$AKS_CLUSTER_NAME" \
+            --query '{
+              provisioningState: provisioningState,
+              powerState: powerState.code,
+              fqdn: fqdn,
+              privateFqdn: privateFqdn,
+              kubernetesVersion: kubernetesVersion
+            }' \
+            -o json)
+          
+          echo "AKS クラスター情報:"
+          echo "$AKS_INFO" | jq '.'
+          
+          POWER_STATE=$(echo "$AKS_INFO" | jq -r '.powerState // "Unknown"')
+          PROVISIONING_STATE=$(echo "$AKS_INFO" | jq -r '.provisioningState // "Unknown"')
+          FQDN=$(echo "$AKS_INFO" | jq -r '.fqdn // "Unknown"')
+          
+          echo ""
+          echo "プロビジョニング状態: $PROVISIONING_STATE"
+          echo "電源状態: $POWER_STATE"
+          echo "FQDN: $FQDN"
+          
+          # クラスターが停止している場合は開始
+          if [ "$POWER_STATE" = "Stopped" ]; then
+            echo ""
+            echo "⚠️ AKS クラスターが停止中です。起動を開始します..."
+            az aks start \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --name "$AKS_CLUSTER_NAME" \
+              --no-wait
+            
+            echo "⏳ クラスターの起動を待機しています（最大 10 分）..."
+            
+            # 起動完了を待機（最大 10 分）
+            MAX_WAIT_SECONDS=600
+            WAIT_INTERVAL=15
+            ELAPSED=0
+            CURRENT_POWER_STATE="Stopped"
+            
+            while [ $ELAPSED -lt $MAX_WAIT_SECONDS ]; do
+              CURRENT_POWER_STATE=$(az aks show \
+                --resource-group "$RESOURCE_GROUP_NAME" \
+                --name "$AKS_CLUSTER_NAME" \
+                --query 'powerState.code' -o tsv)
+              
+              if [ "$CURRENT_POWER_STATE" = "Running" ]; then
+                echo "✅ AKS クラスターが起動しました"
+                break
+              fi
+              
+              echo "  現在の状態: $CURRENT_POWER_STATE （経過: ${ELAPSED}秒/${MAX_WAIT_SECONDS}秒）"
+              sleep $WAIT_INTERVAL
+              ELAPSED=$((ELAPSED + WAIT_INTERVAL))
+            done
+            
+            if [ "$CURRENT_POWER_STATE" != "Running" ]; then
+              echo "❌ AKS クラスターの起動がタイムアウトしました" >&2
+              exit 1
+            fi
+            
+            # 起動後、DNS が伝播するまで追加で待機
+            echo "⏳ DNS 伝播を待機しています（30秒）..."
+            sleep 30
+          elif [ "$POWER_STATE" != "Running" ]; then
+            echo "❌ AKS クラスターが予期しない状態です: $POWER_STATE" >&2
+            exit 1
+          else
+            echo "✅ AKS クラスターは実行中です"
+          fi
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
       - name: AKS 接続を検証
         env:
           # DNS 解決リトライ設定（DNS 伝播遅延に対応するため）
@@ -676,17 +759,37 @@ jobs:
           if [ "$DNS_RESOLVED" != "true" ]; then
             echo "❌ DNS 解決に失敗しました" >&2
             echo ""
+            echo "考えられる原因:" >&2
+            echo "1. AKS クラスターが削除または再作成されている" >&2
+            echo "2. DNS の伝播に時間がかかっている（通常は起動後 1-2 分）" >&2
+            echo "3. ネットワーク構成に問題がある" >&2
+            echo ""
+            echo "=== Azure AKS クラスター詳細情報 ===" >&2
+            az aks show \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --name "$AKS_CLUSTER_NAME" \
+              --query '{
+                id: id,
+                provisioningState: provisioningState,
+                powerState: powerState.code,
+                fqdn: fqdn,
+                privateFqdn: privateFqdn,
+                kubernetesVersion: kubernetesVersion,
+                networkProfile: networkProfile.networkPlugin,
+                apiServerAccessProfile: apiServerAccessProfile
+              }' \
+              -o json >&2 || echo "AKS クラスター情報の取得に失敗しました" >&2
+            echo ""
             echo "=== /etc/resolv.conf の内容 ===" >&2
             cat /etc/resolv.conf >&2
             echo ""
-            echo "=== ネットワーク設定 ===" >&2
-            ip addr show >&2 || true
-            echo ""
-            echo "=== デフォルトゲートウェイ ===" >&2
-            ip route show >&2 || true
-            echo ""
-            echo "=== Google DNS テスト ===" >&2
+            echo "=== Google DNS テスト（DNS サーバー自体の動作確認）===" >&2
             nslookup google.com >&2 || true
+            echo ""
+            echo "推奨対応:" >&2
+            echo "- AKS クラスターが起動するまで 1-2 分待ってから再試行してください" >&2
+            echo "- Azure Portal で AKS クラスターの状態を確認してください" >&2
+            echo "- 必要に応じて Infrastructure Deploy ワークフローを再実行してください" >&2
             exit 1
           fi
           
