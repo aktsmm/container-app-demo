@@ -43,12 +43,12 @@ NODE_RESOURCE_GROUP: mc-RG-BBS-Appzz
 
 AKS が自動生成するノードリソースグループ名の命名規則は：
 ```
-MC_{resource-group}_{aks-cluster-name}_{location}
+MC_{resource-group-name}_{cluster-name}_{region}
 ```
 
 しかし、実際の値は：
 - 期待値: `MC_RG-BBS-Appzz_aks-demo-dev_japaneast`
-- 実際値: `mc-RG-BBS-Appzz`（location とクラスター名が欠落）
+- 実際値: `mc-RG-BBS-Appzz`（region とクラスター名が欠落）
 
 #### 可能性 2: AKS クラスター設定の問題
 - クラスターが Private クラスターとして構成されている可能性
