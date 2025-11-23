@@ -206,6 +206,6 @@ StorageBlobLogs
 
 ## 備考
 
-- VM からの `azcopy` によるバックアップアップロードは System Assigned Managed Identity を使用しているため、`defaultAction: 'Deny'` でも動作する
-- ただし、GitHub Actions からのコンテナ存在確認・作成は外部からのアクセスとなるためブロックされる
-- 今回の修正により、両方のアクセスパターンが正常に動作する
+- VM からの `azcopy` によるバックアップアップロード（VM ベースのバックアップ）は System Assigned Managed Identity を使用しているため、`defaultAction: 'Deny'` でも動作する
+- ただし、GitHub Actions からのコンテナ存在確認・作成（GitHub Actions コンテナ操作）は外部からのアクセスとなるためブロックされる
+- 今回の修正により、両方のアクセスパターン（VM ベースのバックアップと GitHub Actions コンテナ操作）が正常に動作する
