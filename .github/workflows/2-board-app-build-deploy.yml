@@ -629,6 +629,13 @@ jobs:
             --overwrite-existing
 
       - name: AKS 接続を検証
+        env:
+          # DNS 解決リトライ設定
+          MAX_DNS_RETRIES: 5
+          DNS_RETRY_INTERVAL: 10
+          # クラスター接続リトライ設定
+          MAX_CLUSTER_RETRIES: 3
+          CLUSTER_RETRY_INTERVAL: 5
         run: |
           set -euo pipefail
           
@@ -651,8 +658,6 @@ jobs:
           echo "Hostname: $API_HOST"
           
           # DNS 解決を複数回リトライ（DNS 伝播待ち）
-          MAX_DNS_RETRIES=5
-          DNS_RETRY_INTERVAL=10
           DNS_RESOLVED=false
           
           for i in $(seq 1 $MAX_DNS_RETRIES); do
@@ -688,8 +693,6 @@ jobs:
           echo ""
           echo "=== 4. クラスター接続テスト ==="
           # クラスター接続も複数回リトライ
-          MAX_CLUSTER_RETRIES=3
-          CLUSTER_RETRY_INTERVAL=5
           CLUSTER_CONNECTED=false
           
           for i in $(seq 1 $MAX_CLUSTER_RETRIES); do
@@ -712,7 +715,17 @@ jobs:
             kubectl version --client >&2 || true
             echo ""
             echo "=== Azure AKS 診断情報 ===" >&2
-            az aks show --resource-group "$RESOURCE_GROUP_NAME" --name "$AKS_CLUSTER_NAME" --query '{provisioningState:provisioningState,powerState:powerState.code,fqdn:fqdn,privateFqdn:privateFqdn,apiServerAccessProfile:apiServerAccessProfile}' -o json >&2 || true
+            az aks show \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --name "$AKS_CLUSTER_NAME" \
+              --query '{
+                provisioningState: provisioningState,
+                powerState: powerState.code,
+                fqdn: fqdn,
+                privateFqdn: privateFqdn,
+                apiServerAccessProfile: apiServerAccessProfile
+              }' \
+              -o json >&2 || true
             exit 1
           fi
           
