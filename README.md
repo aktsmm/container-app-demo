@@ -2,7 +2,7 @@
 
 ## 1. プロジェクトの目的
 
-このプロジェクトは、Azure 上に「掲示板アプリ (AKS)」「管理アプリ (Azure Container Apps)」「MySQL VM」「ACR」「Storage (バックアップ)」「Log Analytics」を **フル IaC (Bicep)** と **疎結合な GitHub Actions (8 本)** で再現するデモ環境を構築することで、**モダンな DevOps・DevSecOps の実践価値を体験**していただくことを目的としています。
+このプロジェクトは、Azure 上に「掲示板アプリ (AKS)」「管理アプリ (Azure Container Apps)」「MySQL VM」「ACR」「Storage (バックアップ)」「Log Analytics」を **フル IaC (Bicep)** と **GitHub Actions (6 本のワークフロー)** で再現するデモ環境を構築することで、**モダンな DevOps・DevSecOps の実践価値を体験**していただくことを目的としています。
 
 ### 体験できる価値
 
@@ -51,7 +51,7 @@ trouble_docs/       # トラブルシューティング履歴
 ### 読み始める順番のガイド (READMEs/)
 
 - [`READMEs/README_QUICKSTART.md`](READMEs/README_QUICKSTART.md) – 必要ツール、Service Principal 発行、Secrets 登録、IaC/アプリ展開手順
-- [`READMEs/README_WORKFLOWS.md`](READMEs/README_WORKFLOWS.md) – 8 本の GitHub Actions 詳細 (トリガー、依存関係、主処理)
+- [`READMEs/README_WORKFLOWS.md`](READMEs/README_WORKFLOWS.md) – 6 本の GitHub Actions 詳細 (トリガー、依存関係、主処理)
 - [`READMEs/README_INFRASTRUCTURE.md`](READMEs/README_INFRASTRUCTURE.md) – Bicep モジュール、Azure リソース、VNet/ログ/診断、Kubernetes YAML の構造説明
 - [`READMEs/README_PERMISSIONS.md`](READMEs/README_PERMISSIONS.md) – Service Principal・Managed Identity・ロール割り当て方針
 - [`READMEs/README_SECRETS_VARIABLES.md`](READMEs/README_SECRETS_VARIABLES.md) – GitHub Secrets/Variables 一覧と dummy-secret 注意事項
