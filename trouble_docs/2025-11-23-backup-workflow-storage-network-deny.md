@@ -55,32 +55,96 @@ please use 'az storage account update'.
 
 ## 対応
 
-### 1. Bicep コードの修正
+### 改善版実装（推奨）
 
-`infra/modules/storageAccount.bicep` の `networkAcls` を以下のように変更：
+コンテナ作成を VM に移行することで、ストレージアカウントを `defaultAction: 'Deny'` のまま維持できます。
 
-**修正前:**
+#### 1. ワークフロー修正
+
+`.github/workflows/backup-upload.yml` から GitHub Actions のコンテナ作成ステップを削除し、VM 内スクリプトに移行：
+
+```yaml
+- name: VM 上でバックアップを実行しアップロード (Managed Identity)
+  run: |
+    # VM 内スクリプトでコンテナ作成も実行
+    cat <<'SCRIPT' > "$SCRIPT_PATH"
+    #!/bin/bash
+    set -euo pipefail
+    
+    # Managed Identity で Azure にログイン
+    az login --identity --allow-no-subscriptions
+    
+    # バックアップコンテナの存在確認と作成
+    EXISTS=$(az storage container exists \
+      --account-name "$STORAGE_ACCOUNT_NAME" \
+      --name "$BACKUP_CONTAINER_NAME" \
+      --auth-mode login \
+      --query exists -o tsv 2>/dev/null || echo "false")
+    
+    if [ "$EXISTS" != "true" ]; then
+      az storage container create \
+        --account-name "$STORAGE_ACCOUNT_NAME" \
+        --name "$BACKUP_CONTAINER_NAME" \
+        --auth-mode login \
+        --public-access off
+    fi
+    
+    # mysqldump + azcopy upload（既存の処理）
+    # ...
+    SCRIPT
+```
+
+#### 2. Bicep コード修正
+
+`infra/modules/storageAccount.bicep` を **`defaultAction: 'Deny'` に戻す**：
+
 ```bicep
+// ネットワークルールを設定：デフォルトで拒否し、Azure サービスからのアクセスは許可
+// VM の Managed Identity は AzureServices バイパスで動作する
+// コンテナ作成とバックアップアップロードの両方を VM 内で実行
 networkAcls: {
-  defaultAction: 'Deny'
+  defaultAction: 'Deny'  // セキュリティ向上
   bypass: 'AzureServices'
   virtualNetworkRules: []
   ipRules: []
 }
 ```
 
-**修正後:**
+### シンプル版実装（デモ環境のみ）
+
+セキュリティよりシンプルさを優先する場合は、`defaultAction: 'Allow'` に変更：
 ```bicep
-// ネットワークルールを設定：デモ環境のため全アクセスを許可
-// GitHub Actions ホステッドランナーは Azure Services に含まれないため、
-// Deny + AzureServices バイパスではアクセスできない
-// 本番環境では Private Endpoint または特定 IP の許可を検討すること
+// シンプル版（デモ環境のみ推奨）
 networkAcls: {
-  defaultAction: 'Allow'
+  defaultAction: 'Allow'  // 全アクセスを許可
   bypass: 'AzureServices'
-  virtualNetworkRules: []
-  ipRules: []
 }
+```
+
+## アーキテクチャ比較
+
+### 改善版（推奨）
+
+```
+GitHub Actions (Service Principal)
+  ↓ (VM コマンド実行のみ)
+Azure VM (Managed Identity)
+  ↓ (az login --identity + az storage container + azcopy)
+Storage Account (defaultAction: 'Deny', bypass: 'AzureServices')
+  ✅ セキュアなアクセス制御
+```
+
+### シンプル版（デモ環境のみ）
+
+```
+GitHub Actions (Service Principal)
+  ↓ (az storage container create)
+Storage Account (defaultAction: 'Allow')
+  ⚠️ 認証必要だが、全アクセス許可
+  
+Azure VM (Managed Identity)
+  ↓ (azcopy)
+Storage Account
 ```
 
 ### 2. デプロイと検証
@@ -96,7 +160,12 @@ az storage account show \
   --query "networkRuleSet.{defaultAction:defaultAction,bypass:bypass}" \
   -o table
 
-# 期待される出力:
+# 期待される出力（改善版）:
+# DefaultAction    Bypass
+# ---------------  ---------------
+# Deny             AzureServices
+
+# または（シンプル版）:
 # DefaultAction    Bypass
 # ---------------  ---------------
 # Allow            AzureServices
@@ -107,7 +176,20 @@ az storage account show \
 
 ## セキュリティ考慮事項
 
-### この設定のセキュリティレベル
+### 改善版実装のセキュリティレベル
+
+✅ **良い点**:
+- デフォルトでアクセス拒否（`defaultAction: 'Deny'`）
+- VM の Managed Identity のみ許可（`bypass: 'AzureServices'`）
+- パブリックアクセスは引き続き無効（`allowBlobPublicAccess: false`）
+- TLS 1.2 必須（`minimumTlsVersion: 'TLS1_2'`）
+- 本番環境でも使用可能なセキュリティレベル
+
+⚠️ **注意点**:
+- VM に Azure CLI がインストールされている必要がある
+- VM の Managed Identity に Storage Blob Data Contributor ロールが必要
+
+### シンプル版実装のセキュリティレベル
 
 ✅ **良い点**:
 - パブリックアクセスは引き続き無効（`allowBlobPublicAccess: false`）
