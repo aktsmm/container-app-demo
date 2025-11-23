@@ -165,6 +165,18 @@ jobs:
             echo "AKS ノードリソースグループを解決できません" >&2
             exit 1
           fi
+          
+          # デバッグ出力: ノードリソースグループ名を確認
+          echo "✅ 取得したノードリソースグループ: $NODE_RG"
+          
+          # ノードリソースグループの存在確認
+          if ! az group show --name "$NODE_RG" &>/dev/null; then
+            echo "⚠️ ノードリソースグループ '$NODE_RG' が存在しません" >&2
+            echo "利用可能なリソースグループ一覧:" >&2
+            az group list --query '[].name' -o tsv >&2
+            exit 1
+          fi
+          
           echo "node_resource_group=$NODE_RG" >> "$GITHUB_OUTPUT"
           if [ -n "$AKS_LOCATION" ]; then
             echo "aks_location=$AKS_LOCATION" >> "$GITHUB_OUTPUT"
@@ -615,6 +627,60 @@ jobs:
             --name "$AKS_CLUSTER_NAME" \
             --resource-group "$RESOURCE_GROUP_NAME" \
             --overwrite-existing
+
+      - name: AKS 接続を検証
+        run: |
+          set -euo pipefail
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔍 AKS 接続検証"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          echo ""
+          echo "=== 1. kubeconfig の確認 ==="
+          kubectl config view --minify
+          
+          echo ""
+          echo "=== 2. API サーバーエンドポイントの確認 ==="
+          API_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+          echo "API Server: $API_SERVER"
+          
+          echo ""
+          echo "=== 3. DNS 解決テスト ==="
+          API_HOST=$(echo "$API_SERVER" | sed 's|https://||' | sed 's|:.*||')
+          echo "Hostname: $API_HOST"
+          
+          if ! nslookup "$API_HOST"; then
+            echo "❌ DNS 解決に失敗しました" >&2
+            echo ""
+            echo "=== /etc/resolv.conf の内容 ===" >&2
+            cat /etc/resolv.conf >&2
+            echo ""
+            echo "=== ネットワーク設定 ===" >&2
+            ip addr show >&2 || true
+            echo ""
+            echo "=== デフォルトゲートウェイ ===" >&2
+            ip route show >&2 || true
+            exit 1
+          fi
+          
+          echo ""
+          echo "=== 4. クラスター接続テスト ==="
+          if ! kubectl cluster-info; then
+            echo "❌ クラスターへの接続に失敗しました" >&2
+            echo ""
+            echo "=== kubectl バージョン ===" >&2
+            kubectl version --client >&2 || true
+            exit 1
+          fi
+          
+          echo ""
+          echo "=== 5. ノード一覧の取得 ==="
+          kubectl get nodes -o wide
+          
+          echo ""
+          echo "✅ AKS 接続検証完了"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
       - name: NSG に Load Balancer 通信用ルールを適用
         run: |
