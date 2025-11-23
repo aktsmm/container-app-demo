@@ -676,6 +676,7 @@ jobs:
             MAX_WAIT_SECONDS=600
             WAIT_INTERVAL=15
             ELAPSED=0
+            CURRENT_POWER_STATE="Stopped"
             
             while [ $ELAPSED -lt $MAX_WAIT_SECONDS ]; do
               CURRENT_POWER_STATE=$(az aks show \
