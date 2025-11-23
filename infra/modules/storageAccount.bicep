@@ -36,7 +36,8 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-04-01' = {
     minimumTlsVersion: 'TLS1_2'
     supportsHttpsTrafficOnly: true
     // ネットワークルールを設定：デフォルトで拒否し、Azure サービスからのアクセスは許可
-    // これにより GitHub Actions（Azure 認証経由）からのアクセスが可能になる
+    // VM の Managed Identity は AzureServices バイパスで動作する
+    // コンテナ作成とバックアップアップロードの両方を VM 内で実行
     networkAcls: {
       defaultAction: 'Deny'
       bypass: 'AzureServices'

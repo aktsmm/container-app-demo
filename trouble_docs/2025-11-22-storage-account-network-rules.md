@@ -1,5 +1,7 @@
 # ストレージアカウントのネットワークルール設定によるバックアップ失敗
 
+> **⚠️ 重要な訂正（2025-11-23）**: このドキュメントに記載されていた対応策（`bypass: 'AzureServices'` で GitHub Actions のアクセスを許可）は**誤り**でした。詳細は [2025-11-23-backup-workflow-storage-network-deny.md](./2025-11-23-backup-workflow-storage-network-deny.md) を参照してください。
+
 ## 発生日時
 
 - 2025-11-22 17:08 JST 頃 (GitHub Actions `backup-upload.yml` の定期実行)
@@ -68,10 +70,14 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-04-01' = {
 
 ### 2. 設定の説明
 
+> **⚠️ 誤り（2025-11-23 訂正）**: 以下の説明は間違っていました。`bypass: 'AzureServices'` は GitHub Actions からのアクセスを許可しません。
+
 - `defaultAction: 'Deny'`: デフォルトで全アクセスを拒否（セキュリティ維持）
-- `bypass: 'AzureServices'`: Azure サービス（Azure ログイン経由の GitHub Actions、VM の Managed Identity など）からのアクセスを許可
+- `bypass: 'AzureServices'`: ~~Azure サービス（Azure ログイン経由の GitHub Actions、VM の Managed Identity など）からのアクセスを許可~~ **→ GitHub Actions は含まれない**
 - `virtualNetworkRules: []`: VNet 統合は今回使用しない
 - `ipRules: []`: 特定 IP からのアクセス許可は今回使用しない
+
+**正しい対応**: `defaultAction: 'Allow'` に変更する必要があります。詳細は [2025-11-23-backup-workflow-storage-network-deny.md](./2025-11-23-backup-workflow-storage-network-deny.md) を参照。
 
 ### 3. デプロイ手順
 

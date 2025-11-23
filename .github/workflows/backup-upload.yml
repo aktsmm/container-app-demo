@@ -42,29 +42,6 @@ jobs:
           fi
           echo "STORAGE_ACCOUNT_NAME=$STORAGE_ACCOUNT_NAME" >> "$GITHUB_ENV"
 
-      - name: バックアップコンテナを確保
-        run: |
-          set -euo pipefail
-          if [ -z "$BACKUP_CONTAINER_NAME" ]; then
-            echo "バックアップコンテナ名が未設定です" >&2
-            exit 1
-          fi
-          EXISTS=$(az storage container exists \
-            --account-name "$STORAGE_ACCOUNT_NAME" \
-            --name "$BACKUP_CONTAINER_NAME" \
-            --auth-mode login \
-            --query exists -o tsv || echo "false")
-          if [ "$EXISTS" != "true" ]; then
-            az storage container create \
-              --account-name "$STORAGE_ACCOUNT_NAME" \
-              --name "$BACKUP_CONTAINER_NAME" \
-              --auth-mode login \
-              --public-access off >/dev/null
-            echo "コンテナ $BACKUP_CONTAINER_NAME を新規作成しました"
-          else
-            echo "コンテナ $BACKUP_CONTAINER_NAME は既に存在しています"
-          fi
-
       - name: VM 上でバックアップを実行しアップロード (Managed Identity)
         env:
           MYSQL_ROOT_PASSWORD: ${{ vars.MYSQL_ROOT_PASSWORD }}
@@ -89,20 +66,56 @@ jobs:
           mkdir -p "$BACKUP_DIR"
           BACKUP_FILE="$BACKUP_DIR/backup-$TIMESTAMP.sql"
 
+          # Azure CLI がインストールされているか確認
+          if ! command -v az >/dev/null 2>&1; then
+            echo "Azure CLI がインストールされていません" >&2
+            exit 1
+          fi
+
+          # Managed Identity で Azure にログイン
+          echo "Managed Identity でログイン中..."
+          az login --identity --allow-no-subscriptions >/dev/null
+
+          # バックアップコンテナの存在確認と作成
+          echo "バックアップコンテナを確認中..."
+          EXISTS=$(az storage container exists \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --name "$BACKUP_CONTAINER_NAME" \
+            --auth-mode login \
+            --query exists -o tsv || echo "false")
+          
+          if [ "$EXISTS" != "true" ]; then
+            echo "コンテナ $BACKUP_CONTAINER_NAME を作成中..."
+            az storage container create \
+              --account-name "$STORAGE_ACCOUNT_NAME" \
+              --name "$BACKUP_CONTAINER_NAME" \
+              --auth-mode login \
+              --public-access off
+            echo "コンテナ $BACKUP_CONTAINER_NAME を作成しました"
+          else
+            echo "コンテナ $BACKUP_CONTAINER_NAME は既に存在しています"
+          fi
+
+          # MySQL バックアップ実行
+          echo "MySQL バックアップを実行中..."
           mysqldump --all-databases --single-transaction --quick --lock-tables=false -u root -p"$MYSQL_ROOT_PASSWORD" > "$BACKUP_FILE"
 
+          # azcopy のインストール確認
           if ! command -v azcopy >/dev/null 2>&1; then
+            echo "azcopy をインストール中..."
             TMPDIR=$(mktemp -d)
             curl -sSL https://aka.ms/downloadazcopy-v10-linux | tar -xz -C "$TMPDIR"
             AZCOPY_PATH=$(find "$TMPDIR" -name azcopy -type f | head -n 1)
             sudo install -m 755 "$AZCOPY_PATH" /usr/local/bin/azcopy
           fi
 
-          # Managed Identity で認証（VM の System Assigned Identity を使用）
+          # Managed Identity で認証してアップロード
+          echo "バックアップファイルをアップロード中..."
           export AZCOPY_AUTO_LOGIN_TYPE=MSI
           DEST_URL="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${BACKUP_CONTAINER_NAME}/backup-${TIMESTAMP}.sql"
           azcopy copy "$BACKUP_FILE" "$DEST_URL" --from-to=LocalBlob --overwrite ifSourceNewer --log-level INFO
           if [ $? -eq 0 ]; then
+            echo "バックアップ完了: backup-${TIMESTAMP}.sql"
             logger "mysql-backup-upload success $TIMESTAMP (Managed Identity)"
           else
             logger "mysql-backup-upload failed $TIMESTAMP"
