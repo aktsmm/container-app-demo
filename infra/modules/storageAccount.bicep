@@ -35,10 +35,12 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-04-01' = {
     allowBlobPublicAccess: false
     minimumTlsVersion: 'TLS1_2'
     supportsHttpsTrafficOnly: true
-    // ネットワークルールを設定：デフォルトで拒否し、Azure サービスからのアクセスは許可
-    // これにより GitHub Actions（Azure 認証経由）からのアクセスが可能になる
+    // ネットワークルールを設定：デモ環境のため全アクセスを許可
+    // GitHub Actions ホステッドランナーは Azure Services に含まれないため、
+    // Deny + AzureServices バイパスではアクセスできない
+    // 本番環境では Private Endpoint または特定 IP の許可を検討すること
     networkAcls: {
-      defaultAction: 'Deny'
+      defaultAction: 'Allow'
       bypass: 'AzureServices'
       virtualNetworkRules: []
       ipRules: []
