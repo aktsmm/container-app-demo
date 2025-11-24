@@ -531,8 +531,14 @@ jobs:
       - name: SARIF ファイルを統合ディレクトリに集約
         run: |
           mkdir -p sarif
+          echo "=== ダウンロードされた Artifact 構造 ==="
+          ls -laR all-sarif/ || echo "⚠️ all-sarif ディレクトリが見つかりません"
+          echo ""
+          echo "=== GitGuardian 関連ファイルの確認 ==="
+          find all-sarif -type f -name "*gitguardian*" -o -name "*guardian*" || echo "⚠️ GitGuardian ファイルが見つかりません"
+          echo ""
           find all-sarif -type f -name "*.sarif" -exec cp {} sarif/ \;
-          echo "=== 収集された SARIF ファイル一覧 ==="
+          echo "=== 統合ディレクトリの SARIF ファイル一覧 ==="
           ls -la sarif/ || echo "⚠️ SARIF ファイルが見つかりません"
 
       - name: カテゴリ別上位検出抽出 (各カテゴリ上位5件)
@@ -564,7 +570,11 @@ jobs:
             # ファイルリスト取得（統合ディレクトリから）
             FILES=$(find sarif -type f -name "*${PATTERN}*.sarif" 2>/dev/null || true)
             
+            echo "[DEBUG] パターン: $PATTERN" >&2
+            echo "[DEBUG] 検索結果: $FILES" >&2
+            
             if [ -z "$FILES" ]; then
+              echo "[DEBUG] $PATTERN: ファイルが見つかりませんでした" >&2
               continue
             fi
             
