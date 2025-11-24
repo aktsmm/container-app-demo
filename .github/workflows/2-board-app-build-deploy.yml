@@ -46,6 +46,133 @@ env:
 
 jobs:
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 【セキュリティスキャン】GitGuardian シークレット検証
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 目的: ビルド前にコミットされたシークレットを検証（400+ パターン）
+  # 依存: GitGuardian API Key (Variables)
+  # 出力: SARIF 形式で GitHub Security タブへアップロード
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  gitguardian-scan:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: GitGuardian API Key の確認
+        run: |
+          if [ -z "${{ vars.GITGUARDIAN_API_KEY }}" ]; then
+            echo "❌ GitGuardian API Key が設定されていません"
+            echo "以下の手順で設定してください:"
+            echo "1. https://dashboard.gitguardian.com/api/personal-access-tokens でトークンを生成"
+            echo "2. Settings → Variables → New repository variable"
+            echo "3. Name: GITGUARDIAN_API_KEY, Value: <生成したトークン>"
+            exit 1
+          fi
+          echo "✅ GitGuardian API Key が設定されています"
+
+      - name: Python セットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: GitGuardian スキャン
+        env:
+          GITGUARDIAN_API_KEY: ${{ vars.GITGUARDIAN_API_KEY }}
+        run: |
+          pip install --quiet ggshield
+          ggshield secret scan repo . --json --output gitguardian-results.json || true
+
+      - name: GitGuardian 結果を SARIF 変換
+        run: |
+          cat > convert-gg-to-sarif.py << 'PYTHON_SCRIPT'
+          import json
+          import sys
+          from pathlib import Path
+
+          gg_file = Path("gitguardian-results.json")
+          if not gg_file.exists():
+              print("GitGuardian 結果ファイルが見つかりません", file=sys.stderr)
+              sys.exit(1)
+
+          with open(gg_file) as f:
+              gg_data = json.load(f)
+
+          sarif = {
+              "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+              "version": "2.1.0",
+              "runs": [{
+                  "tool": {
+                      "driver": {
+                          "name": "GitGuardian",
+                          "informationUri": "https://www.gitguardian.com/",
+                          "version": "1.0.0",
+                          "rules": []
+                      }
+                  },
+                  "results": []
+              }]
+          }
+
+          rules_map = {}
+          results = []
+
+          for secret in gg_data.get("secrets", []):
+              for policy_break in secret.get("policy_breaks", []):
+                  detector_type = policy_break.get("type", "unknown")
+                  rule_id = f"gitguardian/{detector_type}"
+                  
+                  if rule_id not in rules_map:
+                      rules_map[rule_id] = {
+                          "id": rule_id,
+                          "name": detector_type,
+                          "shortDescription": {"text": f"GitGuardian detected {detector_type}"},
+                          "helpUri": "https://docs.gitguardian.com/secrets-detection/detectors"
+                      }
+                  
+                  for match in policy_break.get("matches", []):
+                      result = {
+                          "ruleId": rule_id,
+                          "level": "error",
+                          "message": {"text": f"Detected {detector_type} in repository"},
+                          "locations": [{
+                              "physicalLocation": {
+                                  "artifactLocation": {
+                                      "uri": match.get("match", "unknown")
+                                  },
+                                  "region": {
+                                      "startLine": match.get("line_start", 1),
+                                      "startColumn": 1
+                                  }
+                              }
+                          }],
+                          "properties": {
+                              "severity": "HIGH"
+                          }
+                      }
+                      results.append(result)
+
+          sarif["runs"][0]["tool"]["driver"]["rules"] = list(rules_map.values())
+          sarif["runs"][0]["results"] = results
+
+          with open("gitguardian-repo.sarif", "w") as f:
+              json.dump(sarif, f, indent=2)
+
+          print(f"✅ GitGuardian 結果を SARIF に変換: {len(results)} 件の検出")
+          PYTHON_SCRIPT
+
+          python convert-gg-to-sarif.py
+
+      - name: GitGuardian SARIF を GitHub Security にアップロード
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: gitguardian-repo.sarif
+          category: gitguardian
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 【準備フェーズ】デプロイコンテキスト収集
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 目的: デプロイに必要な全コンテキスト情報を Azure から動的に収集・検証
