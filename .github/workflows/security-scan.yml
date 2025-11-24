@@ -133,6 +133,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       gitguardian_issues: ${{ steps.count_issues.outputs.issues }}
+      has_key: ${{ steps.check-api-key.outputs.has_key }}
+      scan_error: ${{ steps.gg_scan.outputs.scan_error }}
     steps:
       - name: コード取得
         uses: actions/checkout@v4
@@ -166,7 +168,7 @@ jobs:
           # JSON 形式でスキャン実行とエラー捕捉
           SCAN_OUTPUT=$(ggshield secret scan repo . --json --output gitguardian-results.json 2>&1)
           SCAN_EXIT_CODE=$?
-          
+
           # エラーメッセージをチェック
           if echo "$SCAN_OUTPUT" | grep -q "Token is missing the required scope"; then
             echo "::error::❌ GitGuardian API Key に 'scan' スコープが不足しています"
@@ -208,7 +210,7 @@ jobs:
             echo "⚠️ スキャン結果なし"
             echo '{"secrets":[]}' > gitguardian-results.json
           fi
-          
+
           exit 0
         env:
           GITGUARDIAN_API_KEY: ${{ vars.GITGUARDIAN_API_KEY }}
@@ -321,58 +323,18 @@ jobs:
           echo "issues=$ISSUES" >> "$GITHUB_OUTPUT"
           echo "GitGuardian: $ISSUES 件のシークレット検出"
           
-          # スキャンエラーがあればサマリに表示
+          # エラー状態をログに出力（サマリには書き込まない）
           SCAN_ERROR="${{ steps.gg_scan.outputs.scan_error || 'none' }}"
           HAS_KEY="${{ steps.check-api-key.outputs.has_key }}"
           
-          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-            if [ "$HAS_KEY" != "true" ]; then
-              {
-                echo "## ⚠️ GitGuardian スキャン: API Key 未設定"
-                echo ""
-                echo "GitGuardian API Key が設定されていないため、スキャンをスキップしました。"
-                echo ""
-                echo "### 📋 設定手順"
-                echo "1. [GitGuardian Dashboard](https://dashboard.gitguardian.com/api/personal-access-tokens) でトークンを生成"
-                echo "2. 必要なスコープ: **scan** (必須), incident:read, incident:write"
-                echo "3. GitHub リポジトリの Settings → Secrets and variables → Variables"
-                echo "4. Name: \`GITGUARDIAN_API_KEY\`, Value: 生成したトークン"
-              } >> "$GITHUB_STEP_SUMMARY"
-            elif [ "$SCAN_ERROR" = "scope_missing" ]; then
-              {
-                echo "## ❌ GitGuardian スキャン: 'scan' スコープ不足"
-                echo ""
-                echo "API Key に必須の **scan** スコープが不足しています。"
-                echo ""
-                echo "### 📋 解決手順"
-                echo "1. [GitGuardian Dashboard](https://dashboard.gitguardian.com/api/personal-access-tokens) にアクセス"
-                echo "2. 新しいトークンを作成し、以下のスコープを選択:"
-                echo "   - ✅ **scan** (必須)"
-                echo "   - ✅ incident:read"
-                echo "   - ✅ incident:write"
-                echo "3. GitHub リポジトリの Settings → Variables で \`GITGUARDIAN_API_KEY\` を更新"
-                echo ""
-                echo "📖 詳細: \`trouble_docs/2025-11-24-gitguardian-api-key-scope.md\`"
-              } >> "$GITHUB_STEP_SUMMARY"
-            elif [ "$SCAN_ERROR" = "auth_failed" ]; then
-              {
-                echo "## ❌ GitGuardian スキャン: 認証エラー"
-                echo ""
-                echo "API Key が無効または権限不足です。"
-                echo ""
-                echo "### 📋 解決手順"
-                echo "1. API Key が正しく設定されているか確認"
-                echo "2. [GitGuardian Dashboard](https://dashboard.gitguardian.com/api/personal-access-tokens) で新しいトークンを生成"
-                echo "3. **scan** スコープが含まれていることを確認"
-                echo "4. GitHub Variables で \`GITGUARDIAN_API_KEY\` を更新"
-              } >> "$GITHUB_STEP_SUMMARY"
-            elif [ "$SCAN_ERROR" != "none" ]; then
-              {
-                echo "## ⚠️ GitGuardian スキャン: エラー発生"
-                echo ""
-                echo "スキャン中に予期しないエラーが発生しましたが、ワークフローは継続します。"
-              } >> "$GITHUB_STEP_SUMMARY"
-            fi
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "⚠️ GitGuardian API Key 未設定 - スキャンをスキップしました"
+          elif [ "$SCAN_ERROR" = "scope_missing" ]; then
+            echo "❌ GitGuardian API Key に 'scan' スコープが不足しています"
+          elif [ "$SCAN_ERROR" = "auth_failed" ]; then
+            echo "❌ GitGuardian 認証エラー - API Key を確認してください"
+          elif [ "$SCAN_ERROR" != "none" ]; then
+            echo "⚠️ GitGuardian スキャンでエラーが発生しました"
           fi
 
       - name: GitGuardian 結果を Artifact として保存
@@ -698,9 +660,28 @@ jobs:
           echo "1. **CodeQL** - JavaScript & Python のコード品質・セキュリティ分析" >> $GITHUB_STEP_SUMMARY
           echo "2. **Gitleaks** - シークレット・認証情報の漏洩検出（全履歴）" >> $GITHUB_STEP_SUMMARY
 
-          # GitGuardian 結果（詳細表示）
+          # GitGuardian 結果（詳細表示 + エラーハンドリング）
           GG_ISSUES="${{ needs.gitguardian-scan.outputs.gitguardian_issues || '0' }}"
-          if [ "$GG_ISSUES" = "0" ]; then
+          HAS_KEY="${{ needs.gitguardian-scan.outputs.has_key || 'true' }}"
+          SCAN_ERROR="${{ needs.gitguardian-scan.outputs.scan_error || 'none' }}"
+          
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "3. **GitGuardian** - ⚠️ API Key 未設定（スキップ）" >> $GITHUB_STEP_SUMMARY
+            echo "   - 💡 [設定手順](https://dashboard.gitguardian.com/api/personal-access-tokens) でトークンを生成し、Variables に \`GITGUARDIAN_API_KEY\` を設定" >> $GITHUB_STEP_SUMMARY
+            echo "   - 必要なスコープ: **scan** (必須), incident:read, incident:write" >> $GITHUB_STEP_SUMMARY
+          elif [ "$SCAN_ERROR" = "scope_missing" ]; then
+            echo "3. **GitGuardian** - ❌ 'scan' スコープ不足" >> $GITHUB_STEP_SUMMARY
+            echo "   - API Key に必須の **scan** スコープが不足しています" >> $GITHUB_STEP_SUMMARY
+            echo "   - 💡 [GitGuardian Dashboard](https://dashboard.gitguardian.com/api/personal-access-tokens) で新しいトークンを生成" >> $GITHUB_STEP_SUMMARY
+            echo "   - 📖 詳細: \`trouble_docs/2025-11-24-gitguardian-api-key-scope.md\`" >> $GITHUB_STEP_SUMMARY
+          elif [ "$SCAN_ERROR" = "auth_failed" ]; then
+            echo "3. **GitGuardian** - ❌ 認証エラー" >> $GITHUB_STEP_SUMMARY
+            echo "   - API Key が無効または権限不足です" >> $GITHUB_STEP_SUMMARY
+            echo "   - 💡 [GitGuardian Dashboard](https://dashboard.gitguardian.com/api/personal-access-tokens) で新しいトークンを生成" >> $GITHUB_STEP_SUMMARY
+          elif [ "$SCAN_ERROR" != "none" ]; then
+            echo "3. **GitGuardian** - ⚠️ スキャンエラー" >> $GITHUB_STEP_SUMMARY
+            echo "   - スキャン中にエラーが発生しました（ワークフローは継続）" >> $GITHUB_STEP_SUMMARY
+          elif [ "$GG_ISSUES" = "0" ]; then
             echo "3. **GitGuardian** - ✅ シークレットなし (400+ パターン検証)" >> $GITHUB_STEP_SUMMARY
           else
             echo "3. **GitGuardian** - ⚠️ $GG_ISSUES 件のシークレット検出 (400+ パターン検証)" >> $GITHUB_STEP_SUMMARY
