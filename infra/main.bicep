@@ -160,6 +160,12 @@ var vnetSubnets = [
     properties: {
       addressPrefix: vmSubnetPrefix
       delegations: []
+      // Storage アカウントのネットワーク ACL で必須となるため Microsoft.Storage.Global を常時付与
+      serviceEndpoints: [
+        {
+          service: 'Microsoft.Storage.Global'
+        }
+      ]
     }
   }
   {
@@ -176,6 +182,12 @@ var vnetSubnets = [
       ]
       privateEndpointNetworkPolicies: 'Enabled'
       privateLinkServiceNetworkPolicies: 'Enabled'
+      // Container Apps からもバックアップ Storage に到達できるようサービスエンドポイントを固定
+      serviceEndpoints: [
+        {
+          service: 'Microsoft.Storage.Global'
+        }
+      ]
     }
   }
 ]

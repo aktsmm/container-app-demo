@@ -285,6 +285,48 @@ jobs:
 
           az storage account update --resource-group "$RESOURCE_GROUP_NAME" --name "$STORAGE_ACCOUNT_NAME" --default-action Deny >/dev/null
 
+          ensure_service_endpoint() {
+            local subnet_name="$1"
+            if [ -z "$subnet_name" ] || [ "$subnet_name" = "null" ]; then
+              return
+            fi
+            local subnet_json existing_eps endpoint_args="Microsoft.Storage.Global"
+            subnet_json=$(az network vnet subnet show --resource-group "$RESOURCE_GROUP_NAME" --vnet-name "$VNET_NAME" --name "$subnet_name" -o json || true)
+            if [ -z "$subnet_json" ]; then
+              echo "サブネット $subnet_name の情報取得に失敗しました" >&2
+              return
+            fi
+            existing_eps=$(echo "$subnet_json" | jq -r '.properties.serviceEndpoints[].service' 2>/dev/null || true)
+            if echo "$existing_eps" | grep -Fx "Microsoft.Storage.Global" >/dev/null 2>&1; then
+              echo "サブネット $subnet_name には Microsoft.Storage.Global が既に設定済み"
+              return
+            fi
+            if [ -n "$existing_eps" ]; then
+              while IFS= read -r ep; do
+                ep=$(echo "$ep" | tr -d '\r')
+                if [ -n "$ep" ] && [ "$ep" != "Microsoft.Storage.Global" ]; then
+                  endpoint_args="$endpoint_args $ep"
+                fi
+              done <<< "$existing_eps"
+            fi
+            echo "サブネット $subnet_name に Microsoft.Storage.Global サービスエンドポイントを付与します"
+            az network vnet subnet update \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --vnet-name "$VNET_NAME" \
+              --name "$subnet_name" \
+              --service-endpoints $endpoint_args >/dev/null
+            # 反映完了まで時間がかかる場合があるため簡易ポーリングを行う
+            for attempt in {1..10}; do
+              if az network vnet subnet show --resource-group "$RESOURCE_GROUP_NAME" --vnet-name "$VNET_NAME" --name "$subnet_name" --query "serviceEndpoints[].service" -o tsv | grep -Fx "Microsoft.Storage.Global" >/dev/null 2>&1; then
+                echo "サービスエンドポイントの有効化を確認しました"
+                return
+              fi
+              echo "サービスエンドポイント反映待ち (${attempt}/10)"
+              sleep 10
+            done
+            echo "サブネット $subnet_name のサービスエンドポイント確認に失敗しました" >&2
+          }
+
           add_rule() {
             local subnet_name="$1"
             if [ -z "$subnet_name" ] || [ "$subnet_name" = "null" ]; then
@@ -296,6 +338,7 @@ jobs:
               echo "サブネット $subnet_name の ID を取得できません" >&2
               return
             fi
+            ensure_service_endpoint "$subnet_name"
             if az storage account network-rule list --resource-group "$RESOURCE_GROUP_NAME" --account-name "$STORAGE_ACCOUNT_NAME" --query "virtualNetworkRules[].subnet.id" -o tsv | grep -Fx "$subnet_id" >/dev/null 2>&1; then
               echo "サブネット $subnet_name は既に許可済み"
             else
