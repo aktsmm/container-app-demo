@@ -141,7 +141,7 @@ jobs:
         id: check-api-key
         run: |
           if [ -z "${{ vars.GITGUARDIAN_API_KEY }}" ]; then
-            echo "⚠️ GitGuardian API キーが設定されていません"
+            echo "⚠️ GitGuardian API キーが設定されていません（スキャンをスキップ）"
             echo "以下のコマンドで設定してください："
             echo "gh variable set GITGUARDIAN_API_KEY --body 'ggat_xxxxxxxxxxxxxxxx'"
             echo "API キー取得: https://dashboard.gitguardian.com/api/personal-access-tokens"
@@ -157,10 +157,10 @@ jobs:
         run: |
           # ggshield をインストール
           pip install --quiet ggshield
-          
+
           # JSON 形式でスキャン実行
           ggshield secret scan repo . --json --output gitguardian-results.json || true
-          
+
           # 検出があるか確認
           if [ -f gitguardian-results.json ] && [ -s gitguardian-results.json ]; then
             echo "✅ GitGuardian スキャン完了"
@@ -171,22 +171,26 @@ jobs:
         env:
           GITGUARDIAN_API_KEY: ${{ vars.GITGUARDIAN_API_KEY }}
 
+      - name: GitGuardian 未設定時の空ファイル作成
+        if: steps.check-api-key.outputs.has_key == 'false'
+        run: |
+          echo '{"secrets":[]}' > gitguardian-results.json
+
       - name: GitGuardian 結果を SARIF 変換
-        if: steps.check-api-key.outputs.has_key == 'true'
         continue-on-error: true
         run: |
           cat > convert-gg-to-sarif.py << 'PYEOF'
           import json
           import sys
           from datetime import datetime
-          
+
           # GitGuardian JSON を読み込み
           try:
               with open('gitguardian-results.json', 'r', encoding='utf-8') as f:
                   gg_data = json.load(f)
           except:
               gg_data = {"secrets": []}
-          
+
           # SARIF フォーマット生成
           sarif = {
               "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
@@ -202,7 +206,7 @@ jobs:
                   "results": []
               }]
           }
-          
+
           # secrets がある場合のみ処理
           if isinstance(gg_data, dict) and "secrets" in gg_data:
               for idx, secret in enumerate(gg_data.get("secrets", [])):
@@ -245,14 +249,14 @@ jobs:
                                       "severity": "HIGH"
                                   }
                               })
-          
+
           # SARIF ファイル出力
           with open('gitguardian-repo.sarif', 'w', encoding='utf-8') as f:
               json.dump(sarif, f, indent=2, ensure_ascii=False)
-          
+
           print(f"✅ SARIF 変換完了: {len(sarif['runs'][0]['results'])} 件の検出")
           PYEOF
-          
+
           python convert-gg-to-sarif.py
 
       - name: GitGuardian SARIF アップロード
@@ -264,7 +268,7 @@ jobs:
           category: gitguardian
 
       - name: GitGuardian SARIF アーティファクト保存
-        if: steps.check-api-key.outputs.has_key == 'true' && always()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gitguardian-sarif
