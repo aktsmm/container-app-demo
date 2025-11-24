@@ -99,7 +99,7 @@ jobs:
           if [ ! -f gitguardian-results.json ]; then
             echo '{"secrets":[]}' > gitguardian-results.json
           fi
-          
+
           cat > convert-gg-to-sarif.py << 'PYTHON_SCRIPT'
           import json
           import sys
@@ -314,7 +314,7 @@ jobs:
           # 複数クエリを1回のJMESPathで並列取得（高速化）
           AKS_JSON=$(az aks show --resource-group "$RESOLVED_RG" --name "$AKS_CLUSTER_NAME" \
             --query '{location: location, nodeResourceGroup: nodeResourceGroup}' -o json 2>/dev/null || true)
-          
+
           if [ -z "$AKS_JSON" ] || [ "$AKS_JSON" = "null" ]; then
             echo "AKS クラスター $AKS_CLUSTER_NAME を RG=$RESOLVED_RG で取得できません" >&2
             exit 1
@@ -323,7 +323,7 @@ jobs:
           # JSON から値を抽出
           NODE_RG=$(echo "$AKS_JSON" | jq -r '.nodeResourceGroup // empty')
           AKS_LOCATION=$(echo "$AKS_JSON" | jq -r '.location // empty')
-          
+
           if [ -z "$NODE_RG" ]; then
             echo "AKS ノードリソースグループを解決できません" >&2
             exit 1
@@ -473,13 +473,13 @@ jobs:
             echo "⚠️ SARIF ファイルが見つかりません"
             exit 0
           fi
-          
+
           # 検出件数をカウント
           TOTAL=$(jq '[.runs[]?.results[]?] | length' trivy-fs-board.sarif 2>/dev/null || echo "0")
-          
+
           echo "## 🛡️ Trivy FS スキャン結果 (Board App)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ "$TOTAL" = "0" ]; then
             echo "✅ **検出なし** - 脆弱性・シークレット・設定ミスは見つかりませんでした" >> $GITHUB_STEP_SUMMARY
           else
@@ -505,7 +505,7 @@ jobs:
               "  - 💬 \(.message.text // "詳細なし" | gsub("\n"; " "))\n"' \
               trivy-fs-board.sarif >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "- (詳細取得失敗)" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "📁 **スキャン範囲**: \`app/board-app\`" >> $GITHUB_STEP_SUMMARY
           echo "🔎 **検出種別**: 脆弱性 (vuln) + シークレット (secret) + 設定ミス (config)" >> $GITHUB_STEP_SUMMARY
@@ -549,6 +549,17 @@ jobs:
           fi
           echo "trivy_fs_critical=$TRIVY_FS_CRITICAL" >> "$GITHUB_OUTPUT"
           echo "trivy_fs_high=$TRIVY_FS_HIGH" >> "$GITHUB_OUTPUT"
+
+      - name: セキュリティスキャン SARIF を Artifact として保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-security-scans-sarif
+          path: |
+            gitleaks-board.sarif
+            trivy-fs-board.sarif
+          retention-days: 7
+          if-no-files-found: warn
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 【ビルドフェーズ】Board App イメージビルド & ACR プッシュ（並列化）
@@ -866,7 +877,7 @@ jobs:
           echo "✅ Board App Build: ${{ needs.build-board-app.result }}"
           echo "✅ Board API Build: ${{ needs.build-board-api.result }}"
           echo "このジョブは互換性のため出力値を集約するだけです"
-          
+
           # どちらかが失敗していたら終了コード1
           if [ "${{ needs.build-board-app.result }}" != "success" ] || [ "${{ needs.build-board-api.result }}" != "success" ]; then
             echo "❌ ビルドが失敗しました"
@@ -1529,6 +1540,18 @@ jobs:
             echo "- ✅ **Gitleaks**: 秘密情報なし" >> $GITHUB_STEP_SUMMARY
           else
             echo "- ⚠️ **Gitleaks**: $GITLEAKS 件の秘密情報検出" >> $GITHUB_STEP_SUMMARY
+            
+            # Gitleaks の詳細を取得（artifact から SARIF をダウンロード）
+            if gh run download "${{ github.run_id }}" --name code-security-scans-sarif --dir temp-gitleaks 2>/dev/null; then
+              if [ -f temp-gitleaks/gitleaks-board.sarif ]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "  **検出された秘密情報（上位3件）:**" >> $GITHUB_STEP_SUMMARY
+                jq -r '.runs[0].results[0:3] | .[] | 
+                  "  - `\(.ruleId)` - \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"' \
+                  temp-gitleaks/gitleaks-board.sarif >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "  - (詳細取得失敗)" >> $GITHUB_STEP_SUMMARY
+                rm -rf temp-gitleaks
+              fi
+            fi
           fi
 
           # Trivy FS
@@ -1543,6 +1566,18 @@ jobs:
             echo "- ✅ **Trivy Image** (Board App): CRITICAL 0件、HIGH 0件" >> $GITHUB_STEP_SUMMARY
           else
             echo "- ⚠️ **Trivy Image** (Board App): CRITICAL $IMG_CRITICAL 件、HIGH $IMG_HIGH 件" >> $GITHUB_STEP_SUMMARY
+            
+            # Trivy Image (Board) の詳細を取得
+            if gh run download "${{ github.run_id }}" --name board-app-image --dir temp-trivy-board 2>/dev/null; then
+              if [ -f temp-trivy-board/trivy-image-board.sarif ]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "  **主な脆弱性（上位3件）:**" >> $GITHUB_STEP_SUMMARY
+                jq -r '.runs[0].results[0:3] | .[] | 
+                  "  - **\(.level | ascii_upcase)** `\(.ruleId)` - \(.message.text | split("\n")[0] | .[0:80])"' \
+                  temp-trivy-board/trivy-image-board.sarif >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "  - (詳細取得失敗)" >> $GITHUB_STEP_SUMMARY
+                rm -rf temp-trivy-board
+              fi
+            fi
           fi
 
           # Trivy Image (Board API)
@@ -1550,6 +1585,18 @@ jobs:
             echo "- ✅ **Trivy Image** (Board API): CRITICAL 0件、HIGH 0件" >> $GITHUB_STEP_SUMMARY
           else
             echo "- ⚠️ **Trivy Image** (Board API): CRITICAL $API_CRITICAL 件、HIGH $API_HIGH 件" >> $GITHUB_STEP_SUMMARY
+            
+            # Trivy Image (Board API) の詳細を取得
+            if gh run download "${{ github.run_id }}" --name board-api-image --dir temp-trivy-api 2>/dev/null; then
+              if [ -f temp-trivy-api/trivy-image-board-api.sarif ]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "  **主な脆弱性（上位3件）:**" >> $GITHUB_STEP_SUMMARY
+                jq -r '.runs[0].results[0:3] | .[] | 
+                  "  - **\(.level | ascii_upcase)** `\(.ruleId)` - \(.message.text | split("\n")[0] | .[0:80])"' \
+                  temp-trivy-api/trivy-image-board-api.sarif >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "  - (詳細取得失敗)" >> $GITHUB_STEP_SUMMARY
+                rm -rf temp-trivy-api
+              fi
+            fi
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
