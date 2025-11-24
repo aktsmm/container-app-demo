@@ -306,12 +306,12 @@ jobs:
           echo "=== 収集された SARIF ファイル一覧 ==="
           ls -la sarif/ || echo "⚠️ SARIF ファイルが見つかりません"
 
-      - name: カテゴリ別上位検出抽出 (各カテゴリ上位3件)
+      - name: カテゴリ別上位検出抽出 (各カテゴリ上位5件)
         run: |
           set -euo pipefail
           TOP_FILE=top-findings.md
           JSON_FILE=top-findings.json
-          echo "### 📁 カテゴリ別アラート (各上位3件)" > $TOP_FILE
+          echo "### 📁 カテゴリ別アラート (各上位5件)" > $TOP_FILE
           echo "" >> $TOP_FILE
 
           # カテゴリ定義: ファイル名パターン → カテゴリ名 → アイコン
@@ -327,7 +327,7 @@ jobs:
           echo '{"categorizedFindings":{' > $JSON_FILE
           FIRST_CAT=1
 
-          MAX_MSG_LEN=400
+          MAX_MSG_LEN=300
           for PATTERN in codeql gitleaks trivy-image trivy-fs trivy-infra trivy-k8s; do
             CAT_NAME="${CATEGORIES[$PATTERN]}"
             
@@ -338,25 +338,29 @@ jobs:
               continue
             fi
             
-            # カテゴリごとに検出抽出
+            # カテゴリごとに検出抽出（ファイル名・行番号も取得）
             ALL=$(for f in $FILES; do
               jq -r --arg SRC "$f" '
                 .runs[]? .results[]? | {
                   rid:(.ruleId // "(rule不明)"),
                   lvl:(.level // "note"),
                   sev:(.properties.severity // .properties["security-severity"] // .rule.properties.severity // "UNSPECIFIED"),
-                  msg:(.message.text // "")
+                  msg:(.message.text // ""),
+                  file:(.locations[0].physicalLocation.artifactLocation.uri // "不明"),
+                  line:(.locations[0].physicalLocation.region.startLine // 0)
                 } | select(.lvl=="error" or .lvl=="warning") | [
                   (if (.sev|ascii_upcase)=="CRITICAL" then 0 elif (.sev|ascii_upcase)=="HIGH" then 1 elif (.sev|ascii_upcase)=="MEDIUM" then 2 elif (.sev|ascii_upcase)=="LOW" then 3 else 4 end),
                   (if .lvl=="error" then 0 else 1 end),
                   (.sev|ascii_upcase),
                   .rid,
+                  .file,
+                  .line,
                   (.msg | gsub("\n"; " ") | gsub(" {2,}"; " "))
                 ] | @tsv' "$f" 2>/dev/null || true
             done)
             
             if [ -n "$ALL" ]; then
-              TOP3=$(echo "$ALL" | sort -t$'\t' -k1,1n -k2,2n | head -n 3)
+              TOP5=$(echo "$ALL" | sort -t$'\t' -k1,1n -k2,2n | head -n 5)
               echo "#### $CAT_NAME" >> $TOP_FILE
               echo "" >> $TOP_FILE
               
@@ -365,18 +369,35 @@ jobs:
               FIRST_CAT=0
               
               COUNT=0
-              while IFS=$'\t' read -r SEV_RANK LVL_RANK SEV RULE MSG; do
+              while IFS=$'\t' read -r SEV_RANK LVL_RANK SEV RULE FILE LINE MSG; do
                 COUNT=$((COUNT+1))
                 DISPLAY_MSG="$MSG"
                 if [ ${#DISPLAY_MSG} -gt $MAX_MSG_LEN ]; then
                   DISPLAY_MSG="${DISPLAY_MSG:0:MAX_MSG_LEN}..."
                 fi
-                echo "$COUNT. **$SEV** / \`$RULE\`: $DISPLAY_MSG" >> $TOP_FILE
+                
+                # ファイル名を短縮表示（パスが長い場合）
+                SHORT_FILE="$FILE"
+                if [ ${#FILE} -gt 50 ]; then
+                  SHORT_FILE="...${FILE: -47}"
+                fi
+                
+                # 行番号がある場合は表示
+                LOCATION="$SHORT_FILE"
+                if [ "$LINE" != "0" ]; then
+                  LOCATION="$SHORT_FILE:$LINE"
+                fi
+                
+                echo "$COUNT. **$SEV** / \`$RULE\`" >> $TOP_FILE
+                echo "   - 📍 \`$LOCATION\`" >> $TOP_FILE
+                echo "   - 💬 $DISPLAY_MSG" >> $TOP_FILE
+                echo "" >> $TOP_FILE
                 
                 ESC_MSG=$(echo "$MSG" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
+                ESC_FILE=$(echo "$FILE" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
                 SEP=','; [ $COUNT -eq 1 ] && SEP=''
-                echo "${SEP}{\"severity\":\"$SEV\",\"ruleId\":\"$RULE\",\"message\":\"$ESC_MSG\"}" >> $JSON_FILE
-              done <<< "$TOP3"
+                echo "${SEP}{\"severity\":\"$SEV\",\"ruleId\":\"$RULE\",\"file\":\"$ESC_FILE\",\"line\":$LINE,\"message\":\"$ESC_MSG\"}" >> $JSON_FILE
+              done <<< "$TOP5"
               
               echo "]" >> $JSON_FILE
               echo "" >> $TOP_FILE
