@@ -1286,88 +1286,124 @@ jobs:
           NODE_RESOURCE_GROUP: ${{ env.NODE_RESOURCE_GROUP }}
         run: |
           set -euo pipefail
-          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx || true
-          helm repo update
-          INGRESS_APP_VERSION=$(helm show chart ingress-nginx/ingress-nginx | awk -F': ' '/^appVersion:/ {print $2}' | tr -d '[:space:]')
-          if [ -z "$INGRESS_APP_VERSION" ] || [ "$INGRESS_APP_VERSION" = "null" ]; then
-            echo "appVersion を取得できません" >&2
-            exit 1
-          fi
-          if [[ "$INGRESS_APP_VERSION" == v* ]]; then
-            CONTROLLER_TAG="$INGRESS_APP_VERSION"
-          else
-            CONTROLLER_TAG="v${INGRESS_APP_VERSION}"
-          fi
-          CONTROLLER_IMAGE="ingress-nginx/controller"
-          export CONTROLLER_IMAGE CONTROLLER_TAG
-          az acr import --name "$ACR_NAME" --source "registry.k8s.io/${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --image "${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --force || \
-            az acr import --name "$ACR_NAME" --source "mcr.microsoft.com/oss/kubernetes/${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --image "${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --force
 
-          VALUES_FILE="app/board-app/k8s/ingress-nginx-values.yaml"
-          OVERRIDE_FILE=$(mktemp)
-          export OVERRIDE_FILE
+          # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          # Ingress Controller の既存確認（NodePort 変更防止）
+          # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          # 理由: helm upgrade で Service を再作成すると NodePort が変わり、
+          #       Azure LoadBalancer のヘルスプローブとポート不一致が発生する
+          # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          INGRESS_EXISTS=$(helm list -n ingress-nginx -q 2>/dev/null | grep -c "^ingress-nginx$" || echo "0")
 
-          # 固定 Public IP 指定を削除し、AKS に自動作成させる
-          # 理由: 指定した IP が存在しないと LoadBalancer が <pending> のまま固まる
-          python -c 'import os, pathlib; content = "controller:\n  image:\n    registry: \"{ACR_LOGIN_SERVER}\"\n    image: \"{CONTROLLER_IMAGE}\"\n    tag: \"{CONTROLLER_TAG}\"\n  service:\n    annotations:\n      service.beta.kubernetes.io/azure-load-balancer-resource-group: \"{NODE_RESOURCE_GROUP}\"\n".format(**os.environ); pathlib.Path(os.environ["OVERRIDE_FILE"]).write_text(content)'
-
-          # Namespace を事前作成（冪等性を確保）
-          kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
-
-          # 固まっている Helm Release を強制的にクリーンアップ
-          # pending-install, pending-upgrade, failed 状態の場合は即座に削除
-          if helm list -n ingress-nginx | grep -q ingress-nginx; then
-            HELM_STATUS=$(helm status ingress-nginx -n ingress-nginx -o json 2>/dev/null | jq -r '.info.status // empty' || echo "unknown")
-            echo "現在の Helm リリース状態: $HELM_STATUS"
+          if [ "$INGRESS_EXISTS" != "0" ]; then
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "✅ Ingress Controller は既に存在（スキップ）"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             
+            # 既存設定の確認
+            echo "📊 現在の Ingress Controller 情報:"
+            HELM_STATUS=$(helm status ingress-nginx -n ingress-nginx -o json 2>/dev/null | jq -r '.info.status // "unknown"')
+            CHART_VERSION=$(helm list -n ingress-nginx -o json 2>/dev/null | jq -r '.[] | select(.name=="ingress-nginx") | .chart')
+            HTTP_NODEPORT=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}' 2>/dev/null || echo "N/A")
+            HTTPS_NODEPORT=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}' 2>/dev/null || echo "N/A")
+            HEALTH_NODEPORT=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.spec.healthCheckNodePort}' 2>/dev/null || echo "N/A")
+            LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "<pending>")
+            
+            echo "  - Helm Status: $HELM_STATUS"
+            echo "  - Chart: $CHART_VERSION"
+            echo "  - HTTP NodePort: $HTTP_NODEPORT"
+            echo "  - HTTPS NodePort: $HTTPS_NODEPORT"
+            echo "  - Health Check NodePort: $HEALTH_NODEPORT"
+            echo "  - LoadBalancer IP: $LB_IP"
+            echo ""
+            
+            # pending や failed 状態の場合は警告
             if [ "$HELM_STATUS" = "pending-install" ] || [ "$HELM_STATUS" = "pending-upgrade" ] || [ "$HELM_STATUS" = "failed" ]; then
-              echo "⚠️ Helm Release が ${HELM_STATUS} 状態です。強制クリーンアップを実行します..."
-              helm uninstall ingress-nginx -n ingress-nginx --wait --timeout=2m || true
-              sleep 10
-              echo "✅ Helm Release をクリーンアップしました"
+              echo "⚠️ 警告: Helm Release が異常状態です（$HELM_STATUS）"
+              echo "   手動で修復が必要な可能性があります"
+              echo "   修復方法: helm uninstall ingress-nginx -n ingress-nginx && 1️⃣ Infrastructure Deploy を再実行"
             fi
+            
+            # Pod の状態確認
+            kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller
+            
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          else
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🚀 Ingress Controller が存在しないため新規インストール"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx || true
+            helm repo update
+            INGRESS_APP_VERSION=$(helm show chart ingress-nginx/ingress-nginx | awk -F': ' '/^appVersion:/ {print $2}' | tr -d '[:space:]')
+            if [ -z "$INGRESS_APP_VERSION" ] || [ "$INGRESS_APP_VERSION" = "null" ]; then
+              echo "appVersion を取得できません" >&2
+              exit 1
+            fi
+            if [[ "$INGRESS_APP_VERSION" == v* ]]; then
+              CONTROLLER_TAG="$INGRESS_APP_VERSION"
+            else
+              CONTROLLER_TAG="v${INGRESS_APP_VERSION}"
+            fi
+            CONTROLLER_IMAGE="ingress-nginx/controller"
+            export CONTROLLER_IMAGE CONTROLLER_TAG
+            az acr import --name "$ACR_NAME" --source "registry.k8s.io/${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --image "${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --force || \
+              az acr import --name "$ACR_NAME" --source "mcr.microsoft.com/oss/kubernetes/${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --image "${CONTROLLER_IMAGE}:${CONTROLLER_TAG}" --force
+
+            VALUES_FILE="app/board-app/k8s/ingress-nginx-values.yaml"
+            OVERRIDE_FILE=$(mktemp)
+            export OVERRIDE_FILE
+
+            # 固定 Public IP 指定を削除し、AKS に自動作成させる
+            # 理由: 指定した IP が存在しないと LoadBalancer が <pending> のまま固まる
+            python -c 'import os, pathlib; content = "controller:\n  image:\n    registry: \"{ACR_LOGIN_SERVER}\"\n    image: \"{CONTROLLER_IMAGE}\"\n    tag: \"{CONTROLLER_TAG}\"\n  service:\n    annotations:\n      service.beta.kubernetes.io/azure-load-balancer-resource-group: \"{NODE_RESOURCE_GROUP}\"\n".format(**os.environ); pathlib.Path(os.environ["OVERRIDE_FILE"]).write_text(content)'
+
+            # Namespace を事前作成（冪等性を確保）
+            kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
+
+            # helm upgrade --install --atomic で冪等にインストール/アップグレード
+            # --atomic: 失敗時に自動ロールバック、Service 削除なしで安全に更新
+            # --cleanup-on-fail: 失敗時のリソースクリーンアップ
+            if ! helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
+              --install \
+              --namespace ingress-nginx \
+              --create-namespace \
+              --values "$VALUES_FILE" \
+              --values "$OVERRIDE_FILE" \
+              --atomic \
+              --cleanup-on-fail \
+              --wait \
+              --timeout=15m; then
+              
+              echo "⚠️ Helm upgrade が失敗しました。デバッグ情報を収集します..." >&2
+              
+              # デバッグ情報収集
+              echo "--- Webhook 設定 ---"
+              kubectl get validatingwebhookconfigurations | grep ingress-nginx || true
+              
+              echo "--- Ingress Nginx リソース ---"
+              kubectl -n ingress-nginx get svc,deploy,po || true
+              
+              echo "--- 最新イベント ---"
+              kubectl -n ingress-nginx get events --sort-by=.metadata.creationTimestamp | tail -30 || true
+              
+              echo "--- Service 詳細 ---"
+              kubectl -n ingress-nginx describe svc ingress-nginx-controller || true
+              kubectl -n ingress-nginx describe svc ingress-nginx-controller-admission || true
+              
+              echo "--- Helm リリース状態 ---"
+              helm list -n ingress-nginx || true
+              helm history ingress-nginx -n ingress-nginx || true
+              
+              exit 1
+            fi
+
+            rm -f "$OVERRIDE_FILE"
+
+            kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=600s
+            echo "✅ Ingress Controller のインストール完了"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           fi
-
-          # helm upgrade --install --atomic で冪等にインストール/アップグレード
-          # --atomic: 失敗時に自動ロールバック、Service 削除なしで安全に更新
-          # --cleanup-on-fail: 失敗時のリソースクリーンアップ
-          if ! helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
-            --install \
-            --namespace ingress-nginx \
-            --create-namespace \
-            --values "$VALUES_FILE" \
-            --values "$OVERRIDE_FILE" \
-            --atomic \
-            --cleanup-on-fail \
-            --wait \
-            --timeout=15m; then
-            
-            echo "⚠️ Helm upgrade が失敗しました。デバッグ情報を収集します..." >&2
-            
-            # デバッグ情報収集
-            echo "--- Webhook 設定 ---"
-            kubectl get validatingwebhookconfigurations | grep ingress-nginx || true
-            
-            echo "--- Ingress Nginx リソース ---"
-            kubectl -n ingress-nginx get svc,deploy,po || true
-            
-            echo "--- 最新イベント ---"
-            kubectl -n ingress-nginx get events --sort-by=.metadata.creationTimestamp | tail -30 || true
-            
-            echo "--- Service 詳細 ---"
-            kubectl -n ingress-nginx describe svc ingress-nginx-controller || true
-            kubectl -n ingress-nginx describe svc ingress-nginx-controller-admission || true
-            
-            echo "--- Helm リリース状態 ---"
-            helm list -n ingress-nginx || true
-            helm history ingress-nginx -n ingress-nginx || true
-            
-            exit 1
-          fi
-
-          rm -f "$OVERRIDE_FILE"
-
-          kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=600s
 
           # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           # LoadBalancer IP 割り当て待機
