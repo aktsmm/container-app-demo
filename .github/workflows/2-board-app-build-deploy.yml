@@ -1491,15 +1491,15 @@ jobs:
             echo "- ⚠️ LoadBalancer IP 取得待機中" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🔒 セキュリティスキャン結果" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔐 セキュリティスキャン結果 (GitGuardian + Gitleaks + Trivy)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # GitGuardian 結果（詳細表示）
           GG_ISSUES="${{ needs.gitguardian-scan.outputs.gitguardian_issues || '0' }}"
           if [ "$GG_ISSUES" = "0" ]; then
-            echo "- ✅ **GitGuardian**: シークレットなし" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ **GitGuardian**: シークレットなし (400+ パターン検証)" >> $GITHUB_STEP_SUMMARY
           else
-            echo "- ⚠️ **GitGuardian**: $GG_ISSUES 件のシークレット検出" >> $GITHUB_STEP_SUMMARY
+            echo "- ⚠️ **GitGuardian**: $GG_ISSUES 件のシークレット検出 (400+ パターン検証)" >> $GITHUB_STEP_SUMMARY
             
             # GitGuardian の詳細を取得（artifact から SARIF をダウンロード）
             if gh run download "${{ github.run_id }}" --name gitguardian-results --dir temp-gg 2>/dev/null; then
