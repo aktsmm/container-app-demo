@@ -24,13 +24,14 @@
 
 ## 3. CI/CD & セキュリティ
 
-| コンポーネント        | 役割                                                                                                          |
-| --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| コンポーネント        | 役割                                                                                                                  |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | GitHub Actions (6 本) | `README_WORKFLOWS.md` 参照。Validate→Deploy、Build→Deploy（統合）、バックアップ、クリーンアップ、セキュリティスキャン |
-| Trivy                 | コンテナ/ファイルシステム/IaC/Kubernetes の脆弱性・シークレット検知 (`0.28.0` アクション)                     |
-| Gitleaks              | ソース全体のシークレットリーク検出 (`8.18.4`)                                                                 |
-| CodeQL                | JavaScript + Python コードの SAST (`security-extended` クエリ)                                                |
-| GitHub Code Scanning  | SARIF の集約先。Security タブで上位検出を確認 (公開リポジトリ or GHAS 契約が前提)                             |
+| Trivy                 | コンテナ/ファイルシステム/IaC/Kubernetes の脆弱性・シークレット検知 (`0.28.0` アクション)                             |
+| Gitleaks              | ソース全体のシークレットリーク検出 (`8.18.4`)                                                                         |
+| GitGuardian           | `vars.GITGUARDIAN_API_KEY` 設定時に ggshield で 400+ パターンの秘密情報を検知、JSON→SARIF 変換して集計                |
+| CodeQL                | JavaScript + Python コードの SAST (`security-extended` クエリ)                                                        |
+| GitHub Code Scanning  | SARIF の集約先。Security タブで上位検出を確認 (公開リポジトリ or GHAS 契約が前提)                                     |
 
 ## 4. スクリプト & 自動化
 

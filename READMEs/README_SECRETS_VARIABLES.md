@@ -15,24 +15,25 @@
 
 ## 3. GitHub Variables 一覧
 
-| キー                                        | 用途 / 参照ワークフロー                                                      |
-| ------------------------------------------- | ---------------------------------------------------------------------------- |
-| `AZURE_CLIENT_ID`                           | 全ワークフローの `azure/login@v2`                                            |
-| `AZURE_CLIENT_SECRET`                       | 同上 (現在は Variable。秘匿度を高めたい場合は Secret へ移行してください)     |
-| `AZURE_TENANT_ID`                           | 同上                                                                         |
-| `RESOURCE_GROUP_NAME`                       | 全ワークフロー (ACR/Storage 解決、`az group create`)                         |
-| `LOCATION`                                  | `1-infra-deploy.yml` (RG 作成、Policy パラメーター)                          |
-| `ACR_NAME_PREFIX`                           | ビルド/デプロイ/バックアップ全般 (ACR 名解決)                                |
-| `STORAGE_ACCOUNT_PREFIX`                    | `1-infra`, `2-admin-app-build-deploy`, `backup-upload`                       |
-| `AKS_CLUSTER_NAME`                          | `2-board-app-build-deploy` (AKS 認証)                                        |
-| `ACA_ENVIRONMENT_NAME`                      | `2-admin-app-build-deploy` (初期値。実際は RG から再解決)                    |
-| `ADMIN_CONTAINER_APP_NAME`                  | `2-admin-app-build-deploy`                                                   |
-| `VM_NAME`                                   | `backup-upload` (VM コマンド実行)                                            |
-| `VM_ADMIN_USERNAME` / `VM_ADMIN_PASSWORD`   | `1-infra-deploy.yml` (Bicep パラメーター)                                    |
-| `MYSQL_ROOT_PASSWORD`                       | `1-infra-deploy.yml`, `backup-upload.yml`                                    |
-| `DB_APP_USERNAME` / `DB_APP_PASSWORD`       | `1-infra-deploy.yml`, `2-board-app-build-deploy`, `2-admin-app-build-deploy` |
-| `BACKUP_CONTAINER_NAME`                     | `2-admin-app-build-deploy`, `backup-upload.yml`                              |
-| `ACA_ADMIN_USERNAME` / `ACA_ADMIN_PASSWORD` | `2-admin-app-build-deploy` の Basic 認証シークレット                         |
+| キー                                        | 用途 / 参照ワークフロー                                                                             |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `AZURE_CLIENT_ID`                           | 全ワークフローの `azure/login@v2`                                                                   |
+| `AZURE_CLIENT_SECRET`                       | 同上 (現在は Variable。秘匿度を高めたい場合は Secret へ移行してください)                            |
+| `AZURE_TENANT_ID`                           | 同上                                                                                                |
+| `RESOURCE_GROUP_NAME`                       | 全ワークフロー (ACR/Storage 解決、`az group create`)                                                |
+| `LOCATION`                                  | `1-infra-deploy.yml` (RG 作成、Policy パラメーター)                                                 |
+| `ACR_NAME_PREFIX`                           | ビルド/デプロイ/バックアップ全般 (ACR 名解決)                                                       |
+| `STORAGE_ACCOUNT_PREFIX`                    | `1-infra`, `2-admin-app-build-deploy`, `backup-upload`                                              |
+| `AKS_CLUSTER_NAME`                          | `2-board-app-build-deploy` (AKS 認証)                                                               |
+| `ACA_ENVIRONMENT_NAME`                      | `2-admin-app-build-deploy` (初期値。実際は RG から再解決)                                           |
+| `ADMIN_CONTAINER_APP_NAME`                  | `2-admin-app-build-deploy`                                                                          |
+| `VM_NAME`                                   | `backup-upload` (VM コマンド実行)                                                                   |
+| `VM_ADMIN_USERNAME` / `VM_ADMIN_PASSWORD`   | `1-infra-deploy.yml` (Bicep パラメーター)                                                           |
+| `MYSQL_ROOT_PASSWORD`                       | `1-infra-deploy.yml`, `backup-upload.yml`                                                           |
+| `DB_APP_USERNAME` / `DB_APP_PASSWORD`       | `1-infra-deploy.yml`, `2-board-app-build-deploy`, `2-admin-app-build-deploy`                        |
+| `BACKUP_CONTAINER_NAME`                     | `2-admin-app-build-deploy`, `backup-upload.yml`                                                     |
+| `ACA_ADMIN_USERNAME` / `ACA_ADMIN_PASSWORD` | `2-admin-app-build-deploy` の Basic 認証シークレット                                                |
+| `GITGUARDIAN_API_KEY`                       | `security-scan.yml` の GitGuardian ジョブ。`scan` / `incident:read` / `incident:write` スコープ必須 |
 
 `DB_ENDPOINT` は Bicep デプロイの出力 (`infra-outputs` アーティファクト) から `2️⃣ Board App Build & Deploy` / `2️⃣ Admin App Build & Deploy` が自動で解決し、`DB_ENDPOINT_RESOLVED` として利用します。GitHub Variables で管理する必要はありません。
 

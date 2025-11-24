@@ -17,15 +17,18 @@
 
 ## 3. スキャンと監査
 
-| ツール           | 実行場所                           | 検査対象                                                    |
-| ---------------- | ---------------------------------- | ----------------------------------------------------------- |
-| **Gitleaks**     | Build / Security Scan ワークフロー | ソース全体、履歴、アプリごとの差分                          |
-| **Trivy FS**     | Build / Security Scan              | `app/*`, `infra/`, `app/board-app/k8s` (config/secret/vuln) |
-| **Trivy Image**  | Build ワークフロー                 | `board-app`, `board-api`, `admin-app` コンテナイメージ      |
-| **CodeQL**       | `security-scan.yml`                | JavaScript (React/Node) + Python (Flask)                    |
-| **Azure Policy** | `infra/policy.bicep`               | Resource Group ガードレール (initiative)                    |
+| ツール           | 実行場所                           | 検査対象                                                                                                     |
+| ---------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Gitleaks**     | Build / Security Scan ワークフロー | ソース全体、履歴、アプリごとの差分                                                                           |
+| **GitGuardian**  | Security Scan ワークフロー         | GitGuardian API (ggshield) による 400+ パターンのシークレット検出。`vars.GITGUARDIAN_API_KEY` 設定時のみ実行 |
+| **Trivy FS**     | Build / Security Scan              | `app/*`, `infra/`, `app/board-app/k8s` (config/secret/vuln)                                                  |
+| **Trivy Image**  | Build ワークフロー                 | `board-app`, `board-api`, `admin-app` コンテナイメージ                                                       |
+| **CodeQL**       | `security-scan.yml`                | JavaScript (React/Node) + Python (Flask)                                                                     |
+| **Azure Policy** | `infra/policy.bicep`               | Resource Group ガードレール (initiative)                                                                     |
 
-- SARIF ファイルは GitHub Security (Code scanning) にアップロードされ、上位検出は `security-scan` の Step Summary と `top-findings.json` に集約。※Security タブへの反映は **公開リポジトリ** または **GitHub Advanced Security ライセンスを持つプライベートリポジトリ** が対象。
+> GitGuardian の実行には GitHub Variables へ `GITGUARDIAN_API_KEY`（`scan` / `incident:read` / `incident:write` スコープ付き PAT）を登録する必要があります。未設定の場合は GitGuardian ジョブのみスキップされます。
+
+- SARIF ファイルは GitHub Security (Code scanning) にアップロードされ、上位検出は `security-scan` の Step Summary と `top-findings.json` に集約。GitGuardian の JSON→SARIF 変換も同 Summary に統合され、カテゴリ別アラートへ表示されます。※Security タブへの反映は **公開リポジトリ** または **GitHub Advanced Security ライセンスを持つプライベートリポジトリ** が対象。
 - `backup-upload` は成功/失敗ログを Syslog (`logger mysql-backup-upload`) に書き込み、Log Analytics 経由で監査可能。
 
 ## 4. ログ & モニタリング

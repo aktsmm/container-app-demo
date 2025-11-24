@@ -7,6 +7,7 @@
 - これらの資格情報は `scripts/create-github-actions-sp.ps1` を実行して生成し、`scripts/setup-github-secrets_variables.ps1` の `$GitHubVariables/$GitHubSecrets` へ転記してから `gh variable`/`gh secret` で登録します。
 - セキュリティスキャン (Trivy, Gitleaks, CodeQL) は可能な限り **SARIF** を生成して Security タブへアップロードします (公開リポジトリ、または GitHub Advanced Security 契約済みプライベートリポジトリが対象)。
 - ビルド系ワークフローは成果物 (SBOM, SARIF, image metadata) を `actions/upload-artifact` で保存し、後続のデプロイ/セキュリティワークフローが参照できるようにしています。
+- GitGuardian スキャンを有効化する場合は GitHub Variables に `GITGUARDIAN_API_KEY`（`scan` / `incident:read` / `incident:write` スコープ）を登録してください。未設定時は GitGuardian ジョブのみ自動でスキップされ、他ジョブには影響しません。
 
 ## ワークフロー一覧（全 6 本）
 
@@ -68,14 +69,16 @@
   - 保持ポリシー: 成功 (人間) 7 件、成功 (Dependabot) 3 件、失敗 1 件
   - `GITHUB_TOKEN` を使用（PAT は不要）
 
-## 6. `🔐 Security Scan (CodeQL + Trivy + Gitleaks)` (`.github/workflows/security-scan.yml`)
+## 6. `🔐 Security Scan (CodeQL + Trivy + Gitleaks + GitGuardian)` (`.github/workflows/security-scan.yml`)
 
 - **トリガー**: `push`, `pull_request`, `schedule` (毎日 12:00 JST), `workflow_dispatch`
 - **ジョブ**:
   1. `codeql` – JavaScript + Python の security-extended クエリ、SARIF 収集
-  2. `iac-security` – 全リポジトリを Trivy/Gitleaks、`infra/` や `app/board-app/k8s` を個別スキャン
-  3. `summary` – 各カテゴリ (CodeQL, Gitleaks, Trivy image/fs/infra/k8s) の上位 3 アラートを Markdown/JSON にまとめ、Step Summary へ出力
-- **成果物**: `iac-scan-results` (SARIF 一式), `codeql-sarif`, `security-top-findings-json`
+  2. `gitleaks-scan` – リポジトリ履歴全体を Gitleaks でスキャンし、SARIF を Security タブへアップロード
+  3. `gitguardian-scan` – `vars.GITGUARDIAN_API_KEY` が設定されている場合に ggshield を使って JSON + SARIF を生成し、カテゴリ別アラートへ統合
+  4. `iac-security` – Trivy (FS/IaC/Kubernetes/Image) によりアプリ/Infra を多層スキャン
+  5. `summary` – CodeQL/Gitleaks/GitGuardian/Trivy の検出を統合し、Step Summary + `security-top-findings-json` に上位 3〜5 件を出力
+- **成果物**: `iac-scan-results` (SARIF 一式), `codeql-sarif`, `gitleaks-sarif`, `security-top-findings-json`
 
 ## 7. 推奨実行順序
 

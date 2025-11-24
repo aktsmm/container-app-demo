@@ -11,6 +11,9 @@
 - **kubelogin**: AKS 認証プラグイン。kubectl と同時に `az aks install-cli` でインストール済み
 - **GitHub CLI (gh)**: リポジトリ変数/シークレット登録に利用。`gh --version` で確認。Windows: `winget install GitHub.cli`。初回: `gh auth login` で認証。公式手順: <https://cli.github.com/manual/installation>
 - **PowerShell 7 以降**: すべての補助スクリプト (`scripts/*.ps1`) で使用。`$PSVersionTable.PSVersion` で確認。Windows: `winget install Microsoft.PowerShell`
+- **Node.js 20 系 + npm**: `app/board-app` / `app/board-api` をローカルでビルド・テストする際に利用。`node -v` / `npm -v` で確認し、<https://nodejs.org/en/download> から LTS をインストール。
+- **Python 3.10+**: `app/admin-app` の Flask サーバーをローカル実行・検証する際に利用。`python --version` で確認。`pip install -r app/admin-app/requirements.txt` を実行できる環境を整備してください。
+- **Docker Desktop**: コンテナビルドをローカル再現する際に必須。`docker version` で確認。WSL2 ベースのバックエンドを推奨。
 
 ### 1.2 推奨 VS Code 拡張機能
 
@@ -22,6 +25,7 @@
 - **Kubernetes** (`ms-kubernetes-tools.vscode-kubernetes-tools`): AKS 管理
 - **YAML** (`redhat.vscode-yaml`): k8s manifest 編集
 - **Docker** (`ms-azuretools.vscode-docker`): コンテナ管理
+- **GitHub Copilot Chat** (`GitHub.copilot-chat`) + **Copilot Extensions** (Azure / GitHub MCP): Azure CLI や IaC のコマンド補助、ワークフローの不具合調査を対話で実施。MCP サーバー (Azure Rules / Microsoft Docs など) を有効化しておくと、Azure ベストプラクティスや公式ドキュメント参照をその場で確認できます。
 
 ### 1.3 Azure / GitHub 権限
 
@@ -110,6 +114,8 @@ pwsh ./scripts/setup-github-secrets_variables.ps1 -Repo "owner/repo"  # 別リ�
 pwsh ./scripts/setup-github-secrets_variables.ps1 -DryRun     # 設定内容のみ確認
 ```
 
+- スクリプト起動時に PowerShell から「デフォルトパスワードをランダムな値に一括変更しますか？」と確認されます。`Y` を選ぶと `P@ssw0rd!<乱数>` 形式の値が自動生成され、VM/DB/ACA の各パスワード (`VM_ADMIN_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `DB_APP_PASSWORD`, `ACA_ADMIN_PASSWORD`) に一括適用されます。複数項目を同一パスワードで安全に更新できるため、初期セットアップでは **必ず Y を選択** し、出力されたパスワードを安全な場所へ退避してください。`N` を選ぶとデフォルトの `P@ssw0rd!2025` がそのまま使われます（非推奨）。
+
 - スクリプト冒頭の `$DefaultRepo`, `$GitHubVariables`, `$GitHubSecrets` を編集するだけで既定値を切り替え可能。
 - `AZURE_CLIENT_ID / SECRET / TENANT_ID / AZURE_SUBSCRIPTION_ID` は **手順 4** の `scripts/create-github-actions-sp.ps1` 実行結果をそのまま転記する。（ダミー値はデモ向け）
 - `-Repo` を省略し `$DefaultRepo` も空の場合、git remote から自動取得し、それでも不明な場合は対話入力を促します。
@@ -160,6 +166,10 @@ pwsh ./scripts/setup-github-secrets_variables.ps1 -DryRun     # 設定内容の�
 - `ACA_ADMIN_USERNAME` – 管理アプリの Basic 認証ユーザー名（デフォルト: `test-admin`）
 - `ACA_ADMIN_PASSWORD` – 管理アプリの Basic 認証パスワード（デフォルト: `P@ssw0rd!2025`）  
   ⚠️ **セキュリティ注意**: 本番環境では強固なパスワードに変更してください
+
+**セキュリティスキャン関連**:
+
+- `GITGUARDIAN_API_KEY` – GitGuardian (ggshield) でシークレット検出を行う際の Personal Access Token。`scan` / `incident:read` / `incident:write` スコープを必ず付与してください。未設定時は GitGuardian ジョブのみ自動スキップされます。
 
 **自動設定項目（編集不要）**:
 
