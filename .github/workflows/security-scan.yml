@@ -127,6 +127,42 @@ jobs:
           path: gitleaks-repo.sarif
           if-no-files-found: warn
 
+  # 並列実行グループ2-B: GitGuardian (シークレット検出・強化版)
+  gitguardian-scan:
+    name: GitGuardian (シークレット検出)
+    runs-on: ubuntu-latest
+    steps:
+      - name: コード取得
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 全履歴を取得
+
+      - name: GitGuardian API キー確認
+        id: check-api-key
+        run: |
+          if [ -z "${{ vars.GITGUARDIAN_API_KEY }}" ]; then
+            echo "⚠️ GitGuardian API キーが設定されていません"
+            echo "以下のコマンドで設定してください："
+            echo "gh variable set GITGUARDIAN_API_KEY --body 'ggat_xxxxxxxxxxxxxxxx'"
+            echo "API キー取得: https://dashboard.gitguardian.com/api/personal-access-tokens"
+            echo "has_key=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ GitGuardian API キーが設定されています"
+            echo "has_key=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: GitGuardian スキャン
+        if: steps.check-api-key.outputs.has_key == 'true'
+        uses: GitGuardian/ggshield-action@v1
+        continue-on-error: true
+        env:
+          GITGUARDIAN_API_KEY: ${{ vars.GITGUARDIAN_API_KEY }}
+          GITHUB_PUSH_BEFORE_SHA: ${{ github.event.before }}
+          GITHUB_PUSH_BASE_SHA: ${{ github.event.base }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        with:
+          args: secret scan repo .
+
   # 並列実行グループ3: Trivy IaC スキャン (Bicep/K8s)
   trivy-iac:
     name: Trivy IaC (Bicep/K8s)
@@ -291,7 +327,15 @@ jobs:
   summary:
     name: まとめレポート
     runs-on: ubuntu-latest
-    needs: [codeql, gitleaks-scan, trivy-iac, trivy-filesystem, trivy-images]
+    needs:
+      [
+        codeql,
+        gitleaks-scan,
+        gitguardian-scan,
+        trivy-iac,
+        trivy-filesystem,
+        trivy-images,
+      ]
     if: always()
     steps:
       - name: すべての SARIF アーティファクトを取得
