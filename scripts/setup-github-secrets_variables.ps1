@@ -1,6 +1,6 @@
 # 初回セットアップ用: GitHub Actions の Variables/Secrets に一括設定するスクリプト
 # 用途: プロジェクト初回構築時や環境変数の全体リセット時に使用
-# NOTE: デモ環境の利便性を優先するため平文の資格情報をハードコードしているが、本番では必ず Key Vault や GitHub Secrets などで安全に管理すること。
+# セキュリティ: パスワード類はスクリプト内で規定値を設定していますが、本番環境では必ず変更してください
 
 param(
 	[string]$Repo,
@@ -11,6 +11,29 @@ $ErrorActionPreference = 'Stop'
 
 # --- 設定値(必要に応じて編集) ---
 $DefaultRepo = 'aktsmm/ContainerApp-demo2'
+
+# パスワード一括変更機能
+Write-Host '================================' -ForegroundColor Cyan
+Write-Host '🔐 パスワード設定' -ForegroundColor Cyan
+Write-Host '================================' -ForegroundColor Cyan
+Write-Host ''
+Write-Host '現在のデフォルトパスワード: P@ssw0rd!2025' -ForegroundColor Yellow
+Write-Host ''
+$response = Read-Host 'デフォルトパスワードをランダムな値に一括変更しますか？ (Y/N)'
+
+if ($response -eq 'Y' -or $response -eq 'y') {
+	$randomSuffix = Get-Random -Minimum 100 -Maximum 99999
+	$newPassword = "P@ssw0rd!$randomSuffix"
+	Write-Host ''
+	Write-Host "✅ 新しいパスワード: $newPassword" -ForegroundColor Green
+	Write-Host '   このパスワードは全ての項目に適用されます' -ForegroundColor Gray
+	Write-Host ''
+} else {
+	$newPassword = 'P@ssw0rd!2025'
+	Write-Host ''
+	Write-Host '⚠️  デフォルトパスワードを使用します (推奨しません)' -ForegroundColor Yellow
+	Write-Host ''
+}
 
 $GitHubSecrets = @{
 	# scripts/create-github-actions-sp.ps1 の出力値を転記する
@@ -32,14 +55,14 @@ $GitHubVariables = @{
 	ACA_ENVIRONMENT_NAME     = 'cae-demo-dev'
 	ADMIN_CONTAINER_APP_NAME = 'admin-app'
 	ACA_ADMIN_USERNAME       = 'test-admin'
-	ACA_ADMIN_PASSWORD       = 'P@ssw0rd!2025'
+	ACA_ADMIN_PASSWORD       = $newPassword
 	BACKUP_CONTAINER_NAME    = 'mysql-backups'
 	VM_NAME                  = 'vm-mysql-demo'
 	VM_ADMIN_USERNAME        = 'test-admin'
 	DB_APP_USERNAME          = 'test-admin'
-	VM_ADMIN_PASSWORD        = 'P@ssw0rd!2025'
-	MYSQL_ROOT_PASSWORD      = 'P@ssw0rd!2025'
-	DB_APP_PASSWORD          = 'P@ssw0rd!2025'
+	VM_ADMIN_PASSWORD        = $newPassword
+	MYSQL_ROOT_PASSWORD      = $newPassword
+	DB_APP_PASSWORD          = $newPassword
 }
 
 
@@ -132,4 +155,54 @@ foreach ($entry in $GitHubSecrets.GetEnumerator()) {
 	Set-GitHubSecret -Name $entry.Key -Value $entry.Value
 }
 
-Write-Host 'GitHub Actions の初期設定が完了しました。値を変更する場合は本スクリプトのテーブルを更新してください。'
+Write-Host ''
+Write-Host '================================' -ForegroundColor Green
+Write-Host '✅ GitHub Actions の初期設定が完了しました' -ForegroundColor Green
+Write-Host '================================' -ForegroundColor Green
+Write-Host ''
+
+# 設定値一覧を生成
+$summary = @"
+========================================
+設定された Variables と Secrets の一覧
+========================================
+リポジトリ: $Repo
+
+【GitHub Secrets】
+"@
+
+foreach ($entry in $GitHubSecrets.GetEnumerator() | Sort-Object Key) {
+	$summary += "`n  $($entry.Key) = $($entry.Value)"
+}
+
+$summary += "`n`n【GitHub Variables】"
+
+foreach ($entry in $GitHubVariables.GetEnumerator() | Sort-Object Key) {
+	$maskedValue = if ($entry.Key -match 'PASSWORD|SECRET') {
+		'********'
+	} else {
+		$entry.Value
+	}
+	$summary += "`n  $($entry.Key) = $maskedValue"
+}
+
+$summary += "`n`n【パスワード項目（安全な場所に保管してください）】"
+$summary += "`n  VM_ADMIN_PASSWORD = $($GitHubVariables['VM_ADMIN_PASSWORD'])"
+$summary += "`n  MYSQL_ROOT_PASSWORD = $($GitHubVariables['MYSQL_ROOT_PASSWORD'])"
+$summary += "`n  DB_APP_PASSWORD = $($GitHubVariables['DB_APP_PASSWORD'])"
+$summary += "`n  ACA_ADMIN_PASSWORD = $($GitHubVariables['ACA_ADMIN_PASSWORD'])"
+$summary += "`n`n========================================`n"
+
+# 画面に表示
+Write-Host $summary -ForegroundColor Cyan
+
+# クリップボードにコピー
+try {
+	$summary | Set-Clipboard
+	Write-Host '📋 設定値一覧をクリップボードにコピーしました' -ForegroundColor Green
+} catch {
+	Write-Host '⚠️  クリップボードへのコピーに失敗しました' -ForegroundColor Yellow
+}
+
+Write-Host ''
+Write-Host '値を変更する場合は本スクリプトのテーブルを更新してください。' -ForegroundColor Gray
