@@ -63,6 +63,11 @@ $GitHubVariables = @{
 	VM_ADMIN_PASSWORD        = $newPassword
 	MYSQL_ROOT_PASSWORD      = $newPassword
 	DB_APP_PASSWORD          = $newPassword
+	
+	# GitGuardian API Key (オプション)
+	# https://dashboard.gitguardian.com/api/personal-access-tokens で取得
+	# 必要なスコープ: scan (必須), incident:read, incident:write
+	GITGUARDIAN_API_KEY      = ''
 }
 
 
@@ -147,6 +152,26 @@ function Set-GitHubSecret {
 
 Write-Host '--- Repository Variables ---'
 foreach ($entry in $GitHubVariables.GetEnumerator()) {
+	# GitGuardian API Key が空の場合はスキップしてメッセージ表示
+	if ($entry.Key -eq 'GITGUARDIAN_API_KEY' -and [string]::IsNullOrWhiteSpace($entry.Value)) {
+		Write-Host ''
+		Write-Host '⚠️  GITGUARDIAN_API_KEY が設定されていません（スキップ）' -ForegroundColor Yellow
+		Write-Host ''
+		Write-Host '📋 GitGuardian API Key の取得手順:' -ForegroundColor Cyan
+		Write-Host '  1. https://dashboard.gitguardian.com/api/personal-access-tokens にアクセス'
+		Write-Host '  2. 新しいトークンを作成し、以下のスコープを選択:'
+		Write-Host '     ✅ scan (必須)'
+		Write-Host '     ✅ incident:read'
+		Write-Host '     ✅ incident:write'
+		Write-Host '  3. スクリプト内の GITGUARDIAN_API_KEY にトークンを設定'
+		Write-Host '  4. 再度スクリプトを実行'
+		Write-Host ''
+		Write-Host '💡 GitGuardian を使用しない場合は、このまま続行できます。' -ForegroundColor Gray
+		Write-Host '   ワークフローで GitGuardian スキャンはスキップされます。' -ForegroundColor Gray
+		Write-Host ''
+		continue
+	}
+	
 	Set-GitHubVariable -Name $entry.Key -Value $entry.Value
 }
 
@@ -178,7 +203,13 @@ foreach ($entry in $GitHubSecrets.GetEnumerator() | Sort-Object Key) {
 $summary += "`n`n【GitHub Variables】"
 
 foreach ($entry in $GitHubVariables.GetEnumerator() | Sort-Object Key) {
-	$maskedValue = if ($entry.Key -match 'PASSWORD|SECRET') {
+	# GitGuardian API Key が空の場合はスキップ
+	if ($entry.Key -eq 'GITGUARDIAN_API_KEY' -and [string]::IsNullOrWhiteSpace($entry.Value)) {
+		$summary += "`n  $($entry.Key) = (未設定 - スキップされました)"
+		continue
+	}
+	
+	$maskedValue = if ($entry.Key -match 'PASSWORD|SECRET|KEY') {
 		'********'
 	} else {
 		$entry.Value
@@ -191,6 +222,19 @@ $summary += "`n  VM_ADMIN_PASSWORD = $($GitHubVariables['VM_ADMIN_PASSWORD'])"
 $summary += "`n  MYSQL_ROOT_PASSWORD = $($GitHubVariables['MYSQL_ROOT_PASSWORD'])"
 $summary += "`n  DB_APP_PASSWORD = $($GitHubVariables['DB_APP_PASSWORD'])"
 $summary += "`n  ACA_ADMIN_PASSWORD = $($GitHubVariables['ACA_ADMIN_PASSWORD'])"
+
+# GitGuardian API Key が設定されている場合のみ表示
+if (-not [string]::IsNullOrWhiteSpace($GitHubVariables['GITGUARDIAN_API_KEY'])) {
+	$summary += "`n`n【GitGuardian API Key】"
+	$summary += "`n  GITGUARDIAN_API_KEY = $($GitHubVariables['GITGUARDIAN_API_KEY'])"
+	$summary += "`n  スコープ: scan, incident:read, incident:write"
+} else {
+	$summary += "`n`n【GitGuardian API Key】"
+	$summary += "`n  ⚠️  未設定 - GitGuardian スキャンはスキップされます"
+	$summary += "`n  取得URL: https://dashboard.gitguardian.com/api/personal-access-tokens"
+	$summary += "`n  必要なスコープ: scan (必須), incident:read, incident:write"
+}
+
 $summary += "`n`n========================================`n"
 
 # 画面に表示
