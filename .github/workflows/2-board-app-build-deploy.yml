@@ -55,6 +55,8 @@ jobs:
   gitguardian-scan:
     runs-on: ubuntu-latest
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      gitguardian_issues: ${{ steps.count_issues.outputs.issues }}
     steps:
       - name: コードを取得
         uses: actions/checkout@v4
@@ -171,6 +173,18 @@ jobs:
 
           python convert-gg-to-sarif.py
 
+      - name: 検出数をカウント
+        id: count_issues
+        if: always()
+        run: |
+          if [ -f gitguardian-repo.sarif ]; then
+            ISSUES=$(jq '.runs[0].results | length' gitguardian-repo.sarif 2>/dev/null || echo "0")
+          else
+            ISSUES=0
+          fi
+          echo "issues=$ISSUES" >> "$GITHUB_OUTPUT"
+          echo "GitGuardian: $ISSUES 件のシークレット検出"
+
       - name: GitGuardian SARIF を GitHub Security にアップロード
         if: steps.check_key.outputs.has_key == 'true'
         uses: github/codeql-action/upload-sarif@v3
@@ -272,7 +286,7 @@ jobs:
           echo "acr_login_server=${ACR_NAME}.azurecr.io" >> "$GITHUB_OUTPUT"
           echo "resource_group_name=$RESOLVED_RG" >> "$GITHUB_OUTPUT"
 
-      - name: AKS メタデータを取得
+      - name: AKS メタデータを取得（並列化最適化）
         id: aks_info
         env:
           RESOLVED_RG: ${{ steps.resolve_rg.outputs.resource_group_name }}
@@ -282,40 +296,41 @@ jobs:
             echo "AKS クラスター名が未設定です" >&2
             exit 1
           fi
-          AKS_JSON=$(az aks show --resource-group "$RESOLVED_RG" --name "$AKS_CLUSTER_NAME" 2>/dev/null || true)
-          if [ -z "$AKS_JSON" ]; then
+          # 複数クエリを1回のJMESPathで並列取得（高速化）
+          AKS_JSON=$(az aks show --resource-group "$RESOLVED_RG" --name "$AKS_CLUSTER_NAME" \
+            --query '{location: location, nodeResourceGroup: nodeResourceGroup}' -o json 2>/dev/null || true)
+          
+          if [ -z "$AKS_JSON" ] || [ "$AKS_JSON" = "null" ]; then
             echo "AKS クラスター $AKS_CLUSTER_NAME を RG=$RESOLVED_RG で取得できません" >&2
             exit 1
           fi
 
-          # AKS メタデータから自動生成されたノードリソースグループ名を抽出
-          # 例: MC_RG-demo-app1111_aks-demo-dev_japaneast
+          # JSON から値を抽出
           NODE_RG=$(echo "$AKS_JSON" | jq -r '.nodeResourceGroup // empty')
-
-          # AKS のデプロイリージョンを取得（Public IP 検索時のヒントとして利用）
           AKS_LOCATION=$(echo "$AKS_JSON" | jq -r '.location // empty')
+          
           if [ -z "$NODE_RG" ]; then
             echo "AKS ノードリソースグループを解決できません" >&2
             exit 1
           fi
-          
-          # デバッグ出力: ノードリソースグループ名を確認
+
           echo "✅ 取得したノードリソースグループ: $NODE_RG"
-          
+          echo "✅ AKS ロケーション: $AKS_LOCATION"
+
           # ノードリソースグループの存在確認
-          if ! az group show --name "$NODE_RG" &>/dev/null; then
+          if ! az group show --name "$NODE_RG" --query 'name' -o tsv &>/dev/null; then
             echo "⚠️ ノードリソースグループ '$NODE_RG' が存在しません" >&2
             echo "利用可能なリソースグループ一覧:" >&2
             az group list --query '[].name' -o tsv >&2
             exit 1
           fi
-          
+
           echo "node_resource_group=$NODE_RG" >> "$GITHUB_OUTPUT"
           if [ -n "$AKS_LOCATION" ]; then
             echo "aks_location=$AKS_LOCATION" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: インフラ出力から MySQL Private IP を取得
+      - name: インフラ出力から MySQL Private IP を取得（並列化最適化）
         id: mysql_endpoint
         env:
           INFRA_WORKFLOW_NAME: "1️⃣ Infrastructure Deploy"
@@ -337,7 +352,6 @@ jobs:
             if gh run download "$TARGET_RUN_ID" --name infra-outputs --dir infra-output >/dev/null 2>&1; then
               OUTPUT_FILE=$(find infra-output -name '*.json' | head -n1)
               if [ -n "$OUTPUT_FILE" ]; then
-                # Bicep デプロイ出力から MySQL VM のプライベート IP を取得
                 MYSQL_IP=$(jq -r '.mysqlPrivateIp.value // empty' "$OUTPUT_FILE")
               fi
             fi
@@ -349,7 +363,9 @@ jobs:
               echo "parameters ファイルに vmName が存在しません" >&2
               exit 1
             fi
-            MYSQL_IP=$(az vm list-ip-addresses --resource-group "$RESOLVED_RG" --name "$VM_NAME" --query "[0].virtualMachine.network.privateIpAddresses[0]" -o tsv || true)
+            # JMESPathで必要な値のみ取得（高速化）
+            MYSQL_IP=$(az vm list-ip-addresses --resource-group "$RESOLVED_RG" --name "$VM_NAME" \
+              --query "[0].virtualMachine.network.privateIpAddresses[0]" -o tsv || true)
           fi
           MYSQL_PORT=$(jq -r '.parameters.mysqlPort.value // 3306' "$PARAM_FILE")
           if [ -z "$MYSQL_IP" ] || [ "$MYSQL_IP" = "null" ]; then
@@ -360,11 +376,11 @@ jobs:
           echo "Resolved MySQL endpoint: ${MYSQL_IP}:${MYSQL_PORT}"
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 【セキュリティフェーズ】ソースコード脆弱性スキャン
+  # 【セキュリティスキャン】コードレベルのセキュリティチェック
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 目的: ソースコードとコンテナイメージの脆弱性・秘密情報を検出
-  # ツール: Trivy (FS/Image scan), Gitleaks (secret detection)
-  # 成果物: SARIF レポート → GitHub Security タブに自動アップロード
+  # 目的: Gitleaks (シークレット) + Trivy FS (脆弱性) の検出
+  # 成果物: SARIF レポート → GitHub Security タブ
+  # タイミング: prepare-contextに依存するがビルドとは並列実行可能
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   code-security-scans:
     runs-on: ubuntu-latest
@@ -372,8 +388,8 @@ jobs:
       contents: read
       security-events: write # SARIF アップロードで必要
     needs: prepare-context
-    # 実行条件: ビルドが必要な場合のみ（再デプロイ時はスキップ）
-    if: ${{ needs.prepare-context.outputs.build_required == 'true' }}
+    # 実行条件: prepare-context成功時（ビルド不要でも実行して並列化）
+    if: ${{ needs.prepare-context.result == 'success' }}
     outputs:
       gitleaks_issues: ${{ steps.scan_summary.outputs.gitleaks_issues }}
       trivy_fs_critical: ${{ steps.scan_summary.outputs.trivy_fs_critical }}
@@ -473,33 +489,168 @@ jobs:
           echo "trivy_fs_high=$TRIVY_FS_HIGH" >> "$GITHUB_OUTPUT"
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 【ビルドフェーズ】コンテナイメージビルド & ACR プッシュ
+  # 【ビルドフェーズ】Board App イメージビルド & ACR プッシュ（並列化）
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 目的: Board App/API のコンテナイメージをビルドして ACR にプッシュ
+  # 目的: Board App のコンテナイメージをビルドして ACR にプッシュ
   # セキュリティ: Trivy でイメージスキャン、SBOM 生成
   # 成果物: コンテナイメージ、SBOM (CycloneDX)、SARIF レポート
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  build-and-push:
+  build-board-app:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write # SARIF アップロードで必要
-    needs:
-      - prepare-context
-      - code-security-scans
+    needs: prepare-context
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 実行条件:
-    #   - prepare-context が成功
-    #   AND
-    #   - code-security-scans が成功 OR スキップ（再デプロイ時）
+    # 実行条件: prepare-context成功時（Board APIと並列実行）
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if: ${{ needs.prepare-context.result == 'success' && (needs.code-security-scans.result == 'success' || needs.code-security-scans.result == 'skipped') }}
+    if: ${{ needs.prepare-context.outputs.build_required == 'true' }}
     outputs:
-      image_tag: ${{ steps.metadata.outputs.image_tag }}
       board_image_full: ${{ steps.metadata.outputs.board_image_full }}
-      board_api_image_full: ${{ steps.metadata.outputs.board_api_image_full }}
       board_image_critical: ${{ steps.image_scan_summary.outputs.board_image_critical }}
       board_image_high: ${{ steps.image_scan_summary.outputs.board_image_high }}
+    env:
+      CHECKOUT_REF: ${{ needs.prepare-context.outputs.checkout_ref }}
+      IMAGE_TAG: ${{ needs.prepare-context.outputs.image_tag }}
+      ACR_NAME: ${{ needs.prepare-context.outputs.acr_name }}
+      ACR_LOGIN_SERVER: ${{ needs.prepare-context.outputs.acr_login_server }}
+      BUILD_REQUIRED: ${{ needs.prepare-context.outputs.build_required }}
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: メタデータをエクスポート
+        id: metadata
+        run: |
+          IMAGE_FULL="$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:$IMAGE_TAG"
+          echo "board_image_full=$IMAGE_FULL" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_FULL=$IMAGE_FULL" >> "$GITHUB_ENV"
+
+      - name: Azure に Service Principal でログイン
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
+      - name: ACR 管理者認証を有効化
+        run: az acr update --name "$ACR_NAME" --admin-enabled true
+
+      - name: ACR 管理者資格情報を取得
+        id: acr_creds
+        run: |
+          set -euo pipefail
+          USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
+          PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+          echo "::add-mask::$PASSWORD"
+          echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
+          echo "password=$PASSWORD" >> "$GITHUB_OUTPUT"
+
+      - name: Docker にログイン (ACR)
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_LOGIN_SERVER }}
+          username: ${{ steps.acr_creds.outputs.username }}
+          password: ${{ steps.acr_creds.outputs.password }}
+
+      - name: Docker Buildx をセットアップ
+        uses: docker/setup-buildx-action@v3
+
+      - name: Board App イメージをビルド&プッシュ (キャッシュ有効)
+        uses: docker/build-push-action@v5
+        with:
+          context: app/board-app
+          file: app/board-app/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.metadata.outputs.board_image_full }}
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.BOARD_IMAGE_NAME }}:latest
+          cache-from: type=gha,scope=board-app
+          cache-to: type=gha,scope=board-app,mode=max
+
+      - name: Trivy DB キャッシュ復元
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('app/board-app/package.json') }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      - name: コンテナ SBOM 生成 (Board)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.metadata.outputs.board_image_full }}
+          format: "cyclonedx"
+          output: "sbom-board.cdx.json"
+          hide-progress: true
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Trivy でコンテナをスキャン (Board)
+        uses: aquasecurity/trivy-action@0.28.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ steps.metadata.outputs.board_image_full }}
+          format: "sarif"
+          output: "trivy-image-board.sarif"
+          hide-progress: true
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Trivy SARIF をアップロード
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-image-board.sarif
+          category: board-app-trivy-image
+
+      - name: コンテナイメージスキャン結果を集計
+        id: image_scan_summary
+        if: always()
+        run: |
+          set +e
+          BOARD_IMAGE_CRITICAL=0
+          BOARD_IMAGE_HIGH=0
+          if [ -f trivy-image-board.sarif ]; then
+            BOARD_IMAGE_CRITICAL=$(jq '[.runs[].results[] | select(.level == "error")] | length' trivy-image-board.sarif 2>/dev/null || echo "0")
+            BOARD_IMAGE_HIGH=$(jq '[.runs[].results[] | select(.level == "warning")] | length' trivy-image-board.sarif 2>/dev/null || echo "0")
+          fi
+          echo "board_image_critical=$BOARD_IMAGE_CRITICAL" >> "$GITHUB_OUTPUT"
+          echo "board_image_high=$BOARD_IMAGE_HIGH" >> "$GITHUB_OUTPUT"
+
+      - name: 成果メタデータを保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: board-app-image
+          path: |
+            sbom-board.cdx.json
+            trivy-image-board.sarif
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 【ビルドフェーズ】Board API イメージビルド & ACR プッシュ（並列化）
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 目的: Board API のコンテナイメージをビルドして ACR にプッシュ
+  # セキュリティ: Trivy でイメージスキャン、SBOM 生成
+  # 成果物: コンテナイメージ、SBOM (CycloneDX)、SARIF レポート
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  build-board-api:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # SARIF アップロードで必要
+    needs: prepare-context
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 実行条件: prepare-context成功時（Board Appと並列実行）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if: ${{ needs.prepare-context.outputs.build_required == 'true' }}
+    outputs:
+      board_api_image_full: ${{ steps.metadata.outputs.board_api_image_full }}
       api_image_critical: ${{ steps.image_scan_summary.outputs.api_image_critical }}
       api_image_high: ${{ steps.image_scan_summary.outputs.api_image_high }}
     env:
@@ -517,27 +668,20 @@ jobs:
       - name: メタデータをエクスポート
         id: metadata
         run: |
-          IMAGE_FULL="$ACR_LOGIN_SERVER/$BOARD_IMAGE_NAME:$IMAGE_TAG"
           BOARD_API_IMAGE_FULL="$ACR_LOGIN_SERVER/$BOARD_API_IMAGE_NAME:$IMAGE_TAG"
-          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
-          echo "board_image_full=$IMAGE_FULL" >> "$GITHUB_OUTPUT"
           echo "board_api_image_full=$BOARD_API_IMAGE_FULL" >> "$GITHUB_OUTPUT"
-          echo "IMAGE_FULL=$IMAGE_FULL" >> "$GITHUB_ENV"
           echo "BOARD_API_IMAGE_FULL=$BOARD_API_IMAGE_FULL" >> "$GITHUB_ENV"
 
       - name: Azure に Service Principal でログイン
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
         uses: azure/login@v2
         with:
           creds: >-
             {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
 
       - name: ACR 管理者認証を有効化
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
         run: az acr update --name "$ACR_NAME" --admin-enabled true
 
       - name: ACR 管理者資格情報を取得
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
         id: acr_creds
         run: |
           set -euo pipefail
@@ -548,7 +692,6 @@ jobs:
           echo "password=$PASSWORD" >> "$GITHUB_OUTPUT"
 
       - name: Docker にログイン (ACR)
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.ACR_LOGIN_SERVER }}
@@ -556,24 +699,9 @@ jobs:
           password: ${{ steps.acr_creds.outputs.password }}
 
       - name: Docker Buildx をセットアップ
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
         uses: docker/setup-buildx-action@v3
 
-      - name: Board App イメージをビルド&プッシュ (キャッシュ有効)
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
-        uses: docker/build-push-action@v5
-        with:
-          context: app/board-app
-          file: app/board-app/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.metadata.outputs.board_image_full }}
-            ${{ env.ACR_LOGIN_SERVER }}/${{ env.BOARD_IMAGE_NAME }}:latest
-          cache-from: type=gha,scope=board-app
-          cache-to: type=gha,scope=board-app,mode=max
-
       - name: Board API イメージをビルド&プッシュ (キャッシュ有効)
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
         uses: docker/build-push-action@v5
         with:
           context: app/board-api
@@ -586,29 +714,14 @@ jobs:
           cache-to: type=gha,scope=board-api,mode=max
 
       - name: Trivy DB キャッシュ復元
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
         uses: actions/cache@v4
         with:
           path: ~/.cache/trivy
-          key: trivy-db-${{ runner.os }}-${{ hashFiles('app/board-app/package.json') }}
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('app/board-api/package.json') }}
           restore-keys: |
             trivy-db-${{ runner.os }}-
 
-      - name: コンテナ SBOM 生成 (Board)
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: ${{ steps.metadata.outputs.board_image_full }}
-          format: "cyclonedx"
-          output: "sbom-board.cdx.json"
-          hide-progress: true
-          ignore-unfixed: true
-          vuln-type: "os,library"
-          severity: "CRITICAL,HIGH"
-          exit-code: "0"
-
       - name: コンテナ SBOM 生成 (Board API)
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: ${{ steps.metadata.outputs.board_api_image_full }}
@@ -620,22 +733,7 @@ jobs:
           severity: "CRITICAL,HIGH"
           exit-code: "0"
 
-      - name: Trivy でコンテナをスキャン (Board)
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
-        uses: aquasecurity/trivy-action@0.28.0
-        continue-on-error: true
-        with:
-          image-ref: ${{ steps.metadata.outputs.board_image_full }}
-          format: "sarif"
-          output: "trivy-image-board.sarif"
-          hide-progress: true
-          ignore-unfixed: true
-          vuln-type: "os,library"
-          severity: "CRITICAL,HIGH"
-          exit-code: "0"
-
       - name: Trivy でコンテナをスキャン (Board API)
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
         uses: aquasecurity/trivy-action@0.28.0
         continue-on-error: true
         with:
@@ -648,16 +746,8 @@ jobs:
           severity: "CRITICAL,HIGH"
           exit-code: "0"
 
-      - name: Trivy SARIF をアップロード
-        if: ${{ env.BUILD_REQUIRED == 'true' && always() }}
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: trivy-image-board.sarif
-          category: board-app-trivy-image
-
       - name: Trivy SARIF (Board API) をアップロード
-        if: ${{ env.BUILD_REQUIRED == 'true' && always() }}
+        if: always()
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
@@ -666,20 +756,9 @@ jobs:
 
       - name: コンテナイメージスキャン結果を集計
         id: image_scan_summary
-        if: ${{ env.BUILD_REQUIRED == 'true' && always() }}
+        if: always()
         run: |
           set +e
-          # Trivy Image (Board) 結果
-          BOARD_IMAGE_CRITICAL=0
-          BOARD_IMAGE_HIGH=0
-          if [ -f trivy-image-board.sarif ]; then
-            BOARD_IMAGE_CRITICAL=$(jq '[.runs[].results[] | select(.level == "error")] | length' trivy-image-board.sarif 2>/dev/null || echo "0")
-            BOARD_IMAGE_HIGH=$(jq '[.runs[].results[] | select(.level == "warning")] | length' trivy-image-board.sarif 2>/dev/null || echo "0")
-          fi
-          echo "board_image_critical=$BOARD_IMAGE_CRITICAL" >> "$GITHUB_OUTPUT"
-          echo "board_image_high=$BOARD_IMAGE_HIGH" >> "$GITHUB_OUTPUT"
-
-          # Trivy Image (Board API) 結果
           API_IMAGE_CRITICAL=0
           API_IMAGE_HIGH=0
           if [ -f trivy-image-board-api.sarif ]; then
@@ -690,15 +769,47 @@ jobs:
           echo "api_image_high=$API_IMAGE_HIGH" >> "$GITHUB_OUTPUT"
 
       - name: 成果メタデータを保存
-        if: ${{ env.BUILD_REQUIRED == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: board-app-image
+          name: board-api-image
           path: |
-            sbom-board.cdx.json
             sbom-board-api.cdx.json
-            trivy-image-board.sarif
             trivy-image-board-api.sarif
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 【互換性レイヤー】旧統合ビルドジョブ（後方互換性のため保持）
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 目的: 既存のdeployジョブとの互換性維持（出力値を集約）
+  # 実態: build-board-app / build-board-apiの結果を集約するだけ
+  # 注意: 実際のビルドは行わない（並列実行済み）
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-context
+      - build-board-app
+      - build-board-api
+    if: ${{ always() && needs.prepare-context.outputs.build_required == 'true' }}
+    outputs:
+      image_tag: ${{ needs.prepare-context.outputs.image_tag }}
+      board_image_full: ${{ needs.build-board-app.outputs.board_image_full }}
+      board_api_image_full: ${{ needs.build-board-api.outputs.board_api_image_full }}
+      board_image_critical: ${{ needs.build-board-app.outputs.board_image_critical }}
+      board_image_high: ${{ needs.build-board-app.outputs.board_image_high }}
+      api_image_critical: ${{ needs.build-board-api.outputs.api_image_critical }}
+      api_image_high: ${{ needs.build-board-api.outputs.api_image_high }}
+    steps:
+      - name: ビルド結果を集約（互換性レイヤー）
+        run: |
+          echo "✅ Board App Build: ${{ needs.build-board-app.result }}"
+          echo "✅ Board API Build: ${{ needs.build-board-api.result }}"
+          echo "このジョブは互換性のため出力値を集約するだけです"
+          
+          # どちらかが失敗していたら終了コード1
+          if [ "${{ needs.build-board-app.result }}" != "success" ] || [ "${{ needs.build-board-api.result }}" != "success" ]; then
+            echo "❌ ビルドが失敗しました"
+            exit 1
+          fi
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 【デプロイフェーズ】AKS へのアプリケーションデプロイ
@@ -714,6 +825,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - prepare-context
+      - gitguardian-scan
       - code-security-scans
       - build-and-push
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -764,11 +876,11 @@ jobs:
       - name: AKS クラスターの状態を確認
         run: |
           set -euo pipefail
-          
+
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "🔍 AKS クラスター状態確認"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          
+
           # AKS クラスター情報を取得
           AKS_INFO=$(az aks show \
             --resource-group "$RESOURCE_GROUP_NAME" \
@@ -781,19 +893,19 @@ jobs:
               kubernetesVersion: kubernetesVersion
             }' \
             -o json)
-          
+
           echo "AKS クラスター情報:"
           echo "$AKS_INFO" | jq '.'
-          
+
           POWER_STATE=$(echo "$AKS_INFO" | jq -r '.powerState // "Unknown"')
           PROVISIONING_STATE=$(echo "$AKS_INFO" | jq -r '.provisioningState // "Unknown"')
           FQDN=$(echo "$AKS_INFO" | jq -r '.fqdn // "Unknown"')
-          
+
           echo ""
           echo "プロビジョニング状態: $PROVISIONING_STATE"
           echo "電源状態: $POWER_STATE"
           echo "FQDN: $FQDN"
-          
+
           # クラスターが停止している場合は開始
           if [ "$POWER_STATE" = "Stopped" ]; then
             echo ""
@@ -841,41 +953,41 @@ jobs:
           else
             echo "✅ AKS クラスターは実行中です"
           fi
-          
+
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
       - name: AKS 接続を検証
         env:
           # DNS 解決リトライ設定（DNS 伝播遅延に対応するため）
-          MAX_DNS_RETRIES: "5"  # 最大 5 回まで試行
-          DNS_RETRY_INTERVAL: "10"  # 10 秒間隔でリトライ
+          MAX_DNS_RETRIES: "5" # 最大 5 回まで試行
+          DNS_RETRY_INTERVAL: "10" # 10 秒間隔でリトライ
           # クラスター接続リトライ設定（一時的なネットワーク問題に対応するため）
-          MAX_CLUSTER_RETRIES: "3"  # 最大 3 回まで試行
-          CLUSTER_RETRY_INTERVAL: "5"  # 5 秒間隔でリトライ
+          MAX_CLUSTER_RETRIES: "3" # 最大 3 回まで試行
+          CLUSTER_RETRY_INTERVAL: "5" # 5 秒間隔でリトライ
         run: |
           set -euo pipefail
-          
+
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "🔍 AKS 接続検証"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          
+
           echo ""
           echo "=== 1. kubeconfig の確認 ==="
           kubectl config view --minify
-          
+
           echo ""
           echo "=== 2. API サーバーエンドポイントの確認 ==="
           API_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
           echo "API Server: $API_SERVER"
-          
+
           echo ""
           echo "=== 3. DNS 解決テスト ==="
           API_HOST=$(echo "$API_SERVER" | sed 's|https://||' | sed 's|:.*||')
           echo "Hostname: $API_HOST"
-          
+
           # DNS 解決を複数回リトライ（DNS 伝播待ち）
           DNS_RESOLVED=false
-          
+
           for i in $(seq 1 $MAX_DNS_RETRIES); do
             echo "DNS 解決試行 [$i/$MAX_DNS_RETRIES]"
             if nslookup "$API_HOST"; then
@@ -888,7 +1000,7 @@ jobs:
               sleep $DNS_RETRY_INTERVAL
             fi
           done
-          
+
           if [ "$DNS_RESOLVED" != "true" ]; then
             echo "❌ DNS 解決に失敗しました" >&2
             echo ""
@@ -925,12 +1037,12 @@ jobs:
             echo "- 必要に応じて Infrastructure Deploy ワークフローを再実行してください" >&2
             exit 1
           fi
-          
+
           echo ""
           echo "=== 4. クラスター接続テスト ==="
           # クラスター接続も複数回リトライ
           CLUSTER_CONNECTED=false
-          
+
           for i in $(seq 1 $MAX_CLUSTER_RETRIES); do
             echo "クラスター接続試行 [$i/$MAX_CLUSTER_RETRIES]"
             if kubectl cluster-info; then
@@ -943,7 +1055,7 @@ jobs:
               sleep $CLUSTER_RETRY_INTERVAL
             fi
           done
-          
+
           if [ "$CLUSTER_CONNECTED" != "true" ]; then
             echo "❌ クラスターへの接続に失敗しました" >&2
             echo ""
@@ -964,11 +1076,11 @@ jobs:
               -o json >&2 || true
             exit 1
           fi
-          
+
           echo ""
           echo "=== 5. ノード一覧の取得 ==="
           kubectl get nodes -o wide
-          
+
           echo ""
           echo "✅ AKS 接続検証完了"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1319,6 +1431,14 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🔒 セキュリティスキャン結果" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+
+          # GitGuardian 結果
+          GG_ISSUES="${{ needs.gitguardian-scan.outputs.gitguardian_issues || '0' }}"
+          if [ "$GG_ISSUES" = "0" ]; then
+            echo "- ✅ **GitGuardian**: シークレットなし" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️ **GitGuardian**: $GG_ISSUES 件のシークレット検出" >> $GITHUB_STEP_SUMMARY
+          fi
 
           # code-security-scans job の結果
           GITLEAKS="${{ needs.code-security-scans.outputs.gitleaks_issues || '0' }}"
