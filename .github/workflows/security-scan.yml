@@ -531,15 +531,25 @@ jobs:
       - name: SARIF ファイルを統合ディレクトリに集約
         run: |
           mkdir -p sarif
-          echo "=== ダウンロードされた Artifact 構造 ==="
-          ls -laR all-sarif/ || echo "⚠️ all-sarif ディレクトリが見つかりません"
+          
+          # すべての SARIF ファイルを統合ディレクトリにコピー（サブディレクトリを保持しない）
+          find all-sarif -type f -name "*.sarif" -exec cp -v {} sarif/ \;
+          
+          # コピー結果を確認
+          echo "=== 統合ディレクトリ (sarif/) の SARIF ファイル一覧 ==="
+          ls -lah sarif/ || echo "⚠️ SARIF ファイルが見つかりません"
+          
+          # GitGuardian ファイルの存在確認
           echo ""
-          echo "=== GitGuardian 関連ファイルの確認 ==="
-          find all-sarif -type f -name "*gitguardian*" -o -name "*guardian*" || echo "⚠️ GitGuardian ファイルが見つかりません"
-          echo ""
-          find all-sarif -type f -name "*.sarif" -exec cp {} sarif/ \;
-          echo "=== 統合ディレクトリの SARIF ファイル一覧 ==="
-          ls -la sarif/ || echo "⚠️ SARIF ファイルが見つかりません"
+          echo "=== GitGuardian SARIF ファイルの確認 ==="
+          if ls sarif/*gitguardian*.sarif 1> /dev/null 2>&1; then
+            echo "✅ GitGuardian SARIF が見つかりました:"
+            ls -lh sarif/*gitguardian*.sarif
+          else
+            echo "⚠️ GitGuardian SARIF が見つかりません"
+            echo "📁 all-sarif/ の GitGuardian ファイルを探索:"
+            find all-sarif -type f \( -name "*gitguardian*" -o -name "*guardian*" \) -ls || echo "見つかりませんでした"
+          fi
 
       - name: カテゴリ別上位検出抽出 (各カテゴリ上位5件)
         run: |
@@ -568,18 +578,21 @@ jobs:
             CAT_NAME="${CATEGORIES[$PATTERN]}"
             
             # ファイルリスト取得（統合ディレクトリから）
-            FILES=$(find sarif -type f -name "*${PATTERN}*.sarif" 2>/dev/null || true)
+            # シェルグロブを使用してより確実にマッチング
+            shopt -s nullglob
+            FILES=(sarif/*${PATTERN}*.sarif)
+            shopt -u nullglob
             
-            echo "[DEBUG] パターン: $PATTERN" >&2
-            echo "[DEBUG] 検索結果: $FILES" >&2
-            
-            if [ -z "$FILES" ]; then
+            if [ ${#FILES[@]} -eq 0 ]; then
+              # デバッグ: ファイルが見つからない場合
               echo "[DEBUG] $PATTERN: ファイルが見つかりませんでした" >&2
+              echo "[DEBUG] sarif/ の全ファイル:" >&2
+              ls -1 sarif/*.sarif 2>&1 | head -n 10 >&2 || echo "  (SARIFファイルなし)" >&2
               continue
             fi
             
             # カテゴリごとに検出抽出（ファイル名・行番号も取得）
-            ALL=$(for f in $FILES; do
+            ALL=$(for f in "${FILES[@]}"; do
               jq -r --arg SRC "$f" '
                 .runs[]? .results[]? | {
                   rid:(.ruleId // "(rule不明)"),
