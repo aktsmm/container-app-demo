@@ -272,6 +272,41 @@ jobs:
           path: ${{ steps.save_outputs.outputs.output_path }}
           if-no-files-found: error
 
+      - name: Storage ネットワークルールを同期
+        run: |
+          set -euo pipefail
+          VNET_NAME=$(jq -r '.parameters.vnetName.value' "${{ env.PARAM_FILE }}")
+          VM_SUBNET=$(jq -r '.parameters.vmSubnetName.value' "${{ env.PARAM_FILE }}")
+          ACA_SUBNET=$(jq -r '.parameters.containerAppSubnetName.value' "${{ env.PARAM_FILE }}")
+          if [ -z "$VNET_NAME" ] || [ "$VNET_NAME" = "null" ]; then
+            echo "vnetName が parameters に存在しません" >&2
+            exit 1
+          fi
+
+          az storage account update --resource-group "$RESOURCE_GROUP_NAME" --name "$STORAGE_ACCOUNT_NAME" --default-action Deny >/dev/null
+
+          add_rule() {
+            local subnet_name="$1"
+            if [ -z "$subnet_name" ] || [ "$subnet_name" = "null" ]; then
+              return
+            fi
+            local subnet_id
+            subnet_id=$(az network vnet subnet show --resource-group "$RESOURCE_GROUP_NAME" --vnet-name "$VNET_NAME" --name "$subnet_name" --query id -o tsv || true)
+            if [ -z "$subnet_id" ]; then
+              echo "サブネット $subnet_name の ID を取得できません" >&2
+              return
+            fi
+            if az storage account network-rule list --resource-group "$RESOURCE_GROUP_NAME" --account-name "$STORAGE_ACCOUNT_NAME" --query "virtualNetworkRules[].subnet.id" -o tsv | grep -Fx "$subnet_id" >/dev/null 2>&1; then
+              echo "サブネット $subnet_name は既に許可済み"
+            else
+              echo "サブネット $subnet_name を許可します"
+              az storage account network-rule add --resource-group "$RESOURCE_GROUP_NAME" --account-name "$STORAGE_ACCOUNT_NAME" --subnet "$subnet_id" >/dev/null
+            fi
+          }
+
+          add_rule "$VM_SUBNET"
+          add_rule "$ACA_SUBNET"
+
       - name: Azure logout
         if: always()
         run: az logout

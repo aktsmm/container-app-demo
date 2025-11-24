@@ -22,6 +22,7 @@
 - **ポイント**:
   - `aksSkipCreate` フラグで既存クラスタを再利用可能
   - Storage/AKS/Container Apps への診断設定を main.bicep で自動作成し、Log Analytics に統合
+  - Storage アカウントの `defaultAction=Deny` を維持したまま、`vmSubnetName` と `containerAppSubnetName` をワークフロー側で解決してネットワークルールを自動整備
 
 ### 1.1 Azure Policy / Initiative 架構
 
