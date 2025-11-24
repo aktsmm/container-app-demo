@@ -156,3 +156,9 @@ Dependabot (SCA)          ┘
 - Step Summary: 実行完了後に GitHub Actions の結果画面を開き、「Security Scan」ジョブ → Step Summary を確認すると、検出ツールごとの件数・重大度・参照チケットを一覧できます。
 - `security-top-findings.json`: アーティファクトをダウンロードし、`jq '.findings[] | {tool, severity, summary}'` のようにフィルタすると機械判読可能な形式で triage を自動化できます。
 - `READMEs/README_SECURITY.md` に各スキャナーのポリシーや抑止ロジックをまとめているため、誤検知対応はそちらに記録するのがベストプラクティスです。
+
+## 8. 今後の展望（GitHub OIDC フェデレーション）
+
+- 現時点では組織内の「おとなの事情」（監査・稟議・アクセス管理ポリシーの都合）により、Service Principal + クライアントシークレット方式を継続しています。そのため GitHub Actions では `vars.AZURE_CLIENT_ID / SECRET / TENANT_ID` と `secrets.AZURE_SUBSCRIPTION_ID` を必須としており、OIDC は利用していません。
+- 中長期的には GitHub OIDC（OpenID Connect）への移行を見据えており、GitHub Marketplace の [Configure Azure settings](https://github.com/marketplace/configure-azure-settings) アクションで Azure AD に Federated Credential を自動登録する案を検討中です。実用化する際は [`az ad app federated-credential create`] を手作業で呼び出さなくても、Actions ワークフロー内で必要なロール割り当てを自動化できます。
+- 参考 [Qiita: GitHub OIDC で Azure に安全にデプロイする方法](https://qiita.com/kk31108424/items/eba95c510783d18712b8)

@@ -97,7 +97,15 @@
 5. `🔐 Security Scan` (日次)
 6. `🧹 Cleanup Workflow Runs` (定期)
 
-## 8. トラブルシューティングヒント
+## 8. 再実行性と手動トリガー入力
+
+- `workflow_dispatch` を備えるワークフローはすべて単体で再実行できます。`workflow_run` トリガー（例: 1️⃣ の完了後に 2️⃣ が走る設定）は「直前が success のときだけ」発火する条件を付けているため、個別再実行が他ワークフローへ連鎖することはありません。
+- `1️⃣ Infrastructure Deploy` は追加入力なしで `workflow_dispatch` が可能です。Validate/What-If/Deploy は常に同じパラメーターを読み込むため、同一コミットでも安全に再適用できます。
+- `2️⃣ Board App Build & Deploy` の `redeployTag` 入力を空にすると最新コミットから新しいイメージをビルドします。既存タグを再利用したい場合は `redeployTag` へ `board-app:abc123` のように入力するとビルドをスキップして AKS へ再配置できます。`resourceGroupName` / `aksClusterName` を与えると既定値を上書きできるため、検証用 RG に対する個別再実行時にも YAML を弄らず柔軟に対応できます。
+- `2️⃣ Admin App Build & Deploy` でも `redeployTag` 入力で ACR 既存タグを再利用可能です。コンテナアプリのリビジョン衝突を防ぐため、ワークフロー内で `REVISION_SUFFIX=gh-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}` を自動生成しており、同じ Run の再試行や手動リトライでもユニークなリビジョン名が保証されます。
+- `🔄 MySQL Backup Upload` と `🧹 Cleanup Workflow Runs` も `workflow_dispatch` から即時実行できます。定期実行の待ち時間なしで挙動を確認したい場合は手動トリガーを使ってください。
+
+## 9. トラブルシューティングヒント
 
 - ワークフローエラー時は `trouble_docs/*.md` に過去の事例があります。
 - `AZURE_CLIENT_SECRET` を GitHub **Variables** に置いているため、権限を絞りたい場合は Secret へ移行し、YAML も修正してください。
