@@ -610,7 +610,7 @@ jobs:
             # カテゴリごとに検出抽出（ファイル名・行番号も取得）
             ALL=$(for f in "${FILES[@]}"; do
               jq -r --arg SRC "$f" '
-                .runs[]? .results[]? | {
+                .runs[]?.results[]? | {
                   rid:(.ruleId // "(rule不明)"),
                   lvl:(.level // "warning"),
                   sev:(.properties.severity // .properties["security-severity"] // .rule.properties.severity // "MEDIUM"),
