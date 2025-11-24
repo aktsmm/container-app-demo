@@ -1302,8 +1302,20 @@ jobs:
             
             # 既存設定の確認
             echo "📊 現在の Ingress Controller 情報:"
-            HELM_STATUS=$(helm status ingress-nginx -n ingress-nginx -o json 2>/dev/null | jq -r '.info.status // "unknown"')
-            CHART_VERSION=$(helm list -n ingress-nginx -o json 2>/dev/null | jq -r '.[] | select(.name=="ingress-nginx") | .chart')
+            HELM_STATUS_JSON=$(helm status ingress-nginx -n ingress-nginx -o json 2>/dev/null || true)
+            if [ -n "$HELM_STATUS_JSON" ]; then
+              HELM_STATUS=$(echo "$HELM_STATUS_JSON" | jq -r '.info.status // "unknown"' 2>/dev/null || echo "unknown")
+            else
+              echo "⚠️ helm status 情報を取得できませんでした（サマリーは unknown として継続します）" >&2
+              HELM_STATUS="unknown"
+            fi
+
+            HELM_LIST_JSON=$(helm list -n ingress-nginx -o json 2>/dev/null || true)
+            if [ -n "$HELM_LIST_JSON" ]; then
+              CHART_VERSION=$(echo "$HELM_LIST_JSON" | jq -r '.[] | select(.name=="ingress-nginx") | .chart' 2>/dev/null || echo "unknown")
+            else
+              CHART_VERSION="unknown"
+            fi
             HTTP_NODEPORT=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}' 2>/dev/null || echo "N/A")
             HTTPS_NODEPORT=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}' 2>/dev/null || echo "N/A")
             HEALTH_NODEPORT=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.spec.healthCheckNodePort}' 2>/dev/null || echo "N/A")
