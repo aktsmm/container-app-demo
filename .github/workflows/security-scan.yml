@@ -131,6 +131,8 @@ jobs:
   gitguardian-scan:
     name: GitGuardian (シークレット検出)
     runs-on: ubuntu-latest
+    outputs:
+      gitguardian_issues: ${{ steps.count_issues.outputs.issues }}
     steps:
       - name: コード取得
         uses: actions/checkout@v4
@@ -267,12 +269,27 @@ jobs:
           sarif_file: gitguardian-repo.sarif
           category: gitguardian
 
-      - name: GitGuardian SARIF アーティファクト保存
+      - name: 検出数をカウント
+        id: count_issues
+        if: always()
+        run: |
+          if [ -f gitguardian-repo.sarif ]; then
+            ISSUES=$(jq '.runs[0].results | length' gitguardian-repo.sarif 2>/dev/null || echo "0")
+          else
+            ISSUES=0
+          fi
+          echo "issues=$ISSUES" >> "$GITHUB_OUTPUT"
+          echo "GitGuardian: $ISSUES 件のシークレット検出"
+
+      - name: GitGuardian 結果を Artifact として保存
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gitguardian-sarif
-          path: gitguardian-repo.sarif
+          name: gitguardian-results
+          path: |
+            gitguardian-repo.sarif
+            gitguardian-results.json
+          retention-days: 7
           if-no-files-found: warn
 
   # 並列実行グループ3: Trivy IaC スキャン (Bicep/K8s)
@@ -586,7 +603,22 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "1. **CodeQL** - JavaScript & Python のコード品質・セキュリティ分析" >> $GITHUB_STEP_SUMMARY
           echo "2. **Gitleaks** - シークレット・認証情報の漏洩検出（全履歴）" >> $GITHUB_STEP_SUMMARY
-          echo "3. **GitGuardian** - 400+ パターンでシークレット検証・有効性確認" >> $GITHUB_STEP_SUMMARY
+          
+          # GitGuardian 結果（詳細表示）
+          GG_ISSUES="${{ needs.gitguardian-scan.outputs.gitguardian_issues || '0' }}"
+          if [ "$GG_ISSUES" = "0" ]; then
+            echo "3. **GitGuardian** - ✅ シークレットなし (400+ パターン検証)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "3. **GitGuardian** - ⚠️ $GG_ISSUES 件のシークレット検出 (400+ パターン検証)" >> $GITHUB_STEP_SUMMARY
+            
+            # GitGuardian の詳細を取得（artifact から SARIF をダウンロード）
+            if [ -f all-sarif/gitguardian-results/gitguardian-repo.sarif ]; then
+              echo "   **検出されたシークレット（上位5件）:**" >> $GITHUB_STEP_SUMMARY
+              jq -r '.runs[0].results[0:5] | .[] | "   - \(.ruleId): \(.message.text) (\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine))"' \
+                all-sarif/gitguardian-results/gitguardian-repo.sarif >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "   - (詳細取得失敗)" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "4. **Trivy (FS全体)** - 脆弱性 + シークレット + 設定ミス検出" >> $GITHUB_STEP_SUMMARY
           echo "5. **Trivy (Bicep)** - インフラコードのセキュリティスキャン" >> $GITHUB_STEP_SUMMARY
           echo "6. **Trivy (Kubernetes)** - K8sマニフェストのセキュリティスキャン" >> $GITHUB_STEP_SUMMARY
