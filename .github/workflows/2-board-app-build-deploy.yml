@@ -62,23 +62,28 @@ jobs:
           fetch-depth: 0
 
       - name: GitGuardian API Key の確認
+        id: check_key
         run: |
           if [ -z "${{ vars.GITGUARDIAN_API_KEY }}" ]; then
-            echo "❌ GitGuardian API Key が設定されていません"
-            echo "以下の手順で設定してください:"
+            echo "⚠️ GitGuardian API Key が設定されていません（スキャンをスキップ）"
+            echo "設定方法:"
             echo "1. https://dashboard.gitguardian.com/api/personal-access-tokens でトークンを生成"
             echo "2. Settings → Variables → New repository variable"
             echo "3. Name: GITGUARDIAN_API_KEY, Value: <生成したトークン>"
-            exit 1
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ GitGuardian API Key が設定されています"
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "✅ GitGuardian API Key が設定されています"
 
       - name: Python セットアップ
+        if: steps.check_key.outputs.has_key == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: GitGuardian スキャン
+        if: steps.check_key.outputs.has_key == 'true'
         env:
           GITGUARDIAN_API_KEY: ${{ vars.GITGUARDIAN_API_KEY }}
         run: |
@@ -86,6 +91,7 @@ jobs:
           ggshield secret scan repo . --json --output gitguardian-results.json || true
 
       - name: GitGuardian 結果を SARIF 変換
+        if: steps.check_key.outputs.has_key == 'true'
         run: |
           cat > convert-gg-to-sarif.py << 'PYTHON_SCRIPT'
           import json
@@ -166,8 +172,8 @@ jobs:
           python convert-gg-to-sarif.py
 
       - name: GitGuardian SARIF を GitHub Security にアップロード
+        if: steps.check_key.outputs.has_key == 'true'
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
         with:
           sarif_file: gitguardian-repo.sarif
           category: gitguardian
