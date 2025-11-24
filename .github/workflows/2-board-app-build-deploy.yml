@@ -93,8 +93,13 @@ jobs:
           ggshield secret scan repo . --json --output gitguardian-results.json || true
 
       - name: GitGuardian 結果を SARIF 変換
-        if: steps.check_key.outputs.has_key == 'true'
+        if: always()
         run: |
+          # API Key がない場合は空の SARIF を作成
+          if [ ! -f gitguardian-results.json ]; then
+            echo '{"secrets":[]}' > gitguardian-results.json
+          fi
+          
           cat > convert-gg-to-sarif.py << 'PYTHON_SCRIPT'
           import json
           import sys
@@ -191,6 +196,16 @@ jobs:
         with:
           sarif_file: gitguardian-repo.sarif
           category: gitguardian
+
+      - name: GitGuardian 結果を Artifact として保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitguardian-results
+          path: |
+            gitguardian-repo.sarif
+            gitguardian-results.json
+          retention-days: 7
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 【準備フェーズ】デプロイコンテキスト収集
@@ -1432,12 +1447,23 @@ jobs:
           echo "### 🔒 セキュリティスキャン結果" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # GitGuardian 結果
+          # GitGuardian 結果（詳細表示）
           GG_ISSUES="${{ needs.gitguardian-scan.outputs.gitguardian_issues || '0' }}"
           if [ "$GG_ISSUES" = "0" ]; then
             echo "- ✅ **GitGuardian**: シークレットなし" >> $GITHUB_STEP_SUMMARY
           else
             echo "- ⚠️ **GitGuardian**: $GG_ISSUES 件のシークレット検出" >> $GITHUB_STEP_SUMMARY
+            
+            # GitGuardian の詳細を取得（artifact から SARIF をダウンロード）
+            if gh run download "${{ github.run_id }}" --name gitguardian-results --dir temp-gg 2>/dev/null; then
+              if [ -f temp-gg/gitguardian-repo.sarif ]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "  **検出されたシークレット（上位5件）:**" >> $GITHUB_STEP_SUMMARY
+                jq -r '.runs[0].results[0:5] | .[] | "  - \(.ruleId): \(.message.text) (\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine))"' \
+                  temp-gg/gitguardian-repo.sarif >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "  - (詳細取得失敗)" >> $GITHUB_STEP_SUMMARY
+                rm -rf temp-gg
+              fi
+            fi
           fi
 
           # code-security-scans job の結果
