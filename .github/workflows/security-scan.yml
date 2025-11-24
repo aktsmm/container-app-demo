@@ -343,14 +343,14 @@ jobs:
               jq -r --arg SRC "$f" '
                 .runs[]? .results[]? | {
                   rid:(.ruleId // "(rule不明)"),
-                  lvl:(.level // "note"),
-                  sev:(.properties.severity // .properties["security-severity"] // .rule.properties.severity // "UNSPECIFIED"),
+                  lvl:(.level // "warning"),
+                  sev:(.properties.severity // .properties["security-severity"] // .rule.properties.severity // "MEDIUM"),
                   msg:(.message.text // ""),
                   file:(.locations[0].physicalLocation.artifactLocation.uri // "不明"),
                   line:(.locations[0].physicalLocation.region.startLine // 0)
-                } | select(.lvl=="error" or .lvl=="warning") | [
+                } | [
                   (if (.sev|ascii_upcase)=="CRITICAL" then 0 elif (.sev|ascii_upcase)=="HIGH" then 1 elif (.sev|ascii_upcase)=="MEDIUM" then 2 elif (.sev|ascii_upcase)=="LOW" then 3 else 4 end),
-                  (if .lvl=="error" then 0 else 1 end),
+                  (if .lvl=="error" then 0 elif .lvl=="warning" then 1 else 2 end),
                   (.sev|ascii_upcase),
                   .rid,
                   .file,
