@@ -38,22 +38,24 @@ TcpTestSucceeded  : False  # TCP 接続失敗
 
 ### LoadBalancer ヘルスプローブと Ingress Controller NodePort の不一致
 
-| 項目 | 値 | 状態 |
-|------|------|------|
-| **LoadBalancer ヘルスプローブ** | Port **30254** | 古い値 |
-| **Ingress Controller HTTP NodePort** | Port **32038** | 新しい値 |
-| **Ingress Controller healthCheckNodePort** | Port **30254** | Service 作成時に固定 |
-| **結果** | ❌ **ポート不一致** | すべてのバックエンドが Unhealthy |
+| 項目                                       | 値                  | 状態                             |
+| ------------------------------------------ | ------------------- | -------------------------------- |
+| **LoadBalancer ヘルスプローブ**            | Port **30254**      | 古い値                           |
+| **Ingress Controller HTTP NodePort**       | Port **32038**      | 新しい値                         |
+| **Ingress Controller healthCheckNodePort** | Port **30254**      | Service 作成時に固定             |
+| **結果**                                   | ❌ **ポート不一致** | すべてのバックエンドが Unhealthy |
 
 ### 発生メカニズム
 
 1. **Infrastructure Deploy** (05:46)
+
    - AKS + Ingress Controller を作成
    - Ingress Controller Service が作成され、NodePort が割り当てられる
    - 例: HTTP NodePort = **32038**, healthCheckNodePort = **30254**
    - Azure LoadBalancer が自動作成され、ヘルスプローブが **Port 30254** で設定される
 
 2. **Board App Deploy を単発実行** (06:01)
+
    - `helm upgrade --install ingress-nginx` を実行
    - Ingress Controller の Service が**再作成される**
    - 新しい NodePort が割り当てられる: HTTP = **32038** (変わる可能性あり)
@@ -72,12 +74,12 @@ apiVersion: v1
 kind: Service
 spec:
   type: LoadBalancer
-  externalTrafficPolicy: Local  # この場合 healthCheckNodePort が自動割り当て
-  healthCheckNodePort: 30254     # Service 作成時に固定（変更されない）
+  externalTrafficPolicy: Local # この場合 healthCheckNodePort が自動割り当て
+  healthCheckNodePort: 30254 # Service 作成時に固定（変更されない）
   ports:
-  - name: http
-    port: 80
-    nodePort: 32038  # helm upgrade で変わる可能性がある
+    - name: http
+      port: 80
+      nodePort: 32038 # helm upgrade で変わる可能性がある
 ```
 
 - `healthCheckNodePort`: Service 作成時に Kubernetes が自動割り当て（変更不可）
@@ -94,6 +96,7 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller -o yaml | grep -E 'nod
 ```
 
 **期待される出力**:
+
 ```yaml
   healthCheckNodePort: 30254   # ← LoadBalancer はこのポートでヘルスチェック
   - nodePort: 32038            # ← 実際の HTTP トラフィックはこのポート
@@ -108,6 +111,7 @@ az network lb probe list --resource-group $NODE_RG --lb-name kubernetes --query 
 ```
 
 **出力例**:
+
 ```
 Name                                        Port
 ------------------------------------------  ------
@@ -129,6 +133,7 @@ Infrastructure Deploy と Board App Deploy のタイムスタンプを比較す�
 Board App Deploy ワークフローで、既に Ingress Controller が存在する場合は `helm upgrade` をスキップする。
 
 **メリット**:
+
 - ✅ NodePort が変わらない（Service 再作成されない）
 - ✅ ダウンタイムなし
 - ✅ シンプルで安全
@@ -150,6 +155,7 @@ fi
 ```
 
 **変更ファイル**:
+
 - `.github/workflows/2-board-app-build-deploy.yml`
   - Lines 1275-1390: "Ingress Controller (nginx) を確認/インストール" ステップ
 

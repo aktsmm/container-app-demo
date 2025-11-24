@@ -531,14 +531,14 @@ jobs:
       - name: SARIF ファイルを統合ディレクトリに集約
         run: |
           mkdir -p sarif
-          
+
           # すべての SARIF ファイルを統合ディレクトリにコピー（サブディレクトリを保持しない）
           find all-sarif -type f -name "*.sarif" -exec cp -v {} sarif/ \;
-          
+
           # コピー結果を確認
           echo "=== 統合ディレクトリ (sarif/) の SARIF ファイル一覧 ==="
           ls -lah sarif/ || echo "⚠️ SARIF ファイルが見つかりません"
-          
+
           # GitGuardian ファイルの存在確認
           echo ""
           echo "=== GitGuardian SARIF ファイルの確認 ==="
