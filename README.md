@@ -1,5 +1,13 @@
 # Container App Demo – プロジェクト概要とドキュメント案内
 
+### 最初にやること 3 ステップ
+
+1. **Service Principal を発行** – `scripts/create-github-actions-sp.ps1` を実行して `AZURE_CLIENT_ID / SECRET / TENANT_ID / SUBSCRIPTION_ID` を取得し、出力内容をメモします。
+2. **GitHub Secrets/Variables を登録** – `scripts/setup-github-secrets_variables.ps1` で上記クレデンシャルと各種パラメーターを GitHub リポジトリへ投入し、`READMEs/README_SECRETS_VARIABLES.md` で定義された最低限のキーが揃っているか確認します。
+3. **Infrastructure Deploy ワークフローを実行** – `1-infra-deploy.yml` を手動トリガーし、Validate → What-If → Deploy → Policy 適用を完了させて基盤を構築します。
+
+> 詳細手順は [`READMEs/README_QUICKSTART.md`](READMEs/README_QUICKSTART.md) にまとまっています。セットアップ全体を一気に把握したい場合はそちらを先に確認してください。
+
 ## 1. プロジェクトの目的
 
 このプロジェクトは、Azure 上に「掲示板アプリ (AKS)」「管理アプリ (Azure Container Apps)」「MySQL VM」「ACR」「Storage (バックアップ)」「Log Analytics」を **フル IaC (Bicep)** と **GitHub Actions (6 本のワークフロー)** で再現し、CodeQL + Trivy + Gitleaks + GitGuardian でシークレット/脆弱性検知を自動化することで、**モダンな DevOps・DevSecOps の実践価値を体験**していただくことを目的としています。
@@ -18,7 +26,7 @@
 - **Azure Policy によるガバナンス自動化**: タグ強制、リソース種別制限、SKU 制限、リージョン制限などのコンプライアンスルールを IaC で定義し、自動適用。ポリシー違反リソースの検出・修正を CI/CD に組み込むことで、組織のセキュリティ基準を開発フロー全体で担保します。
 - コスト最適化のため、AKS ノード (Standard_B2s)、Container Apps (Consumption)、VM (Standard_B1ms)、ストレージ (Standard_LRS + Cool) など **低コスト SKU** を標準採用しています。
 - Security Scan ワークフローでは GitGuardian の API キーベース検査も有効化しており、`vars.GITGUARDIAN_API_KEY` が設定されている場合は 400+ パターンで履歴全体のシークレット検出を実施します。
-- `app/board-app/public/dummy-secret.txt` は UI からリンクされるダミー資格情報であり、本物の鍵を置かない運用ポリシーを README 群でも明記します。
+- `app/board-app/public/dummy-secret.txt` は UI からリンクされるダミー資格情報であり、本物の機密情報ではありません。
 
 ## 2. 主要コンポーネント
 
@@ -76,6 +84,75 @@ trouble_docs/       # トラブルシューティング履歴
 - **GitGuardian API キー**: `vars.GITGUARDIAN_API_KEY` を登録すると Security Scan ワークフロー内の GitGuardian ジョブが有効化され、`security-scan` の Step Summary とカテゴリ別アラートに GitGuardian の検出結果が集計されます。未設定の場合は GitGuardian ジョブのみスキップされるため、環境に応じて設定可否を判断してください。
 - **dummy-secret 露出**: `public/dummy-secret.txt` はダミー値であり、本物の秘密情報を置かない。[`READMEs/README_SECRETS_VARIABLES.md`](READMEs/README_SECRETS_VARIABLES.md) にも明記。
 - **Service Principal 認証**: すべてのワークフローが `vars.AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID` と `secrets.AZURE_SUBSCRIPTION_ID` を使用。
+- **Secrets/Variables 参照表**: 運用に必要なキーは README からも確認できるようにしています。詳細は [`READMEs/README_SECRETS_VARIABLES.md`](READMEs/README_SECRETS_VARIABLES.md) を参照してください。
+
+| 区分     | キー                       | 役割 / 参照ワークフロー                                                               |
+| -------- | -------------------------- | ------------------------------------------------------------------------------------- |
+| Secret   | `AZURE_SUBSCRIPTION_ID`    | すべての `azure/login@v2` で Subscription を指定                                      |
+| Variable | `AZURE_CLIENT_ID`          | 全ワークフロー共通の Service Principal 認証                                           |
+| Variable | `AZURE_CLIENT_SECRET`      | 同上。秘匿度が気になる場合は Secret への移行も可                                      |
+| Variable | `AZURE_TENANT_ID`          | 同上                                                                                  |
+| Variable | `RESOURCE_GROUP_NAME`      | `1-infra`, `2-board-app`, `2-admin-app`, `backup-upload` など RG 指定が必要なステップ |
+| Variable | `LOCATION`                 | `1-infra` で RG/Policy の配置リージョンを指定                                         |
+| Variable | `ACR_NAME_PREFIX`          | ボード/管理アプリの Build & Deploy、Trivy スキャン                                    |
+| Variable | `STORAGE_ACCOUNT_PREFIX`   | Infra デプロイ、バックアップアップロードで Storage を一意に識別                       |
+| Variable | `AKS_CLUSTER_NAME`         | `2-board-app-build-deploy` の `az aks get-credentials`                                |
+| Variable | `ACA_ENVIRONMENT_NAME`     | `2-admin-app-build-deploy` で ACA を参照                                              |
+| Variable | `ADMIN_CONTAINER_APP_NAME` | ACA リビジョン更新時の対象 App 名                                                     |
+| Variable | `VM_NAME`                  | `backup-upload` で SSH 実行する VM を指定                                             |
+| Variable | `VM_ADMIN_USERNAME`        | `1-infra` の Bicep パラメーター、VM 拡張スクリプト                                    |
+| Variable | `VM_ADMIN_PASSWORD`        | 同上                                                                                  |
+| Variable | `MYSQL_ROOT_PASSWORD`      | Infra デプロイとバックアップ処理の両方で必要                                          |
+| Variable | `DB_APP_USERNAME`          | アプリ用 DB ユーザー。Board/Admin デプロイで Secret を生成                            |
+| Variable | `DB_APP_PASSWORD`          | 同上                                                                                  |
+| Variable | `BACKUP_CONTAINER_NAME`    | ACA とバックアップワークフローで Blob Container を識別                                |
+| Variable | `ACA_ADMIN_USERNAME`       | 管理アプリの Basic 認証ユーザー                                                       |
+| Variable | `ACA_ADMIN_PASSWORD`       | 同上                                                                                  |
+| Variable | `GITGUARDIAN_API_KEY`      | `security-scan.yml` の GitGuardian ジョブを有効化                                     |
+
+> デモ環境ではセットアップ手順を簡略化するため、Subscription ID 以外をあえて GitHub Variables で扱っています。本番運用では `AZURE_CLIENT_SECRET` や DB/VM パスワードなど秘匿性が高い値を Secrets 側へ移し、参照元 YAML も適宜更新してください。
+
 - **免責事項**: このリポジトリは MIT ライセンスです。作成者は本コード・手順の利用に伴ういかなる損害についても責任を負いません。自己責任でご利用ください。
 
 詳細は [`READMEs/`](READMEs/) 配下の各ドキュメントを参照してください。
+
+## 6. ローカル開発クイックガイド
+
+`READMEs/README_TECHNOLOGIES.md` に詳細なツールチェーン解説がありますが、以下のコマンドだけ覚えておけばローカル検証を素早く開始できます。
+
+```bash
+# Board App (React + Vite): 依存関係を入れて開発サーバーを起動
+cd app/board-app
+npm install
+npm run dev -- --host
+
+# Board API (Express): MySQL への接続情報は .env で注入
+cd ../board-api
+npm install
+npm run dev
+
+# Admin App (Flask): 仮想環境を作成し、ストレージ接続用の環境変数をエクスポート
+cd ../admin-app
+python -m venv .venv && .\.venv\Scripts\activate
+pip install -r requirements.txt
+set FLASK_APP=src/app.py
+flask run --debug
+```
+
+> **Tip**: API/Flask アプリの DB 接続値は `scripts/sync-board-vars.ps1` と同じ書式で `.env` に記載すると、CI/CD と揃った挙動を再現できます。
+
+## 7. セキュリティスキャン可視化
+
+`cleanup-failed-workflows.yml` を除くすべてのワークフローが Security Gate に貢献します。特に `security-scan.yml` では、各エンジンの検知結果を Step Summary と `security-top-findings.json`（ワークフロー アーティファクト）に集約しています。
+
+```
+CodeQL (JavaScript/Python) ┐
+Gitleaks (ソース全体)      │        ┌─> GitHub Step Summary でトップ発見を要約
+GitGuardian (履歴スキャン) ├─> SARIF/JSON を統合──┤
+Trivy (コンテナ/IaC)       │        └─> artifacts/security-top-findings.json で詳細追跡
+Dependabot (SCA)          ┘
+```
+
+- Step Summary: 実行完了後に GitHub Actions の結果画面を開き、「Security Scan」ジョブ → Step Summary を確認すると、検出ツールごとの件数・重大度・参照チケットを一覧できます。
+- `security-top-findings.json`: アーティファクトをダウンロードし、`jq '.findings[] | {tool, severity, summary}'` のようにフィルタすると機械判読可能な形式で triage を自動化できます。
+- `READMEs/README_SECURITY.md` に各スキャナーのポリシーや抑止ロジックをまとめているため、誤検知対応はそちらに記録するのがベストプラクティスです。
