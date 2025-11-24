@@ -29,6 +29,7 @@ env:
   CODEQL_LANGUAGES: "javascript,python"
 
 jobs:
+  # 並列実行グループ1: CodeQL (コード解析)
   codeql:
     name: CodeQL (JS+Python)
     runs-on: ubuntu-latest
@@ -72,15 +73,181 @@ jobs:
           path: codeql-sarif/*.sarif
           if-no-files-found: warn
 
-  iac-security:
-    name: IaC セキュリティ (Bicep/K8s/Secrets)
+  # 並列実行グループ2: Gitleaks (シークレット検出)
+  gitleaks-scan:
+    name: Gitleaks (シークレット検出)
     runs-on: ubuntu-latest
     steps:
       - name: コード取得
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Gitleaks用に全履歴を取得
+          fetch-depth: 0 # 全履歴を取得
 
+      - name: Gitleaks キャッシュ復元
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gitleaks
+          key: gitleaks-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            gitleaks-${{ runner.os }}-
+
+      - name: Gitleaks インストール
+        run: |
+          set -euo pipefail
+          VERSION="8.18.4"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o gitleaks.tgz
+          tar -xzf gitleaks.tgz gitleaks
+          sudo install -m 755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Gitleaks でシークレット検出 (全リポジトリ)
+        continue-on-error: true
+        run: |
+          set +e
+          gitleaks detect --no-banner --report-format sarif --report-path gitleaks-repo.sarif
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "⚠️ シークレット検出あり（警告）- Security タブで確認してください"
+          fi
+          exit 0
+
+      - name: Gitleaks SARIF アップロード
+        if: github.actor != 'dependabot[bot]'
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
+        with:
+          sarif_file: gitleaks-repo.sarif
+          category: gitleaks
+
+      - name: Gitleaks SARIF アーティファクト保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-sarif
+          path: gitleaks-repo.sarif
+          if-no-files-found: warn
+
+  # 並列実行グループ3: Trivy IaC スキャン (Bicep/K8s)
+  trivy-iac:
+    name: Trivy IaC (Bicep/K8s)
+    runs-on: ubuntu-latest
+    steps:
+      - name: コード取得
+        uses: actions/checkout@v4
+
+      - name: Trivy DB キャッシュ復元
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ hashFiles('infra/**/*.bicep', 'app/**/k8s/**/*.yaml') }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      - name: Trivy CLI インストール
+        run: |
+          set -euo pipefail
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy --version
+
+      - name: Bicep (infra/) 設定 & 秘密情報 & ミスコンフィグ スキャン (SARIF)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          trivy fs infra \
+            --scanners config,secret \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --format sarif --output trivy-infra.sarif \
+            --ignore-unfixed
+
+      - name: Kubernetes マニフェスト (board-app/k8s) スキャン (SARIF)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          trivy fs app/board-app/k8s \
+            --scanners config,secret \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --format sarif --output trivy-k8s.sarif \
+            --ignore-unfixed
+
+      - name: Trivy SARIF アップロード (infra)
+        if: github.actor != 'dependabot[bot]'
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
+        with:
+          sarif_file: trivy-infra.sarif
+          category: trivy-infra
+
+      - name: Trivy SARIF アップロード (k8s)
+        if: github.actor != 'dependabot[bot]'
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
+        with:
+          sarif_file: trivy-k8s.sarif
+          category: trivy-k8s
+
+      - name: Trivy IaC SARIF アーティファクト保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-iac-sarif
+          path: |
+            trivy-infra.sarif
+            trivy-k8s.sarif
+          if-no-files-found: warn
+
+  # 並列実行グループ4: Trivy FS 全体スキャン
+  trivy-filesystem:
+    name: Trivy FileSystem (脆弱性・シークレット)
+    runs-on: ubuntu-latest
+    steps:
+      - name: コード取得
+        uses: actions/checkout@v4
+
+      - name: Trivy DB キャッシュ復元
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      - name: Trivy CLI インストール
+        run: |
+          set -euo pipefail
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy --version
+
+      - name: Trivy でファイルシステム全体をスキャン (脆弱性 + シークレット + 設定)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          trivy fs . \
+            --scanners vuln,secret,config \
+            --severity CRITICAL,HIGH \
+            --format sarif --output trivy-fs-all.sarif \
+            --ignore-unfixed || echo "⚠️ 脆弱性/シークレット検出あり（警告）"
+
+      - name: Trivy SARIF アップロード (全体)
+        if: github.actor != 'dependabot[bot]'
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
+        with:
+          sarif_file: trivy-fs-all.sarif
+          category: trivy-filesystem
+
+      - name: Trivy FS SARIF アーティファクト保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-fs-sarif
+          path: trivy-fs-all.sarif
+          if-no-files-found: warn
+
+  # 並列実行グループ5: ビルド済みイメージスキャン結果の収集
+  trivy-images:
+    name: Trivy Images (ビルド済み)
+    runs-on: ubuntu-latest
+    steps:
       - name: 最新ビルド成果物を取得 (Board App)
         uses: dawidd6/action-download-artifact@v6
         continue-on-error: true
@@ -112,129 +279,32 @@ jobs:
           fi
           ls -la sarif/ || true
 
-      - name: Trivy DB キャッシュ復元
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/trivy
-          key: trivy-db-${{ runner.os }}-${{ hashFiles('infra/**/*.bicep') }}
-          restore-keys: |
-            trivy-db-${{ runner.os }}-
-
-      - name: Trivy CLI インストール
-        run: |
-          set -euo pipefail
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-          trivy --version
-
-      - name: Gitleaks インストール
-        run: |
-          set -euo pipefail
-          VERSION="8.18.4"
-          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o gitleaks.tgz
-          tar -xzf gitleaks.tgz gitleaks
-          sudo install -m 755 gitleaks /usr/local/bin/gitleaks
-          gitleaks version
-
-      - name: Gitleaks でシークレット検出 (全リポジトリ)
-        continue-on-error: true
-        run: |
-          set +e
-          gitleaks detect --no-banner --report-format sarif --report-path gitleaks-repo.sarif
-          EXIT_CODE=$?
-          if [ $EXIT_CODE -ne 0 ]; then
-            echo "⚠️ シークレット検出あり（警告）- Security タブで確認してください"
-          fi
-          exit 0
-
-      - name: Trivy でファイルシステム全体をスキャン (脆弱性 + シークレット + 設定)
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          trivy fs . \
-            --scanners vuln,secret,config \
-            --severity CRITICAL,HIGH \
-            --format sarif --output trivy-fs-all.sarif \
-            --ignore-unfixed || echo "⚠️ 脆弱性/シークレット検出あり（警告）"
-
-      - name: Bicep (infra/) 設定 & 秘密情報 & ミスコンフィグ スキャン (SARIF)
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          trivy fs infra \
-            --scanners config,secret \
-            --severity CRITICAL,HIGH,MEDIUM \
-            --format sarif --output trivy-infra.sarif \
-            --ignore-unfixed
-
-      - name: Kubernetes マニフェスト (board-app/k8s) スキャン (SARIF)
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          trivy fs app/board-app/k8s \
-            --scanners config,secret \
-            --severity CRITICAL,HIGH,MEDIUM \
-            --format sarif --output trivy-k8s.sarif \
-            --ignore-unfixed
-
-      - name: Gitleaks SARIF アップロード
-        if: github.actor != 'dependabot[bot]' # Dependabot は read-only token なので SARIF 書き込み不可
-        uses: github/codeql-action/upload-sarif@v4
-        continue-on-error: true # Code scanning 未有効時は失敗を許容
-        with:
-          sarif_file: gitleaks-repo.sarif
-          category: gitleaks
-
-      - name: Trivy SARIF アップロード (全体)
-        if: github.actor != 'dependabot[bot]' # Dependabot 実行時は Code scanning に投稿しない
-        uses: github/codeql-action/upload-sarif@v4
-        continue-on-error: true
-        with:
-          sarif_file: trivy-fs-all.sarif
-          category: trivy-filesystem
-
-      - name: Trivy SARIF アップロード (infra)
-        if: github.actor != 'dependabot[bot]' # read-only token のためアップロードが 403 になるのを防止
-        uses: github/codeql-action/upload-sarif@v4
-        continue-on-error: true
-        with:
-          sarif_file: trivy-infra.sarif
-          category: trivy-infra
-
-      - name: Trivy SARIF アップロード (k8s)
-        if: github.actor != 'dependabot[bot]' # Dependabot PR は SARIF を後続レビュー用アーティファクトのみに制限
-        uses: github/codeql-action/upload-sarif@v4
-        continue-on-error: true
-        with:
-          sarif_file: trivy-k8s.sarif
-          category: trivy-k8s
-
-      - name: スキャン成果物保存
+      - name: Trivy Images SARIF アーティファクト保存
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: iac-scan-results
-          path: |
-            gitleaks-repo.sarif
-            trivy-fs-all.sarif
-            trivy-infra.sarif
-            trivy-k8s.sarif
+          name: trivy-images-sarif
+          path: sarif/*.sarif
+          if-no-files-found: ignore
 
+  # 統合レポート生成 (全並列ジョブ完了後に実行)
   summary:
     name: まとめレポート
     runs-on: ubuntu-latest
-    needs: [codeql, iac-security]
+    needs: [codeql, gitleaks-scan, trivy-iac, trivy-filesystem, trivy-images]
     if: always()
     steps:
-      - name: スキャン成果物取得 (Trivy/Gitleaks)
+      - name: すべての SARIF アーティファクトを取得
         uses: actions/download-artifact@v4
         with:
-          name: iac-scan-results
-          path: sarif
+          path: all-sarif
 
-      - name: CodeQL SARIF 取得
-        uses: actions/download-artifact@v4
-        with:
-          name: codeql-sarif
-          path: sarif-codeql
+      - name: SARIF ファイルを統合ディレクトリに集約
+        run: |
+          mkdir -p sarif
+          find all-sarif -type f -name "*.sarif" -exec cp {} sarif/ \;
+          echo "=== 収集された SARIF ファイル一覧 ==="
+          ls -la sarif/ || echo "⚠️ SARIF ファイルが見つかりません"
 
       - name: カテゴリ別上位検出抽出 (各カテゴリ上位3件)
         run: |
@@ -261,16 +331,8 @@ jobs:
           for PATTERN in codeql gitleaks trivy-image trivy-fs trivy-infra trivy-k8s; do
             CAT_NAME="${CATEGORIES[$PATTERN]}"
             
-            # ファイルリスト取得
-            if [ "$PATTERN" = "codeql" ]; then
-              FILES=$(ls sarif-codeql/*.sarif 2>/dev/null || true)
-            elif [ "$PATTERN" = "trivy-image" ]; then
-              FILES=$(ls sarif/trivy-image-*.sarif 2>/dev/null || true)
-            elif [ "$PATTERN" = "trivy-fs" ]; then
-              FILES=$(ls sarif/trivy-fs-all.sarif 2>/dev/null || true)
-            else
-              FILES=$(ls sarif/${PATTERN}*.sarif 2>/dev/null || true)
-            fi
+            # ファイルリスト取得（統合ディレクトリから）
+            FILES=$(find sarif -type f -name "*${PATTERN}*.sarif" 2>/dev/null || true)
             
             if [ -z "$FILES" ]; then
               continue
