@@ -322,11 +322,11 @@ jobs:
           fi
           echo "issues=$ISSUES" >> "$GITHUB_OUTPUT"
           echo "GitGuardian: $ISSUES 件のシークレット検出"
-          
+
           # エラー状態をログに出力（サマリには書き込まない）
           SCAN_ERROR="${{ steps.gg_scan.outputs.scan_error || 'none' }}"
           HAS_KEY="${{ steps.check-api-key.outputs.has_key }}"
-          
+
           if [ "$HAS_KEY" != "true" ]; then
             echo "⚠️ GitGuardian API Key 未設定 - スキャンをスキップしました"
           elif [ "$SCAN_ERROR" = "scope_missing" ]; then
@@ -664,7 +664,7 @@ jobs:
           GG_ISSUES="${{ needs.gitguardian-scan.outputs.gitguardian_issues || '0' }}"
           HAS_KEY="${{ needs.gitguardian-scan.outputs.has_key || 'true' }}"
           SCAN_ERROR="${{ needs.gitguardian-scan.outputs.scan_error || 'none' }}"
-          
+
           if [ "$HAS_KEY" != "true" ]; then
             echo "3. **GitGuardian** - ⚠️ API Key 未設定（スキップ）" >> $GITHUB_STEP_SUMMARY
             echo "   - 💡 [設定手順](https://dashboard.gitguardian.com/api/personal-access-tokens) でトークンを生成し、Variables に \`GITGUARDIAN_API_KEY\` を設定" >> $GITHUB_STEP_SUMMARY

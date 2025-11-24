@@ -28,7 +28,7 @@ GitGuardian API Key が設定されているが、`scan` スコープが不足�
 3. Token 設定:
    - **Name**: `GitHub Actions - container-app-demo`
    - **Scopes**: ✅ **`scan`** （必須）
-   - **Expiration**: お好みで設定（推奨: 90日または無期限）
+   - **Expiration**: お好みで設定（推奨: 90 日または無期限）
 4. 「Create」をクリックしてトークンをコピー
 
 ### 2. GitHub Variables を更新
@@ -51,11 +51,11 @@ gh workflow run "2-board-app-build-deploy.yml"
 
 GitGuardian API Key には以下のスコープが必要：
 
-| スコープ | 用途 | 必須 |
-|---------|------|------|
-| **`scan`** | リポジトリ・ファイルのスキャン | ✅ 必須 |
-| `incidents:read` | インシデント閲覧 | 任意 |
-| `incidents:write` | インシデント管理 | 任意 |
+| スコープ          | 用途                           | 必須    |
+| ----------------- | ------------------------------ | ------- |
+| **`scan`**        | リポジトリ・ファイルのスキャン | ✅ 必須 |
+| `incidents:read`  | インシデント閲覧               | 任意    |
+| `incidents:write` | インシデント管理               | 任意    |
 
 本ワークフローでは **`scan`** スコープのみで十分。
 

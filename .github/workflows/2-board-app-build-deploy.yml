@@ -93,11 +93,11 @@ jobs:
         run: |
           set +e
           pip install --quiet ggshield
-          
+
           # スキャン実行とエラー捕捉
           SCAN_OUTPUT=$(ggshield secret scan repo . --json --output gitguardian-results.json 2>&1)
           SCAN_EXIT_CODE=$?
-          
+
           # エラーメッセージをチェック
           if echo "$SCAN_OUTPUT" | grep -q "Token is missing the required scope"; then
             echo "::error::❌ GitGuardian API Key に 'scan' スコープが不足しています"
@@ -131,7 +131,7 @@ jobs:
             echo "✅ GitGuardian スキャン完了"
             echo "scan_error=none" >> "$GITHUB_OUTPUT"
           fi
-          
+
           exit 0
 
       - name: GitGuardian 結果を SARIF 変換
@@ -231,11 +231,11 @@ jobs:
           fi
           echo "issues=$ISSUES" >> "$GITHUB_OUTPUT"
           echo "GitGuardian: $ISSUES 件のシークレット検出"
-          
+
           # スキャンエラーがあればサマリに表示
           SCAN_ERROR="${{ steps.gg_scan.outputs.scan_error || 'none' }}"
           HAS_KEY="${{ steps.check_key.outputs.has_key }}"
-          
+
           if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
             if [ "$HAS_KEY" != "true" ]; then
               {
