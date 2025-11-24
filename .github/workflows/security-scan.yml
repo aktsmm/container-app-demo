@@ -233,7 +233,7 @@ jobs:
               with open('gitguardian-results.json', 'r', encoding='utf-8') as f:
                   gg_data = json.load(f)
           except:
-              gg_data = {"secrets": []}
+              gg_data = {"scans": []}
 
           # SARIF フォーマット生成
           sarif = {
@@ -251,48 +251,64 @@ jobs:
               }]
           }
 
-          # secrets がある場合のみ処理
-          if isinstance(gg_data, dict) and "secrets" in gg_data:
-              for idx, secret in enumerate(gg_data.get("secrets", [])):
-                  # ファイルパスと行番号を取得
-                  file_path = "unknown"
-                  line_number = 1
+          # GitGuardian の実際の JSON 構造を解析
+          # 構造: { "scans": [ { "entities_with_incidents": [ { "filename": "...", "incidents": [...] } ] } ] }
+          if isinstance(gg_data, dict) and "scans" in gg_data:
+              scans = gg_data.get("scans", [])
+              for scan in scans:
+                  if not isinstance(scan, dict):
+                      continue
                   
-                  if isinstance(secret, dict):
-                      # policy_breaks から情報取得
-                      breaks = secret.get("policy_breaks", [])
-                      if breaks and isinstance(breaks, list) and len(breaks) > 0:
-                          first_break = breaks[0]
-                          if isinstance(first_break, dict):
-                              matches = first_break.get("matches", [])
-                              if matches and isinstance(matches, list) and len(matches) > 0:
-                                  first_match = matches[0]
-                                  if isinstance(first_match, dict):
-                                      file_path = first_match.get("match", "unknown")
-                                      line_number = first_match.get("line_start", 1)
-                              
-                              detector = first_break.get("type", "secret-detected")
-                              
-                              sarif["runs"][0]["results"].append({
-                                  "ruleId": f"gitguardian/{detector}",
-                                  "level": "error",
-                                  "message": {
-                                      "text": f"GitGuardian detected: {detector}"
-                                  },
-                                  "locations": [{
-                                      "physicalLocation": {
-                                          "artifactLocation": {
-                                              "uri": file_path
-                                          },
-                                          "region": {
-                                              "startLine": line_number
-                                          }
+                  # 各コミットの entities_with_incidents を処理
+                  entities = scan.get("entities_with_incidents", [])
+                  for entity in entities:
+                      if not isinstance(entity, dict):
+                          continue
+                      
+                      filename = entity.get("filename", "unknown")
+                      incidents = entity.get("incidents", [])
+                      
+                      # 各インシデントを SARIF に変換
+                      for incident in incidents:
+                          if not isinstance(incident, dict):
+                              continue
+                          
+                          incident_type = incident.get("type", "secret-detected")
+                          policy = incident.get("policy", "Secrets detection")
+                          occurrences = incident.get("occurrences", [])
+                          
+                          # 最初の occurrence から位置情報を取得
+                          line_start = 1
+                          line_end = 1
+                          if occurrences and isinstance(occurrences, list) and len(occurrences) > 0:
+                              first_occ = occurrences[0]
+                              if isinstance(first_occ, dict):
+                                  line_start = first_occ.get("line_start", 1)
+                                  line_end = first_occ.get("line_end", line_start)
+                          
+                          # SARIF result に追加
+                          sarif["runs"][0]["results"].append({
+                              "ruleId": f"gitguardian/{incident_type}",
+                              "level": "error",
+                              "message": {
+                                  "text": f"GitGuardian detected {incident_type} in {filename}"
+                              },
+                              "locations": [{
+                                  "physicalLocation": {
+                                      "artifactLocation": {
+                                          "uri": filename
+                                      },
+                                      "region": {
+                                          "startLine": line_start,
+                                          "endLine": line_end
                                       }
-                                  }],
-                                  "properties": {
-                                      "severity": "HIGH"
                                   }
-                              })
+                              }],
+                              "properties": {
+                                  "severity": "HIGH",
+                                  "policy": policy
+                              }
+                          })
 
           # SARIF ファイル出力
           with open('gitguardian-repo.sarif', 'w', encoding='utf-8') as f:
