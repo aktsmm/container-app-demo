@@ -192,7 +192,7 @@ jobs:
 
       - name: GitGuardian SARIF を GitHub Security にアップロード
         if: steps.check_key.outputs.has_key == 'true'
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: gitguardian-repo.sarif
           category: gitguardian
