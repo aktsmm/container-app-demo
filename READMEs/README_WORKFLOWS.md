@@ -63,11 +63,11 @@
 
 ## 5. `🧹 Cleanup Workflow Runs (Scheduled)` (`.github/workflows/cleanup-workflows.yml`)
 
-- **トリガー**: `schedule` (12 時間毎), `workflow_dispatch`, `push` (main ブランチ)
+- **トリガー**: `schedule` (18 時間毎), `workflow_dispatch`, `push` (main ブランチ)
 - **処理内容**:
   - `gh run list` / `gh api` を駆使して古い実行を削除
   - 保持ポリシー: 成功 (人間) 7 件、成功 (Dependabot) 3 件、失敗 1 件
-  - `GITHUB_TOKEN` を使用（PAT は不要）
+  - `secrets.GH_PAT_ACTIONS_DELETE` があれば PAT を優先使用し、未設定の場合は `GITHUB_TOKEN` で実行
 
 ## 6. `🔐 Security Scan (CodeQL + Trivy + Gitleaks + GitGuardian)` (`.github/workflows/security-scan.yml`)
 
