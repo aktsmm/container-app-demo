@@ -112,6 +112,15 @@ install_mysql_server
 log "Enabling MySQL service"
 sudo systemctl enable --now mysql
 
+# Azure CLI のインストール（既存の場合はスキップ）
+if command -v az >/dev/null 2>&1; then
+    log "Azure CLI is already installed. Skipping installation."
+else
+    log "Installing Azure CLI"
+    curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+    log "Azure CLI installation complete"
+fi
+
 log "Applying user configuration"
 cat <<SQL | sudo mysql
 ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${ROOT_ESC}';
