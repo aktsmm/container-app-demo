@@ -1442,34 +1442,34 @@ jobs:
           NODE_RESOURCE_GROUP: ${{ env.NODE_RESOURCE_GROUP }}
         run: |
           set -euo pipefail
-          
+
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "🔧 LoadBalancer Rule の BackendPort を検証・修正"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          
+
           # ステップ1: Ingress Controller の NodePort を取得（HTTP のみ検証）
           HTTP_NODEPORT=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
             -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}' 2>/dev/null || echo "")
-          
+
           if [ -z "$HTTP_NODEPORT" ]; then
             echo "❌ Ingress Controller の HTTP NodePort を取得できません" >&2
             kubectl get svc -n ingress-nginx ingress-nginx-controller
             exit 1
           fi
-          
+
           echo "📊 Ingress Controller NodePort:"
           echo "  - HTTP: $HTTP_NODEPORT"
           echo "  ℹ️  HTTPS は未使用のため検証をスキップします"
-          
+
           # ステップ2: LoadBalancer Rule を取得（HTTP のみ）
           NODE_RG="${NODE_RESOURCE_GROUP}"
           LB_NAME="kubernetes"
-          
+
           echo ""
           echo "📊 LoadBalancer Rule の現在の設定（HTTP のみ）:"
           LB_RULES=$(az network lb rule list --resource-group "$NODE_RG" --lb-name "$LB_NAME" \
             --query "[?frontendPort==\`80\`]" -o json)
-          
+
           if [ -z "$LB_RULES" ] || [ "$LB_RULES" = "[]" ]; then
             echo "⚠️ LoadBalancer Rule が見つかりません（作成中の可能性あり）"
             echo "   30秒待機してから再試行します..."
@@ -1477,17 +1477,17 @@ jobs:
             LB_RULES=$(az network lb rule list --resource-group "$NODE_RG" --lb-name "$LB_NAME" \
               --query "[?frontendPort==\`80\` || frontendPort==\`443\`]" -o json)
           fi
-          
+
           if [ -z "$LB_RULES" ] || [ "$LB_RULES" = "[]" ]; then
             echo "❌ LoadBalancer Rule が作成されていません" >&2
             exit 1
           fi
-          
+
           echo "$LB_RULES" | jq -r '.[] | "  - \(.name): FrontendPort=\(.frontendPort), BackendPort=\(.backendPort)"'
-          
+
           # ステップ3: HTTP Rule の BackendPort が NodePort と一致しない場合は修正
           FIXED_COUNT=0
-          
+
           for rule in $(echo "$LB_RULES" | jq -r '.[] | @base64'); do
             _jq() {
               echo "$rule" | base64 --decode | jq -r "$1"
@@ -1514,7 +1514,7 @@ jobs:
               FIXED_COUNT=$((FIXED_COUNT + 1))
             fi
           done
-          
+
           echo ""
           if [ "$FIXED_COUNT" -gt 0 ]; then
             echo "✅ LoadBalancer Rule (HTTP) を修正しました"
@@ -1540,7 +1540,7 @@ jobs:
           else
             echo "✅ LoadBalancer Rule (HTTP) は正しく設定されています（修正不要）"
           fi
-          
+
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
       - name: LoadBalancer 健康チェック
@@ -1587,10 +1587,10 @@ jobs:
           # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           # LoadBalancer ポート 80 接続確認（外部からの疎通テスト）
           # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          # 過去の成功実績では 1 回目で接続できているためタイムアウトを短縮
-          readonly CONNECTIVITY_TIMEOUT_MINUTES=3
+          # 過去の成功実績では 1 回目で接続できているためタイムアウトをさらに短縮
+          readonly CONNECTIVITY_TIMEOUT_SECONDS=90
           readonly CONNECTIVITY_INTERVAL=5
-          CONNECTIVITY_ATTEMPTS=$((CONNECTIVITY_TIMEOUT_MINUTES * 60 / CONNECTIVITY_INTERVAL))
+          CONNECTIVITY_ATTEMPTS=$((CONNECTIVITY_TIMEOUT_SECONDS / CONNECTIVITY_INTERVAL))
           CONNECTIVITY_SUCCESS=false
 
           for i in $(seq 1 $CONNECTIVITY_ATTEMPTS); do
@@ -1599,7 +1599,7 @@ jobs:
               CONNECTIVITY_SUCCESS=true
               break
             fi
-            echo "[$i/$CONNECTIVITY_ATTEMPTS] LoadBalancer ポート 80 接続待機中... (最大${CONNECTIVITY_TIMEOUT_MINUTES}分)"
+            echo "[$i/$CONNECTIVITY_ATTEMPTS] LoadBalancer ポート 80 接続待機中... (最大${CONNECTIVITY_TIMEOUT_SECONDS}秒)"
             sleep $CONNECTIVITY_INTERVAL
           done
 
