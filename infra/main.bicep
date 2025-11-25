@@ -225,12 +225,20 @@ module acr './modules/acr.bicep' = {
 
 module storage './modules/storageAccount.bicep' = {
   name: 'storage-${deploymentTimestamp}'
+  dependsOn: [
+    vnet
+  ]
   params: {
     name: storageAccountName
     location: location
     sku: storageSku
     accessTier: storageAccessTier
     backupContainerName: backupContainerName
+    // VNet 統合：VM サブネットと Container Apps サブネットからのアクセスを許可
+    allowedSubnetIds: [
+      resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, vmSubnetName)
+      resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, containerAppSubnetName)
+    ]
     tags: defaultTags
   }
 }

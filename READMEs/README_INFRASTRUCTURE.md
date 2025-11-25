@@ -34,6 +34,7 @@ VNet 10.0.0.0/16
   - Storage Account: Transaction メトリック (必要に応じてログカテゴリを追加可能)
   - VM: System Assigned ID + Custom Script。Azure Monitor Agent は DCR 整備後に追加予定 (コメント参照)。
 - **Role Assignment**: VM の Managed Identity に Storage Blob Data Contributor (バックアップ用) を割り当て。
+- **Storage Network**: `publicNetworkAccess: Enabled` + `defaultAction: Deny` + VNet Service Endpoint により、`snet-vm` と `snet-aca` からのみアクセス可能。Private Endpoint 未構成のため Public は有効だが、RBAC と VNet 制限で保護。
 
 ## 3. Kubernetes (app/board-app/k8s) の構造
 

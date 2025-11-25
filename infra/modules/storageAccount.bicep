@@ -19,6 +19,9 @@ param accessTier string = 'Cool'
 @description('バックアップコンテナ名')
 param backupContainerName string = 'mysql-backups'
 
+@description('VNet 統合用サブネット ID の配列（Service Endpoint 経由でアクセス許可）')
+param allowedSubnetIds array = []
+
 @description('共通タグ')
 param tags object = {}
 
@@ -35,13 +38,17 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-04-01' = {
     allowBlobPublicAccess: false
     minimumTlsVersion: 'TLS1_2'
     supportsHttpsTrafficOnly: true
-    // ネットワークルールを設定：デフォルトで拒否し、Azure サービスからのアクセスは許可
-    // VM の Managed Identity は AzureServices バイパスで動作する
-    // コンテナ作成とバックアップアップロードの両方を VM 内で実行
+    // Public Network Access を有効化（VNet Service Endpoint 経由のアクセスに必要）
+    // publicNetworkAccess: 'Disabled' の場合は Private Endpoint が必須となる
+    publicNetworkAccess: 'Enabled'
+    // ネットワークルール：デフォルト拒否 + VNet サブネット（snet-vm, snet-aca）のみ許可
     networkAcls: {
       defaultAction: 'Deny'
       bypass: 'AzureServices'
-      virtualNetworkRules: []
+      virtualNetworkRules: [for subnetId in allowedSubnetIds: {
+        id: subnetId
+        action: 'Allow'
+      }]
       ipRules: []
     }
     encryption: {
