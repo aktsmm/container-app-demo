@@ -1,4 +1,4 @@
-# Container App Demo – プロジェクト概要とドキュメント案内
+# Azure DevSecOps Demo – フル IaC & CI/CD 自動化による実践学習
 
 ### 最初にやること 3 ステップ
 
