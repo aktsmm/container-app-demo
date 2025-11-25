@@ -62,7 +62,7 @@ VNet 10.0.0.0/16
   - Azure CLI のインストール（既存の場合はスキップ。バックアップワークフローでコンテナ操作に必要）
   - root とアプリユーザーの作成 (`mysqlRootPassword`, `mysqlAppUsername`, `mysqlAppPassword`)
   - 外部接続許可 & サービス再起動
-- GitHub Actions の `backup-upload` では VM の Managed Identity + Azure CLI + AzCopy (MSI) で `mysqldump` を Storage にアップロード（週1回・毎週月曜日）。
+- GitHub Actions の `backup-upload` では VM の Managed Identity + Azure CLI + AzCopy (MSI) で `mysqldump` を Storage にアップロード（週 1 回・毎週月曜日）。
 
 ## 6. Azure Policy
 

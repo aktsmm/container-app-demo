@@ -60,7 +60,7 @@
    2. Flask アプリが `DefaultAzureCredential()` を使って Storage へ接続し、`BACKUP_CONTAINER` の Blob を列挙。
    3. 同じアプリが PyMySQL で MySQL VM に接続し、投稿削除 API を提供。
 4. **バックアップ**
-   - `backup-upload` ワークフローが週1回（毎週月曜日 00:00 UTC）`mysqldump` を生成し、VM の Managed Identity + Azure CLI + AzCopy MSI 認証で Storage Blob へアップロード。
+   - `backup-upload` ワークフローが週 1 回（毎週月曜日 00:00 UTC）`mysqldump` を生成し、VM の Managed Identity + Azure CLI + AzCopy MSI 認証で Storage Blob へアップロード。
 5. **ログ / テレメトリ**
    - AKS Control Plane、Container Apps、Storage は `main.bicep` の Diagnostic Settings で Log Analytics へ送信。
    - GitHub Actions の Step Summary にも各デプロイ結果が書き込まれ、人的レビューを補助。

@@ -62,7 +62,7 @@
 
 ## 4. `🔄 MySQL Backup Upload (Scheduled)` (`.github/workflows/backup-upload.yml`)
 
-- **トリガー**: `schedule` (週1回・毎週月曜日 00:00 UTC), `workflow_dispatch`
+- **トリガー**: `schedule` (週 1 回・毎週月曜日 00:00 UTC), `workflow_dispatch`
 - **処理内容**:
   - Storage Account 名を prefix から解決し、バックアップ用コンテナを作成/検証
   - ワークフロー内で一時的な `mysql-backup.sh` を生成し、その場で `az vm run-command invoke` から VM 上で実行（専用スクリプトはリポジトリに常設していません）
