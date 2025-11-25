@@ -14,6 +14,22 @@
 
 このプロジェクトは、Azure 上に「掲示板アプリ (AKS)」「管理アプリ (Azure Container Apps)」「MySQL VM」「ACR」「Storage (バックアップ)」「Log Analytics」を **フル IaC (Bicep)** と **GitHub Actions (6 本のワークフロー)** で再現し、CodeQL + Trivy + Gitleaks + GitGuardian でシークレット/脆弱性検知を自動化することで、**モダンな DevOps・DevSecOps の実践価値を体験**していただくことを目的としています。
 
+### デモアプリケーション画面
+
+#### 掲示板アプリ (AKS 上で動作)
+
+![掲示板アプリ](READMEs/imgs/bbs-demo-AKS.png)
+
+**dummy-secret へのアクセス例:**
+
+![ダミーシークレット表示](READMEs/imgs/bbs-demo-AKS-Secret.png)
+
+> `public/dummy-secret.txt` は UI からリンクされるデモ用ファイルです。本物の機密情報は含まれません。詳細は [`READMEs/README_SECRETS_VARIABLES.md`](READMEs/README_SECRETS_VARIABLES.md) を参照してください。
+
+#### 管理アプリ (Azure Container Apps 上で動作)
+
+![管理アプリ](READMEs/imgs/kanri-aap-demo-ACA.png)
+
 ### 体験できる価値
 
 - **IaC (Infrastructure as Code) の便利さ**: すべてのインフラ構成を `infra/main.bicep` と `parameters/*.json` でコード化することで、環境の再現性・変更履歴の可視化・レビューによる品質向上を実現。手作業での構築ミスを防ぎ、何度でも同じ環境を迅速に構築できます。

@@ -49,12 +49,21 @@
 
 ## 2. データフロー
 
+### 掲示板アプリ (AKS)
+
+![掲示板アプリ](imgs/bbs-demo-AKS.png)
+
 1. **掲示板投稿**
    1. ユーザーのブラウザ → `board-app` (React) → `/api/posts` へ REST 呼び出し。
    2. `board-app` の Ingress ルールは `/` と `/api` を分離し、NGINX Controller 経由で ClusterIP Service へ転送。
    3. `board-api` (Express) が MySQL VM (`boardapp` DB) に挿入。
 2. **dummy-secret 配信**
    - `public/dummy-secret.txt` を NGINX 経由で直接配信。`App.jsx` に「ダミーシークレットはこちら」リンクを常設。
+
+### 管理アプリ (Azure Container Apps)
+
+![管理アプリ](imgs/kanri-aap-demo-ACA.png)
+
 3. **管理アプリ操作**
    1. 管理者が ACA の FQDN にアクセスし、Basic 認証 (`admin-username`/`admin-password` secret) を入力。
    2. Flask アプリが `DefaultAzureCredential()` を使って Storage へ接続し、`BACKUP_CONTAINER` の Blob を列挙。

@@ -88,6 +88,12 @@
   5. `summary` – CodeQL/Gitleaks/GitGuardian/Trivy の検出を統合し、Step Summary + `security-top-findings-json` に上位 3〜5 件を出力
 - **成果物**: `iac-scan-results` (SARIF 一式), `codeql-sarif`, `gitleaks-sarif`, `security-top-findings-json`
 
+### Security Scan ワークフロー実行例
+
+![Security Scan ワークフロー](imgs/WorkFlow-ScurityScan.png)
+
+> セキュリティスキャンは複数のジョブで構成され、SARIF 形式で GitHub Security タブへ自動統合されます。検出結果は Step Summary で一覧表示されます。
+
 ## 7. 推奨実行順序
 
 1. `1️⃣ Infrastructure Deploy`

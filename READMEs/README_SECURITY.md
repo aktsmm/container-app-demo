@@ -31,6 +31,12 @@
 - SARIF ファイルは GitHub Security (Code scanning) にアップロードされ、上位検出は `security-scan` の Step Summary と `top-findings.json` に集約。GitGuardian の JSON→SARIF 変換も同 Summary に統合され、カテゴリ別アラートへ表示されます。※Security タブへの反映は **公開リポジトリ** または **GitHub Advanced Security ライセンスを持つプライベートリポジトリ** が対象。
 - `backup-upload` は成功/失敗ログを Syslog (`logger mysql-backup-upload`) に書き込み、Log Analytics 経由で監査可能。
 
+### GitHub Security タブでの統合表示
+
+![GitHub Security タブ](imgs/GitHub Actions_SecurityTab.png)
+
+> セキュリティスキャンの結果は GitHub Security タブに統合され、CodeQL・Trivy・Gitleaks・GitGuardian の検出が一元管理されます。SARIF 形式で自動アップロードされるため、脆弱性の追跡と修正が容易になります。
+
 ## 4. ログ & モニタリング
 
 - `main.bicep` で以下の Diagnostic Settings を構成し、`logAnalytics.outputs.id` に送信:
