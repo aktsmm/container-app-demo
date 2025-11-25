@@ -1655,6 +1655,7 @@ jobs:
             if [ -n "$REFRESHED_IP" ] && [ "$REFRESHED_IP" != "$LB_IP" ]; then
               LB_IP=$REFRESHED_IP
               echo "ℹ️ 最新の LoadBalancer IP を取得: $LB_IP"
+              echo "ACTUAL_LB_IP=$LB_IP" >> "$GITHUB_ENV" # IP 変化を後続ステップへ即時共有
             fi
 
             if [ -z "$LB_IP" ]; then
@@ -1766,26 +1767,38 @@ jobs:
 
           # クラスタ内から Service への直接アクセステスト
           echo "\n[1/4] クラスタ内から board-app Service へアクセス"
-          if kubectl run tmp-curl --rm -i --restart=Never --image=curlimages/curl -n "$BOARD_NS" -- curl -sI http://board-app.board-app.svc.cluster.local/ | head -n1; then
+          BOARD_APP_STATUS=$(kubectl run tmp-curl --rm --quiet --restart=Never --image=curlimages/curl -n "$BOARD_NS" --command -- curl -s -o /dev/null -w "%{http_code}" http://board-app.board-app.svc.cluster.local/ || echo "000")
+          echo "HTTP: $BOARD_APP_STATUS"
+          if [ "$BOARD_APP_STATUS" = "200" ] || [ "$BOARD_APP_STATUS" = "301" ] || [ "$BOARD_APP_STATUS" = "302" ]; then
             echo "✅ board-app Service 疎通成功"
           else
-            echo "⚠️ board-app Service 疎通失敗（警告）"
+            echo "⚠️ board-app Service 疎通失敗（HTTP $BOARD_APP_STATUS）"
+            kubectl get svc board-app -n "$BOARD_NS"
+            kubectl get endpoints board-app -n "$BOARD_NS"
           fi
 
           echo "\n[2/4] クラスタ内から board-api Service へアクセス"
-          if kubectl run tmp-curl2 --rm -i --restart=Never --image=curlimages/curl -n "$BOARD_NS" -- curl -sI http://board-api.board-app.svc.cluster.local:3000/api/posts | head -n1; then
+          BOARD_API_STATUS=$(kubectl run tmp-curl2 --rm --quiet --restart=Never --image=curlimages/curl -n "$BOARD_NS" --command -- curl -s -o /dev/null -w "%{http_code}" http://board-api.board-app.svc.cluster.local:3000/api/posts || echo "000")
+          echo "HTTP: $BOARD_API_STATUS"
+          if [ "$BOARD_API_STATUS" = "200" ] || [ "$BOARD_API_STATUS" = "304" ]; then
             echo "✅ board-api Service 疎通成功"
           else
-            echo "⚠️ board-api Service 疎通失敗（警告）"
+            echo "⚠️ board-api Service 疎通失敗（HTTP $BOARD_API_STATUS）"
+            kubectl get svc board-api -n "$BOARD_NS"
+            kubectl get endpoints board-api -n "$BOARD_NS"
+            kubectl logs -n "$BOARD_NS" -l app=board-api --tail=20 --all-containers=true || true
           fi
 
           # LoadBalancer 経由の外部アクセステスト
           echo "\n[3/4] LoadBalancer 経由で HTML を取得"
-          if curl -sf "http://${LB_IP}/" -o /dev/null; then
+          HTML_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://${LB_IP}/" || echo "000")
+          echo "HTTP: $HTML_STATUS"
+          if [ "$HTML_STATUS" = "200" ]; then
             echo "✅ HTML 配信成功"
             curl -s "http://${LB_IP}/" | grep -o '<title>.*</title>' || echo "タイトルタグなし"
           else
-            echo "❌ HTML 配信失敗"
+            echo "❌ HTML 配信失敗 (HTTP $HTML_STATUS)"
+            az network lb address-pool list --resource-group "$NODE_RESOURCE_GROUP" --lb-name kubernetes -o table || true
             exit 1
           fi
 
