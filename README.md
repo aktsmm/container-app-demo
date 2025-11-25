@@ -24,7 +24,9 @@
 
 ![ダミーシークレット表示](READMEs/imgs/bbs-demo-AKS-Secret.png)
 
-> `public/dummy-secret.txt` は UI からリンクされるデモ用ファイルです。本物の機密情報は含まれません。詳細は [`READMEs/README_SECRETS_VARIABLES.md`](READMEs/README_SECRETS_VARIABLES.md) を参照してください。
+> `public/dummy-secret.txt` は UI からリンクされるデモ用ファイルダミーの値です。本物の機密情報は含まれません。参考は [`READMEs/README_SECRETS_VARIABLES.md`](READMEs/README_SECRETS_VARIABLES.md) を参照してください。
+> 
+> **セキュリティスキャン**: このようなダミーシークレットも含め、コード内の機密情報漏洩を防ぐため、CodeQL・Trivy・Gitleaks・GitGuardian による多層スキャンを実施しています。詳細は [`READMEs/README_SECURITY.md`](READMEs/README_SECURITY.md) のセキュリティスキャン画面を参照してください。
 
 #### 管理アプリ (Azure Container Apps 上で動作)
 
