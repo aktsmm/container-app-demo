@@ -2,7 +2,7 @@ name: 🧹 Cleanup Workflow Runs (Scheduled)
 
 on:
   schedule:
-    - cron: "0 */18 * * *" # 12時間ごと
+    - cron: "0 0 1 * *" # 月1回（毎月1日 00:00 UTC）
   workflow_dispatch:
   push:
     branches: [main]
@@ -136,4 +136,4 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "✅ クリーンアップ実行日時: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> $GITHUB_STEP_SUMMARY
-          echo "🔄 次回定期実行: 12時間ごと" >> $GITHUB_STEP_SUMMARY
+          echo "🔄 次回定期実行: 月1回（cron: 0 0 1 * *）" >> $GITHUB_STEP_SUMMARY
