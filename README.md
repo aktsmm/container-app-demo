@@ -1,4 +1,4 @@
-# Azure DevSecOps Demo – フル IaC & CI/CD 自動化による実践学習
+# Azure DevSecOps Demo – IaC & CI/CD 自動化を感じる
 
 ### 最初にやること 3 ステップ
 
