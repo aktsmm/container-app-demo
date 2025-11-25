@@ -1761,6 +1761,21 @@ jobs:
           BOARD_NS=$(grep kubernetesNamespace "$KUSTOMIZE_DIR/vars.env" | cut -d'=' -f2)
           LB_IP=${ACTUAL_LB_IP:-$INGRESS_STATIC_IP}
 
+          # 3桁の HTTP ステータスだけを抽出するユーティリティ
+          curl_status() {
+            local raw status
+            if ! raw=$("$@" 2>/dev/null); then
+              echo "000"
+              return
+            fi
+            status=$(printf '%s\n' "$raw" | sed -n 's/^\([0-9]\{3\}\).*/\1/p' | head -n1)
+            if [ -z "$status" ]; then
+              echo "000"
+            else
+              echo "$status"
+            fi
+          }
+
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "デプロイ後の疎通確認"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1768,7 +1783,7 @@ jobs:
           # クラスタ内から Service への直接アクセステスト
           echo "\n[1/4] クラスタ内から board-app Service へアクセス"
           # --rm は --attach または -i が必須のため --attach を付与し確実に HTTP ステータスのみ取得する
-          BOARD_APP_STATUS=$(kubectl run tmp-curl --rm --attach --restart=Never --image=curlimages/curl -n "$BOARD_NS" --command -- curl -s -o /dev/null -w "%{http_code}" http://board-app.board-app.svc.cluster.local/ | tail -n 1 || echo "000")
+          BOARD_APP_STATUS=$(curl_status kubectl run tmp-curl --rm --attach --restart=Never --image=curlimages/curl -n "$BOARD_NS" --command -- sh -c "curl -s -o /dev/null -w '%{http_code}' http://board-app.board-app.svc.cluster.local/; printf '\\n'")
           echo "HTTP: $BOARD_APP_STATUS"
           if [ "$BOARD_APP_STATUS" = "200" ] || [ "$BOARD_APP_STATUS" = "301" ] || [ "$BOARD_APP_STATUS" = "302" ]; then
             echo "✅ board-app Service 疎通成功"
@@ -1779,7 +1794,7 @@ jobs:
           fi
 
           echo "\n[2/4] クラスタ内から board-api Service へアクセス"
-          BOARD_API_STATUS=$(kubectl run tmp-curl2 --rm --attach --restart=Never --image=curlimages/curl -n "$BOARD_NS" --command -- curl -s -o /dev/null -w "%{http_code}" http://board-api.board-app.svc.cluster.local:3000/api/posts | tail -n 1 || echo "000")
+          BOARD_API_STATUS=$(curl_status kubectl run tmp-curl2 --rm --attach --restart=Never --image=curlimages/curl -n "$BOARD_NS" --command -- sh -c "curl -s -o /dev/null -w '%{http_code}' http://board-api.board-app.svc.cluster.local:3000/api/posts; printf '\\n'")
           echo "HTTP: $BOARD_API_STATUS"
           if [ "$BOARD_API_STATUS" = "200" ] || [ "$BOARD_API_STATUS" = "304" ]; then
             echo "✅ board-api Service 疎通成功"
