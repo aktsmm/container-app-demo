@@ -1587,8 +1587,9 @@ jobs:
           # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           # LoadBalancer ポート 80 接続確認（外部からの疎通テスト）
           # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          readonly CONNECTIVITY_TIMEOUT_MINUTES=6
-          readonly CONNECTIVITY_INTERVAL=10
+          # 過去の成功実績では 1 回目で接続できているためタイムアウトを短縮
+          readonly CONNECTIVITY_TIMEOUT_MINUTES=3
+          readonly CONNECTIVITY_INTERVAL=5
           CONNECTIVITY_ATTEMPTS=$((CONNECTIVITY_TIMEOUT_MINUTES * 60 / CONNECTIVITY_INTERVAL))
           CONNECTIVITY_SUCCESS=false
 
