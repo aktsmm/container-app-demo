@@ -1767,7 +1767,8 @@ jobs:
 
           # クラスタ内から Service への直接アクセステスト
           echo "\n[1/4] クラスタ内から board-app Service へアクセス"
-          BOARD_APP_STATUS=$(kubectl run tmp-curl --rm --quiet --restart=Never --image=curlimages/curl -n "$BOARD_NS" --command -- curl -s -o /dev/null -w "%{http_code}" http://board-app.board-app.svc.cluster.local/ || echo "000")
+          # --rm は --attach または -i が必須のため --attach を付与し確実に HTTP ステータスのみ取得する
+          BOARD_APP_STATUS=$(kubectl run tmp-curl --rm --attach --restart=Never --image=curlimages/curl -n "$BOARD_NS" --command -- curl -s -o /dev/null -w "%{http_code}" http://board-app.board-app.svc.cluster.local/ | tail -n 1 || echo "000")
           echo "HTTP: $BOARD_APP_STATUS"
           if [ "$BOARD_APP_STATUS" = "200" ] || [ "$BOARD_APP_STATUS" = "301" ] || [ "$BOARD_APP_STATUS" = "302" ]; then
             echo "✅ board-app Service 疎通成功"
@@ -1778,7 +1779,7 @@ jobs:
           fi
 
           echo "\n[2/4] クラスタ内から board-api Service へアクセス"
-          BOARD_API_STATUS=$(kubectl run tmp-curl2 --rm --quiet --restart=Never --image=curlimages/curl -n "$BOARD_NS" --command -- curl -s -o /dev/null -w "%{http_code}" http://board-api.board-app.svc.cluster.local:3000/api/posts || echo "000")
+          BOARD_API_STATUS=$(kubectl run tmp-curl2 --rm --attach --restart=Never --image=curlimages/curl -n "$BOARD_NS" --command -- curl -s -o /dev/null -w "%{http_code}" http://board-api.board-app.svc.cluster.local:3000/api/posts | tail -n 1 || echo "000")
           echo "HTTP: $BOARD_API_STATUS"
           if [ "$BOARD_API_STATUS" = "200" ] || [ "$BOARD_API_STATUS" = "304" ]; then
             echo "✅ board-api Service 疎通成功"
