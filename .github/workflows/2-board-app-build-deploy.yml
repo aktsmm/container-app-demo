@@ -1447,30 +1447,28 @@ jobs:
           echo "🔧 LoadBalancer Rule の BackendPort を検証・修正"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
-          # ステップ1: Ingress Controller の NodePort を取得
+          # ステップ1: Ingress Controller の NodePort を取得（HTTP のみ検証）
           HTTP_NODEPORT=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
             -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}' 2>/dev/null || echo "")
-          HTTPS_NODEPORT=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
-            -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}' 2>/dev/null || echo "")
           
-          if [ -z "$HTTP_NODEPORT" ] || [ -z "$HTTPS_NODEPORT" ]; then
-            echo "❌ Ingress Controller の NodePort を取得できません" >&2
+          if [ -z "$HTTP_NODEPORT" ]; then
+            echo "❌ Ingress Controller の HTTP NodePort を取得できません" >&2
             kubectl get svc -n ingress-nginx ingress-nginx-controller
             exit 1
           fi
           
           echo "📊 Ingress Controller NodePort:"
           echo "  - HTTP: $HTTP_NODEPORT"
-          echo "  - HTTPS: $HTTPS_NODEPORT"
+          echo "  ℹ️  HTTPS は未使用のため検証をスキップします"
           
-          # ステップ2: LoadBalancer Rule を取得
+          # ステップ2: LoadBalancer Rule を取得（HTTP のみ）
           NODE_RG="${NODE_RESOURCE_GROUP}"
           LB_NAME="kubernetes"
           
           echo ""
-          echo "📊 LoadBalancer Rule の現在の設定:"
+          echo "📊 LoadBalancer Rule の現在の設定（HTTP のみ）:"
           LB_RULES=$(az network lb rule list --resource-group "$NODE_RG" --lb-name "$LB_NAME" \
-            --query "[?frontendPort==\`80\` || frontendPort==\`443\`]" -o json)
+            --query "[?frontendPort==\`80\`]" -o json)
           
           if [ -z "$LB_RULES" ] || [ "$LB_RULES" = "[]" ]; then
             echo "⚠️ LoadBalancer Rule が見つかりません（作成中の可能性あり）"
@@ -1487,7 +1485,7 @@ jobs:
           
           echo "$LB_RULES" | jq -r '.[] | "  - \(.name): FrontendPort=\(.frontendPort), BackendPort=\(.backendPort)"'
           
-          # ステップ3: BackendPort が NodePort と一致しない場合は修正
+          # ステップ3: HTTP Rule の BackendPort が NodePort と一致しない場合は修正
           FIXED_COUNT=0
           
           for rule in $(echo "$LB_RULES" | jq -r '.[] | @base64'); do
@@ -1499,52 +1497,34 @@ jobs:
             FRONTEND_PORT=$(_jq '.frontendPort')
             BACKEND_PORT=$(_jq '.backendPort')
             
-            NEEDS_UPDATE=false
-            NEW_BACKEND_PORT=""
-            
             if [ "$FRONTEND_PORT" = "80" ] && [ "$BACKEND_PORT" != "$HTTP_NODEPORT" ]; then
               echo ""
               echo "⚠️ HTTP Rule の BackendPort が不一致:"
               echo "   Rule: $RULE_NAME"
               echo "   現在の BackendPort: $BACKEND_PORT"
               echo "   正しい NodePort: $HTTP_NODEPORT"
-              NEEDS_UPDATE=true
-              NEW_BACKEND_PORT="$HTTP_NODEPORT"
-            fi
-            
-            if [ "$FRONTEND_PORT" = "443" ] && [ "$BACKEND_PORT" != "$HTTPS_NODEPORT" ]; then
-              echo ""
-              echo "⚠️ HTTPS Rule の BackendPort が不一致:"
-              echo "   Rule: $RULE_NAME"
-              echo "   現在の BackendPort: $BACKEND_PORT"
-              echo "   正しい NodePort: $HTTPS_NODEPORT"
-              NEEDS_UPDATE=true
-              NEW_BACKEND_PORT="$HTTPS_NODEPORT"
-            fi
-            
-            if [ "$NEEDS_UPDATE" = "true" ]; then
               echo "   🔧 LoadBalancer Rule を修正中..."
               az network lb rule update \
                 --resource-group "$NODE_RG" \
                 --lb-name "$LB_NAME" \
                 --name "$RULE_NAME" \
-                --backend-port "$NEW_BACKEND_PORT" \
+                --backend-port "$HTTP_NODEPORT" \
                 --output none
-              echo "   ✅ 修正完了: BackendPort → $NEW_BACKEND_PORT"
+              echo "   ✅ 修正完了: BackendPort → $HTTP_NODEPORT"
               FIXED_COUNT=$((FIXED_COUNT + 1))
             fi
           done
           
           echo ""
           if [ "$FIXED_COUNT" -gt 0 ]; then
-            echo "✅ LoadBalancer Rule を ${FIXED_COUNT} 件修正しました"
+            echo "✅ LoadBalancer Rule (HTTP) を修正しました"
             echo "   修正内容が反映されるまで 60 秒待機します..."
             sleep 60
             
             echo ""
-            echo "📊 修正後の LoadBalancer Rule:"
+            echo "📊 修正後の LoadBalancer Rule (HTTP):"
             az network lb rule list --resource-group "$NODE_RG" --lb-name "$LB_NAME" \
-              --query "[?frontendPort==\`80\` || frontendPort==\`443\`]" -o json | \
+              --query "[?frontendPort==\`80\`]" -o json | \
               jq -r '.[] | "  - \(.name): FrontendPort=\(.frontendPort), BackendPort=\(.backendPort)"'
             
             echo ""
@@ -1558,7 +1538,7 @@ jobs:
               sleep 5
             done
           else
-            echo "✅ LoadBalancer Rule は正しく設定されています（修正不要）"
+            echo "✅ LoadBalancer Rule (HTTP) は正しく設定されています（修正不要）"
           fi
           
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
