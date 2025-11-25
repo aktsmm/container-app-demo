@@ -179,6 +179,6 @@ Dependabot (SCA)          ┘
 
 ## 8. 今後の展望（GitHub OIDC フェデレーション）
 
-- 現時点では組織内の「おとなの事情」（監査・稟議・アクセス管理ポリシーの都合）により、Service Principal + クライアントシークレット方式を継続しています。そのため GitHub Actions では `vars.AZURE_CLIENT_ID / SECRET / TENANT_ID` と `secrets.AZURE_SUBSCRIPTION_ID` を必須としており、OIDC は利用していません。
+- おとなの事情 により、Service Principal + クライアントシークレット方式を採用。そのため GitHub Actions では `vars.AZURE_CLIENT_ID / SECRET / TENANT_ID` と `secrets.AZURE_SUBSCRIPTION_ID` を必須としており、OIDC は利用していません。
 - 中長期的には GitHub OIDC（OpenID Connect）への移行を見据えており、GitHub Marketplace の [Configure Azure settings](https://github.com/marketplace/configure-azure-settings) アクションで Azure AD に Federated Credential を自動登録する案を検討中です。実用化する際は [`az ad app federated-credential create`] を手作業で呼び出さなくても、Actions ワークフロー内で必要なロール割り当てを自動化できます。
 - 参考 [Qiita: GitHub OIDC で Azure に安全にデプロイする方法](https://qiita.com/kk31108424/items/eba95c510783d18712b8)
