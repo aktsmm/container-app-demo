@@ -97,6 +97,7 @@ trouble_docs/       # トラブルシューティング履歴
 ## 5. 運用のポイント
 
 **あくまでも検証・デモ用で、かつ [MIT ライセンス](https://github.com/aktsmm/container-app-demo/blob/master/LICENSE)です**
+責任は取りませんがご自由に使ってください。
 
 - **フル IaC**: AKS/ACA/VM/Storage/Log Analytics/Policy を `infra/main.bicep` に集約し、すべての定数は `infra/parameters/main-dev.parameters.json` に退避。
 - **低コスト設計**: VM `Standard_B1ms`, AKS `Standard_B2s`、Storage `Standard_LRS + Cool`、ACA Consumption など最小構成。
