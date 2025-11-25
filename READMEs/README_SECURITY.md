@@ -33,7 +33,7 @@
 
 ### GitHub Security タブでの統合表示
 
-![GitHub Security タブ](imgs/GitHub Actions_SecurityTab.png)
+![GitHub Security タブ](./imgs/GitHub%20Actions_SecurityTab.png)
 
 > セキュリティスキャンの結果は GitHub Security タブに統合され、CodeQL・Trivy・Gitleaks・GitGuardian の検出が一元管理されます。SARIF 形式で自動アップロードされるため、脆弱性の追跡と修正が容易になります。
 
