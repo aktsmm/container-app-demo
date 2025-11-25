@@ -174,6 +174,8 @@ Trivy (コンテナ/IaC)       │        └─> artifacts/security-top-finding
 Dependabot (SCA)          ┘
 ```
 
+<img src="READMEs/imgs/WorkFlow-SecurityScan.png" alt="セキュリティスキャンワークフロー" width="600">
+
 - Step Summary: 実行完了後に GitHub Actions の結果画面を開き、「Security Scan」ジョブ → Step Summary を確認すると、検出ツールごとの件数・重大度・参照チケットを一覧できます。
 - `security-top-findings.json`: アーティファクトをダウンロードし、`jq '.findings[] | {tool, severity, summary}'` のようにフィルタすると機械判読可能な形式で triage を自動化できます。
 - `READMEs/README_SECURITY.md` に各スキャナーのポリシーや抑止ロジックをまとめているため、誤検知対応はそちらに記録するのがベストプラクティスです。
