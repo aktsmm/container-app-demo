@@ -99,6 +99,12 @@ trouble_docs/       # トラブルシューティング履歴
 **あくまでも検証・デモ用で、かつ [MIT ライセンス](https://github.com/aktsmm/container-app-demo/blob/master/LICENSE)です**
 責任は取りませんがご自由に使ってください。
 
+### 冪等性と自動修復
+
+- **LoadBalancer Rule の自動修正**: `2️⃣ Board App Build & Deploy` ワークフローでは、Ingress Controller 作成後に Azure LoadBalancer の BackendPort が正しい NodePort に設定されているかを検証し、不一致の場合は自動修正します。これにより、何度実行しても確実に外部アクセス可能な状態になります（詳細: [`trouble_docs/2025-11-25-loadbalancer-backend-port-fixed-80.md`](trouble_docs/2025-11-25-loadbalancer-backend-port-fixed-80.md)）。
+- **Ingress Controller の既存チェック**: Board App Deploy 単発実行時は、既存の Ingress Controller をスキップして NodePort 変更を防ぎ、LoadBalancer Rule とのポート不一致を回避します。
+- **ワークフロー実行順序**: 初回構築時は `1️⃣ Infrastructure Deploy` → `2️⃣ Board App Build & Deploy` の順で実行してください。Infrastructure Deploy で Ingress Controller が作成されますが、Board App Deploy で LoadBalancer Rule の検証・修正が行われるため、必ず両方を実行する必要があります。
+
 - **フル IaC**: AKS/ACA/VM/Storage/Log Analytics/Policy を `infra/main.bicep` に集約し、すべての定数は `infra/parameters/main-dev.parameters.json` に退避。
 - **低コスト設計**: VM `Standard_B1ms`, AKS `Standard_B2s`、Storage `Standard_LRS + Cool`、ACA Consumption など最小構成。
 - **ログ統合**: 現在は AKS Control Plane・Container Apps・Storage からの診断ログ/メトリックを `logAnalytics.outputs.id` に集約済み。VM (MySQL) の Syslog やバックアップスクリプトのログを Log Analytics へ転送するには Azure Monitor Agent + Data Collection Rule の構成が必要であり（参考: [Collect Syslog events from virtual machine client with Azure Monitor](https://learn.microsoft.com/azure/azure-monitor/vm/data-collection-syslog)）、本リポジトリではまだ未導入です。
