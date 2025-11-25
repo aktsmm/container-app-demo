@@ -13,8 +13,8 @@
 
 ## 対応
 
-- `app/board-app/k8s/ingress-nginx-values.yaml` の `externalTrafficPolicy` を `Cluster` に変更し、従来の NodePort 指定はヘルスチェック継続用に維持。
-- Azure Standard Load Balancer の HTTP/HTTPS ルールで `floatingIp=false` および `disableOutboundSnat=false` を強制する処理を GitHub Actions ワークフロー側に追加し、既存リソースにも適用。
+- `app/board-app/k8s/ingress-nginx-values.yaml` の `externalTrafficPolicy` を `Cluster` に変更。これにより Azure Load Balancer 経由で入ってきたトラフィックでも Kubernetes ノードが SNAT を行うため、GitHub Actions ランナーや社内ネットワークのように戻りのパケット経路が制御できない環境でも正しく TCP ハンドシェイクが成立する。`healthCheckNodePort: 30254` はそのまま残すことで、Load Balancer 側のヘルスプローブ定義を変えずに済み安定運用できる。
+- Azure Standard Load Balancer の HTTP/HTTPS ルールに対し、`floatingIp=false`（DSR 無効化）と `disableOutboundSnat=false`（SNAT 有効化）を必ず適用する処理を GitHub Actions ワークフローに実装。ルール取得時に不一致を検知すると `az network lb rule update` を自動実行して補正するため、インフラ再作成や手動操作で DSR が再度有効化されても次のデプロイ時に必ず通常モードへ戻る。既存リソースにも同じコマンドを適用済みで、`curl -I http://20.18.94.114` で即座に HTTP 200 を返すことを確認できた。
 - 変更後 2 分待機して再度 `curl -I http://20.18.94.114` を実行すると HTTP 200 を取得でき、`Test-NetConnection` でも `TcpTestSucceeded: True` を確認済み。
 - 今後のワークフロー実行時は同設定が適用されるため、外部疎通ステップも完了する見込み。
 
