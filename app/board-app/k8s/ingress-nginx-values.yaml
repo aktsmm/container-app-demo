@@ -6,10 +6,13 @@ controller:
 
   service:
     type: LoadBalancer
-    externalTrafficPolicy: Local
+    # 標準 LB + externalTrafficPolicy: Local (DSR 方式) では GitHub Actions ランナー等からの
+    # HTTP 要求がタイムアウトする事象が発生したため、SNAT が有効になる Cluster に変更。
+    # 参考: trouble_docs/2025-11-25-board-app-lb-dsr-timeout.md
+    externalTrafficPolicy: Cluster
 
     # ヘルスチェック用の固定 NodePort（30000-32767 の範囲で指定）
-    # externalTrafficPolicy: Local の場合、この NodePort でヘルスプローブを受け付ける
+    # Cluster モードでも Azure LB が指定ポートを参照するため値は維持する
     healthCheckNodePort: 30254
 
     # Azure LoadBalancer 用アノテーション
