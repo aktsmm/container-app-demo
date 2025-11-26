@@ -505,6 +505,157 @@ jobs:
           fi
 
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # Step 4.7: サブネット NSG 確認・補正
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      - name: サブネット NSG の HTTP/HTTPS 許可ルールを確認・補正
+        id: subnet_nsg_check
+        run: |
+          set -euo pipefail
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔍 サブネット NSG 確認"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "📖 説明:"
+          echo "  Azure NSG は NIC レベルとサブネットレベルの両方を通過する必要があります"
+          echo "  サブネット NSG で HTTP/HTTPS がブロックされていると外部からアクセスできません"
+          echo ""
+
+          # サブネット ID を取得
+          SUBNET_ID=$(az aks show \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --name "$AKS_CLUSTER_NAME" \
+            --query "agentPoolProfiles[0].vnetSubnetId" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$SUBNET_ID" ]; then
+            echo "⚠️ サブネット ID を取得できませんでした"
+            echo "nsg_fixed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # サブネット情報をパース
+          VNET_RG=$(echo "$SUBNET_ID" | cut -d'/' -f5)
+          VNET_NAME=$(echo "$SUBNET_ID" | cut -d'/' -f9)
+          SUBNET_NAME=$(echo "$SUBNET_ID" | cut -d'/' -f11)
+
+          echo "VNet リソースグループ: $VNET_RG"
+          echo "VNet 名: $VNET_NAME"
+          echo "サブネット名: $SUBNET_NAME"
+
+          # サブネットに関連付けられた NSG を取得
+          SUBNET_NSG_ID=$(az network vnet subnet show \
+            --resource-group "$VNET_RG" \
+            --vnet-name "$VNET_NAME" \
+            --name "$SUBNET_NAME" \
+            --query "networkSecurityGroup.id" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$SUBNET_NSG_ID" ] || [ "$SUBNET_NSG_ID" = "null" ]; then
+            echo "✅ サブネットに NSG が関連付けられていません（許可不要）"
+            echo "nsg_fixed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          NSG_RG=$(echo "$SUBNET_NSG_ID" | cut -d'/' -f5)
+          NSG_NAME=$(echo "$SUBNET_NSG_ID" | cut -d'/' -f9)
+
+          echo "サブネット NSG: $NSG_NAME (RG: $NSG_RG)"
+          echo ""
+
+          # 現在のインバウンドルールを確認
+          echo "📊 現在のインバウンドルール:"
+          RULES=$(az network nsg rule list \
+            --resource-group "$NSG_RG" \
+            --nsg-name "$NSG_NAME" \
+            --query "[?direction=='Inbound'].{name:name, priority:priority, access:access, destinationPortRange:destinationPortRange}" \
+            -o json 2>/dev/null || echo "[]")
+
+          echo "$RULES" | jq -r '.[] | "  - \(.name): Priority=\(.priority), Access=\(.access), Port=\(.destinationPortRange)"'
+
+          # HTTP (80) 許可ルールの確認
+          HTTP_RULE=$(echo "$RULES" | jq -r '[.[] | select(.destinationPortRange=="80" and .access=="Allow")] | length')
+          HTTPS_RULE=$(echo "$RULES" | jq -r '[.[] | select(.destinationPortRange=="443" and .access=="Allow")] | length')
+          NODEPORT_RULE=$(echo "$RULES" | jq -r '[.[] | select(.destinationPortRange=="30000-32767" and .access=="Allow")] | length')
+
+          FIXED_COUNT=0
+
+          # HTTP ルールがなければ追加
+          if [ "$HTTP_RULE" = "0" ]; then
+            echo ""
+            echo "⚠️ HTTP (80) 許可ルールがありません"
+            echo "🔧 HTTP 許可ルールを追加中..."
+            az network nsg rule create \
+              --resource-group "$NSG_RG" \
+              --nsg-name "$NSG_NAME" \
+              --name "Allow-HTTP-Inbound" \
+              --priority 100 \
+              --direction Inbound \
+              --access Allow \
+              --protocol Tcp \
+              --source-address-prefixes "*" \
+              --source-port-ranges "*" \
+              --destination-address-prefixes "*" \
+              --destination-port-ranges 80 \
+              --output none
+            echo "✅ HTTP 許可ルール追加完了"
+            FIXED_COUNT=$((FIXED_COUNT + 1))
+          fi
+
+          # HTTPS ルールがなければ追加
+          if [ "$HTTPS_RULE" = "0" ]; then
+            echo ""
+            echo "⚠️ HTTPS (443) 許可ルールがありません"
+            echo "🔧 HTTPS 許可ルールを追加中..."
+            az network nsg rule create \
+              --resource-group "$NSG_RG" \
+              --nsg-name "$NSG_NAME" \
+              --name "Allow-HTTPS-Inbound" \
+              --priority 110 \
+              --direction Inbound \
+              --access Allow \
+              --protocol Tcp \
+              --source-address-prefixes "*" \
+              --source-port-ranges "*" \
+              --destination-address-prefixes "*" \
+              --destination-port-ranges 443 \
+              --output none
+            echo "✅ HTTPS 許可ルール追加完了"
+            FIXED_COUNT=$((FIXED_COUNT + 1))
+          fi
+
+          # NodePort ルールがなければ追加
+          if [ "$NODEPORT_RULE" = "0" ]; then
+            echo ""
+            echo "⚠️ NodePort (30000-32767) 許可ルールがありません"
+            echo "🔧 NodePort 許可ルールを追加中..."
+            az network nsg rule create \
+              --resource-group "$NSG_RG" \
+              --nsg-name "$NSG_NAME" \
+              --name "Allow-NodePort-Inbound" \
+              --priority 120 \
+              --direction Inbound \
+              --access Allow \
+              --protocol Tcp \
+              --source-address-prefixes "*" \
+              --source-port-ranges "*" \
+              --destination-address-prefixes "*" \
+              --destination-port-ranges "30000-32767" \
+              --output none
+            echo "✅ NodePort 許可ルール追加完了"
+            FIXED_COUNT=$((FIXED_COUNT + 1))
+          fi
+
+          echo ""
+          if [ "$FIXED_COUNT" -gt 0 ]; then
+            echo "🔄 $FIXED_COUNT 件の NSG ルールを追加しました"
+            echo "⏳ 設定反映を待機中（15秒）..."
+            sleep 15
+            echo "nsg_fixed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ サブネット NSG の設定は正常です"
+            echo "nsg_fixed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # Step 5: Board App 状態確認
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       - name: Board App 状態を確認
