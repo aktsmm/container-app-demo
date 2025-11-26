@@ -282,6 +282,18 @@ jobs:
           echo "🔍 Ingress Controller 状態確認"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+          # Ingress Controller Pod が Ready になるまで待機（最大 3 分）
+          echo "⏳ Ingress Controller Pod の Ready 状態を待機中..."
+          if kubectl wait --for=condition=Ready pod \
+            -n ingress-nginx \
+            -l app.kubernetes.io/component=controller \
+            --timeout=180s 2>/dev/null; then
+            echo "✅ Ingress Controller Pod が Ready になりました"
+          else
+            echo "⚠️ Ingress Controller Pod の Ready 待機がタイムアウトしました"
+          fi
+          echo ""
+
           # Ingress Controller Pod の状態確認
           CONTROLLER_PODS=$(kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller -o json 2>/dev/null || echo '{"items":[]}')
           RUNNING_PODS=$(echo "$CONTROLLER_PODS" | jq '[.items[] | select(.status.phase == "Running")] | length')
