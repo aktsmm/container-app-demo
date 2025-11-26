@@ -12,7 +12,7 @@
 
 ## 1. プロジェクトの目的
 
-このプロジェクトは、Azure 上に「掲示板アプリ (AKS)」「管理アプリ (Azure Container Apps)」「MySQL VM」「ACR」「Storage (バックアップ)」「Log Analytics」を **フル IaC (Bicep)** と **GitHub Actions (6 本のワークフロー)** で再現し、CodeQL + Trivy + Gitleaks + GitGuardian でシークレット/脆弱性検知を自動化することで、**モダンな DevOps・DevSecOps の実践価値を体験**していただくことを目的としています。
+このプロジェクトは、Azure 上に「掲示板アプリ (AKS)」「管理アプリ (Azure Container Apps)」「MySQL VM」「ACR」「Storage (バックアップ)」「Log Analytics」を **フル IaC (Bicep)** と **GitHub Actions (7 本のワークフロー)** で再現し、CodeQL + Trivy + Gitleaks + GitGuardian でシークレット/脆弱性検知を自動化することで、**モダンな DevOps・DevSecOps の実践価値を体験**していただくことを目的としています。
 
 ### デモアプリケーション画面
 
@@ -35,7 +35,7 @@
 ### 体験できる価値
 
 - **IaC (Infrastructure as Code) の便利さ**: すべてのインフラ構成を `infra/main.bicep` と `parameters/*.json` でコード化することで、環境の再現性・変更履歴の可視化・レビューによる品質向上を実現。手作業での構築ミスを防ぎ、何度でも同じ環境を迅速に構築できます。
-- **CI/CD パイプラインの自動化**: GitHub Actions による 6 本のワークフローで、インフラのデプロイ (`1️⃣ Infrastructure Deploy`)、掲示板アプリ（フロントエンド + API）と管理アプリのビルド & デプロイ統合ワークフロー (`2️⃣ Board App Build & Deploy`, `2️⃣ Admin App Build & Deploy`)、定期バックアップ・クリーンアップ・セキュリティスキャンを完全自動化。コードをプッシュするだけで、Validate → What-If → Deploy → Policy 適用まで一貫して実行されます。
+- **CI/CD パイプラインの自動化**: GitHub Actions による 7 本のワークフローで、インフラのデプロイ (`1️⃣ Infrastructure Deploy`)、掲示板アプリ（フロントエンド + API）と管理アプリのビルド & デプロイ統合ワークフロー (`2️⃣ Board App Build & Deploy`, `2️⃣ Admin App Build & Deploy`)、定期バックアップ・クリーンアップ・セキュリティスキャン、AKS ヘルスチェック & 復旧を完全自動化。コードをプッシュするだけで、Validate → What-If → Deploy → Policy 適用まで一貫して実行されます。
 - **DevOps の文化**: インフラチームとアプリチームが同じリポジトリで協働し、IaC とアプリコードを統合管理。変更はすべて Git で追跡され、Pull Request レビュー → 自動テスト → 本番反映という DevOps サイクルを体感できます。
 - **DevSecOps によるセキュリティシフトレフト**: CodeQL (SAST)、Trivy (コンテナ・IaC スキャン)、Secret Scanning (Gitleaks + GitGuardian)、Dependabot (SCA) を組み込み、開発初期段階から脆弱性を検出・修正。**Azure Policy** (`infra/policy.bicep`) によるコンプライアンス強制とガバナンス自動化、Log Analytics への全ログ統合により、セキュリティとガバナンスを開発プロセスに組み込んだ運用を実現します。
 - **ドキュメント整合性**: ワークフロー全体を定期的にレビューし README 群を更新していますが、改修の進行により一時的に内容が最新と異なる場合があります。差分を見つけた際は Issue / PR でお知らせください。
@@ -54,15 +54,15 @@
 
 ## 2. 主要コンポーネント
 
-| 分類       | 実体                           | 主なファイル / ディレクトリ                                                 | 役割                                                                                                                              |
-| ---------- | ------------------------------ | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| フロント   | `app/board-app` (React + Vite) | `src/App.jsx`, `public/dummy-secret.txt`                                    | AKS 上で公開される掲示板 UI。NGINX Ingress 経由で HTTP 配信し、dummy-secret へのリンクを持つ。board-api REST エンドポイントと連携 |
-| API        | `app/board-api` (Node/Express) | `server.js`, `Dockerfile`                                                   | 掲示板投稿を MySQL へ永続化。Kubernetes Secret (`board-db-conn`) から接続情報を受け取る                                           |
-| 管理アプリ | `app/admin-app` (Flask)        | `src/app.py`                                                                | Azure Container Apps (Consumption) に配置。Basic 認証、Backup 一覧、投稿削除を提供                                                |
-| IaC        | `infra/`                       | `main.bicep`, `modules/*.bicep`, `parameters/*.json`                        | AKS/ACA/ACR/VM/Storage/Log Analytics/VNet/Policy/診断設定をモジュール化                                                           |
-| CI/CD      | `.github/workflows/`           | 6 本の YAML                                                                 | Infrastructure Deploy、Board/Admin アプリの Build & Deploy 統合、バックアップ、クリーンアップ、セキュリティスキャン               |
-| スクリプト | `scripts/`                     | `create-github-actions-sp.ps1`, `mysql-init.sh`, `sync-board-vars.ps1` など | Service Principal 発行、MySQL 初期化、K8s 変数同期、GitHub Secrets 自動設定                                                       |
-| ナレッジ   | `READMEs/`, `trouble_docs/`    | 役割別 README と障害対応メモ                                                | デプロイやランブック情報を Markdown 化                                                                                            |
+| 分類       | 実体                           | 主なファイル / ディレクトリ                                                 | 役割                                                                                                                                    |
+| ---------- | ------------------------------ | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| フロント   | `app/board-app` (React + Vite) | `src/App.jsx`, `public/dummy-secret.txt`                                    | AKS 上で公開される掲示板 UI。NGINX Ingress 経由で HTTP 配信し、dummy-secret へのリンクを持つ。board-api REST エンドポイントと連携       |
+| API        | `app/board-api` (Node/Express) | `server.js`, `Dockerfile`                                                   | 掲示板投稿を MySQL へ永続化。Kubernetes Secret (`board-db-conn`) から接続情報を受け取る                                                 |
+| 管理アプリ | `app/admin-app` (Flask)        | `src/app.py`                                                                | Azure Container Apps (Consumption) に配置。Basic 認証、Backup 一覧、投稿削除を提供                                                      |
+| IaC        | `infra/`                       | `main.bicep`, `modules/*.bicep`, `parameters/*.json`                        | AKS/ACA/ACR/VM/Storage/Log Analytics/VNet/Policy/診断設定をモジュール化                                                                 |
+| CI/CD      | `.github/workflows/`           | 7 本の YAML                                                                 | Infrastructure Deploy、Board/Admin アプリの Build & Deploy 統合、バックアップ、クリーンアップ、セキュリティスキャン、AKS ヘルスチェック |
+| スクリプト | `scripts/`                     | `create-github-actions-sp.ps1`, `mysql-init.sh`, `sync-board-vars.ps1` など | Service Principal 発行、MySQL 初期化、K8s 変数同期、GitHub Secrets 自動設定                                                             |
+| ナレッジ   | `READMEs/`, `trouble_docs/`    | 役割別 README と障害対応メモ                                                | デプロイやランブック情報を Markdown 化                                                                                                  |
 
 ## 3. ディレクトリ構造 (抜粋)
 

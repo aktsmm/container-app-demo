@@ -9,7 +9,7 @@
 - ビルド系ワークフローは成果物 (SBOM, SARIF, image metadata) を `actions/upload-artifact` で保存し、後続のデプロイ/セキュリティワークフローが参照できるようにしています。
 - GitGuardian スキャンを有効化する場合は GitHub Variables に `GITGUARDIAN_API_KEY`（`scan` / `incident:read` / `incident:write` スコープ）を登録してください。未設定時は GitGuardian ジョブのみ自動でスキップされ、他ジョブには影響しません。
 
-## ワークフロー一覧（全 6 本）
+## ワークフロー一覧（全 7 本）
 
 ## 1. `1️⃣ Infrastructure Deploy` (`.github/workflows/1-infra-deploy.yml`)
 
@@ -100,7 +100,29 @@
 
 > セキュリティスキャンは複数のジョブで構成され、SARIF 形式で GitHub Security タブへ自動統合されます。検出結果は Step Summary で一覧表示されます。
 
-## 7. 推奨実行順序
+## 7. `🔄 Azure Health Check & Recovery` (`.github/workflows/azure-health-check.yml`)
+
+- **トリガー**: `workflow_dispatch` (手動実行)
+  - 定期実行が必要な場合は `schedule` を有効化可能（コメントアウト済み）
+- **目的**: 組織の Azure Policy による AKS/VM 24 時間自動停止への対応
+- **ジョブ構成**:
+  1. `health-check` – AKS/VM 状態確認、停止時は自動起動、Ingress / App 正常性確認
+- **主なステップ**:
+  - AKS クラスターの `powerState` を確認し、`Stopped` の場合は `az aks start` で自動起動
+  - MySQL VM の `powerState` を確認し、`VM deallocated` の場合は `az vm start` で自動起動
+  - VM 復旧時は board-api Pod を自動再起動（MySQL 接続エラー回避）
+  - Ingress Controller Pod の Running 状態を確認
+  - LoadBalancer External IP の取得を待機（最大 5 分）
+  - Board App / API の外部疎通確認（HTML / API エンドポイント）
+  - 問題検出時は Step Summary で再デプロイ推奨を通知
+- **入力オプション**:
+  - `force_redeploy`: 問題検出時に Board App を強制再デプロイ（現在は通知のみ）
+  - `skip_app_check`: アプリ疎通確認をスキップ
+- **ポイント**:
+  - デフォルトでは問題検出時の通知のみ。自動再デプロイを有効化するには `auto-redeploy` ジョブの `if: false` を変更
+  - 関連ドキュメント: `trouble_docs/2025-11-26-aks-24h-auto-stop-recovery.md`
+
+## 8. 推奨実行順序
 
 1. `1️⃣ Infrastructure Deploy`
 2. `2️⃣ Board App Build & Deploy`
@@ -108,16 +130,19 @@
 4. `🔄 MySQL Backup Upload` (スケジュール ON)
 5. `🔐 Security Scan` (日次)
 6. `🧹 Cleanup Workflow Runs` (定期)
+7. `🔄 Azure Health Check & Recovery` (手動 / 必要に応じて定期化)
 
-## 8. 再実行性と手動トリガー入力
+## 9. 再実行性と手動トリガー入力
 
 - `workflow_dispatch` を備えるワークフローはすべて単体で再実行できます。`workflow_run` トリガー（例: 1️⃣ の完了後に 2️⃣ が走る設定）は「直前が success のときだけ」発火する条件を付けているため、個別再実行が他ワークフローへ連鎖することはありません。
 - `1️⃣ Infrastructure Deploy` は追加入力なしで `workflow_dispatch` が可能です。Validate/What-If/Deploy は常に同じパラメーターを読み込むため、同一コミットでも安全に再適用できます。
 - `2️⃣ Board App Build & Deploy` の `redeployTag` 入力を空にすると最新コミットから新しいイメージをビルドします。既存タグを再利用したい場合は `redeployTag` へ `board-app:abc123` のように入力するとビルドをスキップして AKS へ再配置できます。`resourceGroupName` / `aksClusterName` を与えると既定値を上書きできるため、検証用 RG に対する個別再実行時にも YAML を弄らず柔軟に対応できます。
 - `2️⃣ Admin App Build & Deploy` でも `redeployTag` 入力で ACR 既存タグを再利用可能です。コンテナアプリのリビジョン衝突を防ぐため、ワークフロー内で `REVISION_SUFFIX=gh-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}` を自動生成しており、同じ Run の再試行や手動リトライでもユニークなリビジョン名が保証されます。
 - `🔄 MySQL Backup Upload` と `🧹 Cleanup Workflow Runs` も `workflow_dispatch` から即時実行できます。定期実行の待ち時間なしで挙動を確認したい場合は手動トリガーを使ってください。
+- `🔄 Azure Health Check & Recovery` は AKS/VM が Azure Policy により停止された場合に手動で実行します。AKS/VM を自動起動し、VM 復旧時は board-api Pod も自動再起動します。
 
-## 9. トラブルシューティングヒント
+## 10. トラブルシューティングヒント
 
 - ワークフローエラー時は `trouble_docs/*.md` に過去の事例があります。
+- AKS が 24 時間ポリシーで停止される環境では `trouble_docs/2025-11-26-aks-24h-auto-stop-recovery.md` を参照してください。
 - `AZURE_CLIENT_SECRET` を GitHub **Variables** に置いているため、権限を絞りたい場合は Secret へ移行し、YAML も修正してください。

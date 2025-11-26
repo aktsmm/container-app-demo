@@ -1,0 +1,649 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Azure リソース ヘルスチェック & 自動復旧ワークフロー
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 目的: 組織の Azure Policy による AKS/VM 自動停止（24時間）に対応
+#       - AKS クラスターの状態を確認し、停止していれば自動起動
+#       - MySQL VM の状態を確認し、停止していれば自動起動
+#       - Ingress Controller / Pod の正常性確認
+#       - Board App / API の疎通確認
+#
+# 実行タイミング:
+#   - 手動実行（workflow_dispatch）
+#   - 定期実行が必要な場合は schedule を有効化
+#
+# ドキュメント:
+#   - trouble_docs/2025-11-26-aks-24h-auto-stop-recovery.md
+#   - trouble_docs/2025-11-21-aks-loadbalancer-connection-issue.md
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+name: 🔄 Azure Health Check & Recovery
+
+on:
+    # 手動実行のみ（定期実行が必要な場合は schedule を有効化）
+    # schedule:
+    #   - cron: "0 * * * *"  # 毎時 0 分
+    workflow_dispatch:
+        inputs:
+            force_redeploy:
+                description: "問題検出時に Board App を強制再デプロイする"
+                required: false
+                default: "false"
+                type: choice
+                options:
+                    - "false"
+                    - "true"
+            skip_app_check:
+                description: "アプリ疎通確認をスキップする"
+                required: false
+                default: "false"
+                type: choice
+                options:
+                    - "false"
+                    - "true"
+
+permissions:
+    contents: read
+    id-token: write
+    actions: write # ワークフロー呼び出しに必要
+
+env:
+    RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+    AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+    ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
+    VM_NAME: ${{ vars.VM_NAME }}
+
+jobs:
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Azure リソース ヘルスチェック & 自動復旧
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    health-check:
+        runs-on: ubuntu-latest
+        outputs:
+            aks_status: ${{ steps.aks_check.outputs.status }}
+            aks_was_stopped: ${{ steps.aks_check.outputs.was_stopped }}
+            vm_status: ${{ steps.vm_check.outputs.status }}
+            vm_was_stopped: ${{ steps.vm_check.outputs.was_stopped }}
+            ingress_healthy: ${{ steps.ingress_check.outputs.healthy }}
+            app_healthy: ${{ steps.app_check.outputs.healthy }}
+            lb_ip: ${{ steps.ingress_check.outputs.lb_ip }}
+            needs_redeploy: ${{ steps.decision.outputs.needs_redeploy }}
+        steps:
+            - name: コードを取得
+              uses: actions/checkout@v4
+
+            - name: Azure に Service Principal でログイン
+              uses: azure/login@v2
+              with:
+                  creds: >-
+                      {"clientId":"${{ vars.AZURE_CLIENT_ID }}","tenantId":"${{ vars.AZURE_TENANT_ID }}","clientSecret":"${{ vars.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Step 1: AKS クラスター状態確認 & 自動起動
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            - name: AKS クラスター状態を確認
+              id: aks_check
+              run: |
+                  set -euo pipefail
+
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "🔍 AKS クラスター状態確認"
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "クラスター: $AKS_CLUSTER_NAME"
+                  echo "リソースグループ: $RESOURCE_GROUP_NAME"
+                  echo ""
+
+                  # AKS クラスターの詳細情報を取得
+                  AKS_INFO=$(az aks show \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --name "$AKS_CLUSTER_NAME" \
+                    --query '{
+                      provisioningState: provisioningState,
+                      powerState: powerState.code,
+                      fqdn: fqdn,
+                      kubernetesVersion: kubernetesVersion,
+                      nodeResourceGroup: nodeResourceGroup
+                    }' \
+                    -o json 2>/dev/null || echo '{"error": "not_found"}')
+
+                  if echo "$AKS_INFO" | jq -e '.error' >/dev/null 2>&1; then
+                    echo "❌ AKS クラスターが見つかりません"
+                    echo "status=not_found" >> "$GITHUB_OUTPUT"
+                    echo "was_stopped=false" >> "$GITHUB_OUTPUT"
+                    exit 1
+                  fi
+
+                  POWER_STATE=$(echo "$AKS_INFO" | jq -r '.powerState')
+                  PROVISIONING_STATE=$(echo "$AKS_INFO" | jq -r '.provisioningState')
+                  NODE_RG=$(echo "$AKS_INFO" | jq -r '.nodeResourceGroup')
+
+                  echo "📊 現在の状態:"
+                  echo "  - 電源状態: $POWER_STATE"
+                  echo "  - プロビジョニング状態: $PROVISIONING_STATE"
+                  echo "  - ノードリソースグループ: $NODE_RG"
+                  echo ""
+
+                  echo "node_resource_group=$NODE_RG" >> "$GITHUB_OUTPUT"
+
+                  # 停止している場合は自動起動
+                  if [ "$POWER_STATE" = "Stopped" ]; then
+                    echo "⚠️ AKS クラスターが停止しています（Azure Policy による自動停止の可能性）"
+                    echo "🚀 クラスターを起動します..."
+                    echo ""
+                    
+                    az aks start \
+                      --resource-group "$RESOURCE_GROUP_NAME" \
+                      --name "$AKS_CLUSTER_NAME"
+                    
+                    echo "✅ 起動コマンド実行完了"
+                    echo ""
+                    
+                    # 起動待機（最大 10 分）
+                    echo "⏳ クラスター起動を待機中..."
+                    for i in {1..20}; do
+                      sleep 30
+                      NEW_STATE=$(az aks show \
+                        --resource-group "$RESOURCE_GROUP_NAME" \
+                        --name "$AKS_CLUSTER_NAME" \
+                        --query 'powerState.code' -o tsv 2>/dev/null || echo "Unknown")
+                      
+                      echo "[$i/20] 電源状態: $NEW_STATE"
+                      
+                      if [ "$NEW_STATE" = "Running" ]; then
+                        echo "✅ AKS クラスターが起動しました"
+                        break
+                      fi
+                    done
+                    
+                    # 起動後、DNS 伝播と Pod 起動のために追加待機
+                    echo "⏳ DNS 伝播と Pod 起動を待機中（60秒）..."
+                    sleep 60
+                    
+                    echo "status=started" >> "$GITHUB_OUTPUT"
+                    echo "was_stopped=true" >> "$GITHUB_OUTPUT"
+                  elif [ "$POWER_STATE" = "Running" ]; then
+                    echo "✅ AKS クラスターは稼働中です"
+                    echo "status=running" >> "$GITHUB_OUTPUT"
+                    echo "was_stopped=false" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "⚠️ 予期しない電源状態: $POWER_STATE"
+                    echo "status=$POWER_STATE" >> "$GITHUB_OUTPUT"
+                    echo "was_stopped=false" >> "$GITHUB_OUTPUT"
+                  fi
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Step 2: MySQL VM 状態確認 & 自動起動
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            - name: MySQL VM 状態を確認
+              id: vm_check
+              run: |
+                  set -euo pipefail
+
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "🔍 MySQL VM 状態確認"
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "VM: $VM_NAME"
+                  echo "リソースグループ: $RESOURCE_GROUP_NAME"
+                  echo ""
+
+                  # VM の詳細情報を取得
+                  VM_INFO=$(az vm get-instance-view \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --name "$VM_NAME" \
+                    --query '{
+                      name: name,
+                      powerState: instanceView.statuses[?starts_with(code, `PowerState/`)].displayStatus | [0]
+                    }' \
+                    -o json 2>/dev/null || echo '{"error": "not_found"}')
+
+                  if echo "$VM_INFO" | jq -e '.error' >/dev/null 2>&1; then
+                    echo "❌ VM が見つかりません"
+                    echo "status=not_found" >> "$GITHUB_OUTPUT"
+                    echo "was_stopped=false" >> "$GITHUB_OUTPUT"
+                    exit 1
+                  fi
+
+                  POWER_STATE=$(echo "$VM_INFO" | jq -r '.powerState // "Unknown"')
+
+                  echo "📊 現在の状態:"
+                  echo "  - 電源状態: $POWER_STATE"
+                  echo ""
+
+                  # 停止/割り当て解除の場合は自動起動
+                  if [ "$POWER_STATE" = "VM deallocated" ] || [ "$POWER_STATE" = "VM stopped" ]; then
+                    echo "⚠️ MySQL VM が停止しています（Azure Policy による自動停止の可能性）"
+                    echo "🚀 VM を起動します..."
+                    echo ""
+
+                    az vm start \
+                      --resource-group "$RESOURCE_GROUP_NAME" \
+                      --name "$VM_NAME"
+
+                    echo "✅ 起動コマンド実行完了"
+                    echo ""
+
+                    # 起動待機（最大 5 分）
+                    echo "⏳ VM 起動を待機中..."
+                    for i in {1..10}; do
+                      sleep 30
+                      NEW_STATE=$(az vm get-instance-view \
+                        --resource-group "$RESOURCE_GROUP_NAME" \
+                        --name "$VM_NAME" \
+                        --query 'instanceView.statuses[?starts_with(code, `PowerState/`)].displayStatus | [0]' \
+                        -o tsv 2>/dev/null || echo "Unknown")
+
+                      echo "[$i/10] 電源状態: $NEW_STATE"
+
+                      if [ "$NEW_STATE" = "VM running" ]; then
+                        echo "✅ VM が起動しました"
+                        break
+                      fi
+                    done
+
+                    # MySQL サービス起動のために追加待機
+                    echo "⏳ MySQL サービス起動を待機中（30秒）..."
+                    sleep 30
+
+                    echo "status=started" >> "$GITHUB_OUTPUT"
+                    echo "was_stopped=true" >> "$GITHUB_OUTPUT"
+                  elif [ "$POWER_STATE" = "VM running" ]; then
+                    echo "✅ MySQL VM は稼働中です"
+                    echo "status=running" >> "$GITHUB_OUTPUT"
+                    echo "was_stopped=false" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "⚠️ 予期しない電源状態: $POWER_STATE"
+                    echo "status=$POWER_STATE" >> "$GITHUB_OUTPUT"
+                    echo "was_stopped=false" >> "$GITHUB_OUTPUT"
+                  fi
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Step 3: kubectl 認証情報を取得
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            - name: AKS 認証情報を取得
+              run: |
+                  az aks get-credentials \
+                    --resource-group "$RESOURCE_GROUP_NAME" \
+                    --name "$AKS_CLUSTER_NAME" \
+                    --overwrite-existing
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Step 4: Ingress Controller 状態確認
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            - name: Ingress Controller 状態を確認
+              id: ingress_check
+              run: |
+                  set -euo pipefail
+
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "🔍 Ingress Controller 状態確認"
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+                  # Ingress Controller Pod の状態確認
+                  CONTROLLER_PODS=$(kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller -o json 2>/dev/null || echo '{"items":[]}')
+                  RUNNING_PODS=$(echo "$CONTROLLER_PODS" | jq '[.items[] | select(.status.phase == "Running")] | length')
+                  TOTAL_PODS=$(echo "$CONTROLLER_PODS" | jq '.items | length')
+
+                  echo "📊 Ingress Controller Pod 状態:"
+                  echo "  - 実行中: $RUNNING_PODS / $TOTAL_PODS"
+
+                  if [ "$RUNNING_PODS" = "0" ]; then
+                    echo "⚠️ Ingress Controller が実行されていません"
+                    
+                    # Pod の詳細状態を表示
+                    kubectl get pods -n ingress-nginx -o wide || true
+                    kubectl describe pods -n ingress-nginx -l app.kubernetes.io/component=controller || true
+                    
+                    echo "healthy=false" >> "$GITHUB_OUTPUT"
+                    echo "lb_ip=" >> "$GITHUB_OUTPUT"
+                    exit 0
+                  fi
+
+                  # LoadBalancer Service の状態確認
+                  LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+                    -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+
+                  echo ""
+                  echo "📊 LoadBalancer 状態:"
+                  if [ -n "$LB_IP" ]; then
+                    echo "  - External IP: $LB_IP"
+                    echo "healthy=true" >> "$GITHUB_OUTPUT"
+                    echo "lb_ip=$LB_IP" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "  - External IP: <pending>"
+                    echo "⚠️ LoadBalancer IP がまだ割り当てられていません"
+                    
+                    # LoadBalancer IP 取得を待機（最大 5 分）
+                    echo "⏳ LoadBalancer IP 割り当てを待機中..."
+                    for i in {1..10}; do
+                      sleep 30
+                      LB_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+                        -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+                      
+                      if [ -n "$LB_IP" ]; then
+                        echo "✅ LoadBalancer IP 取得: $LB_IP"
+                        echo "healthy=true" >> "$GITHUB_OUTPUT"
+                        echo "lb_ip=$LB_IP" >> "$GITHUB_OUTPUT"
+                        break
+                      fi
+                      echo "[$i/10] 待機中..."
+                    done
+                    
+                    if [ -z "$LB_IP" ]; then
+                      echo "❌ LoadBalancer IP を取得できませんでした"
+                      echo "healthy=false" >> "$GITHUB_OUTPUT"
+                      echo "lb_ip=" >> "$GITHUB_OUTPUT"
+                    fi
+                  fi
+
+                  echo ""
+                  echo "📋 Service 詳細:"
+                  kubectl get svc -n ingress-nginx
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Step 5: Board App 状態確認
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            - name: Board App 状態を確認
+              id: app_check
+              if: ${{ github.event.inputs.skip_app_check != 'true' }}
+              env:
+                  LB_IP: ${{ steps.ingress_check.outputs.lb_ip }}
+              run: |
+                  set -euo pipefail
+
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "🔍 Board App 状態確認"
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+                  BOARD_NS="board-app"
+                  HEALTHY=true
+
+                  # Pod 状態確認
+                  echo "📊 Pod 状態:"
+                  APP_PODS=$(kubectl get pods -n "$BOARD_NS" -l app=board-app -o json 2>/dev/null || echo '{"items":[]}')
+                  API_PODS=$(kubectl get pods -n "$BOARD_NS" -l app=board-api -o json 2>/dev/null || echo '{"items":[]}')
+
+                  APP_RUNNING=$(echo "$APP_PODS" | jq '[.items[] | select(.status.phase == "Running")] | length')
+                  API_RUNNING=$(echo "$API_PODS" | jq '[.items[] | select(.status.phase == "Running")] | length')
+
+                  echo "  - board-app: $APP_RUNNING 個の Pod が Running"
+                  echo "  - board-api: $API_RUNNING 個の Pod が Running"
+
+                  if [ "$APP_RUNNING" = "0" ]; then
+                    echo "⚠️ board-app Pod が実行されていません"
+                    HEALTHY=false
+                  fi
+
+                  if [ "$API_RUNNING" = "0" ]; then
+                    echo "⚠️ board-api Pod が実行されていません"
+                    HEALTHY=false
+                  fi
+
+                  # 外部疎通確認（LoadBalancer IP がある場合）
+                  if [ -n "$LB_IP" ]; then
+                    echo ""
+                    echo "📊 外部疎通確認:"
+                    
+                    # HTML ページ確認
+                    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "http://$LB_IP/" 2>/dev/null || echo "000")
+                    echo "  - HTML ページ: HTTP $HTTP_STATUS"
+                    
+                    if [ "$HTTP_STATUS" = "200" ]; then
+                      echo "  ✅ HTML 配信成功"
+                    else
+                      echo "  ⚠️ HTML 配信失敗"
+                      HEALTHY=false
+                    fi
+                    
+                    # API 確認
+                    API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "http://$LB_IP/api/posts" 2>/dev/null || echo "000")
+                    echo "  - API エンドポイント: HTTP $API_STATUS"
+                    
+                    if [ "$API_STATUS" = "200" ] || [ "$API_STATUS" = "304" ]; then
+                      echo "  ✅ API 疎通成功"
+                    else
+                      echo "  ⚠️ API 疎通失敗"
+                      HEALTHY=false
+                    fi
+                  else
+                    echo "⚠️ LoadBalancer IP が取得できていないため外部疎通確認をスキップ"
+                    HEALTHY=false
+                  fi
+
+                  echo ""
+                  if [ "$HEALTHY" = "true" ]; then
+                    echo "✅ Board App は正常です"
+                    echo "healthy=true" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "⚠️ Board App に問題があります"
+                    echo "healthy=false" >> "$GITHUB_OUTPUT"
+                    
+                    # デバッグ情報
+                    echo ""
+                    echo "📋 デバッグ情報:"
+                    kubectl get pods -n "$BOARD_NS" -o wide || true
+                    kubectl get svc -n "$BOARD_NS" || true
+                    kubectl get ingress -n "$BOARD_NS" || true
+                  fi
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Step 6: 再デプロイ判定
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            - name: 再デプロイ要否を判定
+              id: decision
+              env:
+                  AKS_WAS_STOPPED: ${{ steps.aks_check.outputs.was_stopped }}
+                  VM_WAS_STOPPED: ${{ steps.vm_check.outputs.was_stopped }}
+                  INGRESS_HEALTHY: ${{ steps.ingress_check.outputs.healthy }}
+                  APP_HEALTHY: ${{ steps.app_check.outputs.healthy }}
+                  FORCE_REDEPLOY: ${{ github.event.inputs.force_redeploy }}
+              run: |
+                  set -euo pipefail
+
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "📊 ヘルスチェック結果サマリ"
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "AKS 停止からの復旧: $AKS_WAS_STOPPED"
+                  echo "VM 停止からの復旧: $VM_WAS_STOPPED"
+                  echo "Ingress 正常: $INGRESS_HEALTHY"
+                  echo "App 正常: $APP_HEALTHY"
+                  echo "強制再デプロイ: $FORCE_REDEPLOY"
+                  echo ""
+
+                  NEEDS_REDEPLOY=false
+                  NEEDS_POD_RESTART=false
+
+                  # 強制再デプロイ指定
+                  if [ "$FORCE_REDEPLOY" = "true" ]; then
+                    echo "🔄 強制再デプロイが指定されています"
+                    NEEDS_REDEPLOY=true
+                  # AKS 停止から復旧した場合は常に再デプロイ
+                  elif [ "$AKS_WAS_STOPPED" = "true" ]; then
+                    echo "🔄 AKS 停止から復旧したため再デプロイを推奨"
+                    NEEDS_REDEPLOY=true
+                  # VM 停止から復旧した場合は Pod 再起動が必要
+                  elif [ "$VM_WAS_STOPPED" = "true" ]; then
+                    echo "🔄 MySQL VM 停止から復旧したため board-api Pod の再起動を推奨"
+                    NEEDS_POD_RESTART=true
+                  # Ingress または App に問題がある場合
+                  elif [ "$INGRESS_HEALTHY" = "false" ] || [ "${APP_HEALTHY:-true}" = "false" ]; then
+                    echo "🔄 サービスに問題があるため再デプロイを推奨"
+                    NEEDS_REDEPLOY=true
+                  else
+                    echo "✅ すべて正常です。再デプロイは不要です"
+                  fi
+
+                  echo "needs_redeploy=$NEEDS_REDEPLOY" >> "$GITHUB_OUTPUT"
+                  echo "needs_pod_restart=$NEEDS_POD_RESTART" >> "$GITHUB_OUTPUT"
+                  echo ""
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Step 7: VM 復旧時の Pod 再起動
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            - name: board-api Pod を再起動（VM 復旧時）
+              if: steps.vm_check.outputs.was_stopped == 'true'
+              run: |
+                  set -euo pipefail
+
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "🔄 board-api Pod を再起動"
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "MySQL VM が停止から復旧したため、board-api Pod を再起動します"
+                  echo ""
+
+                  # board-api Pod を削除（Deployment が自動で再作成）
+                  kubectl delete pod -n board-app -l app=board-api --wait=false || true
+
+                  echo "⏳ Pod 再起動を待機中（30秒）..."
+                  sleep 30
+
+                  # 新しい Pod の状態確認
+                  echo "📊 再起動後の Pod 状態:"
+                  kubectl get pods -n board-app -o wide
+
+                  # API 疎通確認
+                  echo ""
+                  echo "📊 API 疎通確認:"
+                  API_POD=$(kubectl get pods -n board-app -l app=board-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+                  if [ -n "$API_POD" ]; then
+                    POD_STATUS=$(kubectl get pod -n board-app "$API_POD" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+                    echo "  - Pod: $API_POD"
+                    echo "  - 状態: $POD_STATUS"
+                    
+                    if [ "$POD_STATUS" = "Running" ]; then
+                      echo "  ✅ board-api Pod が正常に再起動しました"
+                    else
+                      echo "  ⚠️ Pod がまだ起動中です。しばらく待ってから確認してください"
+                    fi
+                  else
+                    echo "  ⚠️ board-api Pod が見つかりません"
+                  fi
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Step 8: サマリ出力
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            - name: ヘルスチェック結果をサマリに出力
+              if: always()
+              env:
+                  AKS_STATUS: ${{ steps.aks_check.outputs.status }}
+                  AKS_WAS_STOPPED: ${{ steps.aks_check.outputs.was_stopped }}
+                  VM_STATUS: ${{ steps.vm_check.outputs.status }}
+                  VM_WAS_STOPPED: ${{ steps.vm_check.outputs.was_stopped }}
+                  INGRESS_HEALTHY: ${{ steps.ingress_check.outputs.healthy }}
+                  APP_HEALTHY: ${{ steps.app_check.outputs.healthy }}
+                  LB_IP: ${{ steps.ingress_check.outputs.lb_ip }}
+                  NEEDS_REDEPLOY: ${{ steps.decision.outputs.needs_redeploy }}
+              run: |
+                  {
+                    echo "## 🔄 Azure リソース ヘルスチェック結果"
+                    echo ""
+                    echo "| 項目 | 状態 |"
+                    echo "|------|------|"
+                    
+                    # AKS 状態
+                    if [ "$AKS_WAS_STOPPED" = "true" ]; then
+                      echo "| AKS クラスター | 🔄 停止→起動 |"
+                    elif [ "$AKS_STATUS" = "running" ]; then
+                      echo "| AKS クラスター | ✅ 稼働中 |"
+                    else
+                      echo "| AKS クラスター | ⚠️ $AKS_STATUS |"
+                    fi
+                    
+                    # VM 状態
+                    if [ "$VM_WAS_STOPPED" = "true" ]; then
+                      echo "| MySQL VM | 🔄 停止→起動 |"
+                    elif [ "$VM_STATUS" = "running" ]; then
+                      echo "| MySQL VM | ✅ 稼働中 |"
+                    else
+                      echo "| MySQL VM | ⚠️ $VM_STATUS |"
+                    fi
+                    
+                    # Ingress 状態
+                    if [ "$INGRESS_HEALTHY" = "true" ]; then
+                      echo "| Ingress Controller | ✅ 正常 |"
+                    else
+                      echo "| Ingress Controller | ❌ 異常 |"
+                    fi
+                    
+                    # App 状態
+                    if [ "${APP_HEALTHY:-unknown}" = "true" ]; then
+                      echo "| Board App | ✅ 正常 |"
+                    elif [ "${APP_HEALTHY:-unknown}" = "false" ]; then
+                      echo "| Board App | ❌ 異常 |"
+                    else
+                      echo "| Board App | ⏭️ スキップ |"
+                    fi
+                    
+                    # LoadBalancer IP
+                    if [ -n "$LB_IP" ]; then
+                      echo "| LoadBalancer IP | \`$LB_IP\` |"
+                    else
+                      echo "| LoadBalancer IP | ⚠️ 未割当 |"
+                    fi
+                    
+                    echo ""
+                    
+                    # VM 復旧時のメッセージ
+                    if [ "$VM_WAS_STOPPED" = "true" ]; then
+                      echo "### 🔄 MySQL VM 復旧完了"
+                      echo ""
+                      echo "MySQL VM が停止から復旧したため、board-api Pod を自動再起動しました。"
+                      echo ""
+                    fi
+                    
+                    # 再デプロイ判定
+                    if [ "$NEEDS_REDEPLOY" = "true" ]; then
+                      echo "### ⚠️ 再デプロイ推奨"
+                      echo ""
+                      echo "以下のワークフローを実行してください："
+                      echo ""
+                      echo "1. **2️⃣ Board App Build & Deploy** ワークフローを手動実行"
+                      echo "2. または下のリンクから実行："
+                      echo ""
+                      echo "[▶️ Board App デプロイを実行](https://github.com/${{ github.repository }}/actions/workflows/2-board-app-build-deploy.yml)"
+                    else
+                      echo "### ✅ すべて正常"
+                      echo ""
+                      if [ -n "$LB_IP" ]; then
+                        echo "- 🌐 アプリ URL: http://$LB_IP"
+                        echo "- 🔐 ダミーシークレット: http://$LB_IP/dummy-secret.txt"
+                      fi
+                    fi
+                    
+                    echo ""
+                    echo "---"
+                    echo "_実行時刻: $(date -u '+%Y-%m-%d %H:%M:%S UTC')_"
+                  } >> "$GITHUB_STEP_SUMMARY"
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 自動再デプロイ（オプション）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 注意: 自動再デプロイはコストと時間がかかるため、
+    #       デフォルトでは無効（needs_redeploy の通知のみ）
+    # 有効化するには、以下の条件を変更してください：
+    #   if: false  →  if: needs.health-check.outputs.needs_redeploy == 'true'
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    auto-redeploy:
+        runs-on: ubuntu-latest
+        needs: health-check
+        # 現在は無効（通知のみ）。自動再デプロイを有効にするには以下に変更：
+        # if: needs.health-check.outputs.needs_redeploy == 'true'
+        if: false
+        steps:
+            - name: Board App デプロイワークフローを呼び出し
+              uses: actions/github-script@v7
+              with:
+                  github-token: ${{ secrets.GITHUB_TOKEN }}
+                  script: |
+                      console.log('🔄 Board App 再デプロイを開始します...');
+
+                      await github.rest.actions.createWorkflowDispatch({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        workflow_id: '2-board-app-build-deploy.yml',
+                        ref: 'master',
+                        inputs: {
+                          // 最新イメージを使用（ビルドをスキップ）
+                          // 空の場合は最新コミットをビルド
+                        }
+                      });
+
+                      console.log('✅ Board App デプロイワークフローを起動しました');
