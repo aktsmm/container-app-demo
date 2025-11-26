@@ -55,6 +55,7 @@ az network lb rule update -g "mc-rg-cicd-demo" --lb-name "kubernetes" \
 `azure-health-check.yml` の Step 4.6.1 に「Load Balancer BackendPort 確認・補正」ステップを追加。
 
 処理内容：
+
 1. `kubectl` で Ingress Controller の実際の NodePort を取得
 2. Azure LB Rule の BackendPort と比較
 3. 不一致があれば自動修正
