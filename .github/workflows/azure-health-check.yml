@@ -12,8 +12,7 @@
 #   - 定期実行が必要な場合は schedule を有効化
 #
 # ドキュメント:
-#   - trouble_docs/2025-11-26-aks-24h-auto-stop-recovery.md
-#   - trouble_docs/2025-11-21-aks-loadbalancer-connection-issue.md
+#   - trouble_docs/2025-11-26-aks-24h-auto-stop-full-recovery.md
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 name: 🔄 Azure Health Check & Recovery
 
@@ -509,7 +508,7 @@ jobs:
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       # 問題: AKS 起動後に LB Rule の BackendPort が 80/443 にリセットされることがある
       #       本来は Ingress Controller の NodePort (例: 32573/31489) が必要
-      # 参考: trouble_docs/2025-11-26-subnet-nsg-blocking-http.md
+      # 参考: trouble_docs/2025-11-26-aks-24h-auto-stop-full-recovery.md
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       - name: Load Balancer BackendPort を NodePort に修正
         id: lb_backend_port_fix

@@ -120,10 +120,7 @@
   - Board App / API の外部疎通確認（HTML / API エンドポイント）
 - **ポイント**:
   - **再デプロイ不要**: ネットワーク設定の問題は自動修正されるため、ほとんどのケースで再デプロイは不要
-  - 関連ドキュメント:
-    - `trouble_docs/2025-11-26-aks-24h-auto-stop-recovery.md`
-    - `trouble_docs/2025-11-26-lb-backend-port-reset.md`
-    - `trouble_docs/2025-11-26-subnet-nsg-blocking-http.md`
+  - 関連ドキュメント: `trouble_docs/2025-11-26-aks-24h-auto-stop-full-recovery.md`
 
 ## 8. 直近の実行時間（参考値）
 
