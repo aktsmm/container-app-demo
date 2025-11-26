@@ -356,7 +356,64 @@ jobs:
           kubectl get svc -n ingress-nginx
 
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      # Step 4.5: Azure Load Balancer DSR 設定確認・補正
+      # Step 4.5: Kubernetes Service externalTrafficPolicy 確認・補正
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      - name: externalTrafficPolicy を確認・補正
+        id: traffic_policy_check
+        run: |
+          set -euo pipefail
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔍 Kubernetes Service externalTrafficPolicy 確認"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "📖 externalTrafficPolicy の解説:"
+          echo "  - Cluster: SNAT あり、どのノードからも返せる（推奨）"
+          echo "  - Local: SNAT なし、同一ノードのみ（DSR 動作、戻りパケット問題あり）"
+          echo ""
+
+          # Ingress Controller Service の externalTrafficPolicy を確認
+          TRAFFIC_POLICY=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+            -o jsonpath='{.spec.externalTrafficPolicy}' 2>/dev/null || echo "unknown")
+
+          echo "📊 現在の externalTrafficPolicy: $TRAFFIC_POLICY"
+
+          if [ "$TRAFFIC_POLICY" = "Local" ]; then
+            echo ""
+            echo "⚠️ externalTrafficPolicy が 'Local' です（DSR 動作）"
+            echo "   GitHub Actions からの戻りパケットが届かない可能性があります"
+            echo ""
+            echo "🔧 externalTrafficPolicy を 'Cluster' に変更中..."
+            
+            kubectl patch svc -n ingress-nginx ingress-nginx-controller \
+              -p '{"spec":{"externalTrafficPolicy":"Cluster"}}'
+            
+            # healthCheckNodePort も削除（Cluster モードでは不要かつエラーの原因）
+            # 注意: healthCheckNodePort は Cluster モードでは自動削除されないため、明示的にnullに
+            kubectl patch svc -n ingress-nginx ingress-nginx-controller \
+              --type='json' \
+              -p='[{"op": "remove", "path": "/spec/healthCheckNodePort"}]' 2>/dev/null || true
+            
+            echo "✅ externalTrafficPolicy を 'Cluster' に変更しました"
+            echo ""
+            echo "⏳ 設定反映を待機中（15秒）..."
+            sleep 15
+            
+            # 変更後の状態を確認
+            NEW_POLICY=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+              -o jsonpath='{.spec.externalTrafficPolicy}' 2>/dev/null || echo "unknown")
+            echo "📊 変更後の externalTrafficPolicy: $NEW_POLICY"
+            echo "policy_fixed=true" >> "$GITHUB_OUTPUT"
+          elif [ "$TRAFFIC_POLICY" = "Cluster" ]; then
+            echo "✅ externalTrafficPolicy は 'Cluster' です（正常）"
+            echo "policy_fixed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "⚠️ externalTrafficPolicy を取得できませんでした: $TRAFFIC_POLICY"
+            echo "policy_fixed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # Step 4.6: Azure Load Balancer DSR 設定確認・補正
       # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       - name: Azure Load Balancer DSR 設定を確認・補正
         id: lb_dsr_check
