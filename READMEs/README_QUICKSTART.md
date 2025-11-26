@@ -6,7 +6,7 @@
 
 > 💡 **ローカル開発しない場合**: GitHub Actions でビルド・デプロイするだけなら、Node.js / Python / Docker Desktop は不要です。
 
-#### ✅ 必須（全員）
+#### ✅ 必須
 
 | ツール | 用途 | 確認コマンド | インストール |
 |--------|------|-------------|-------------|
@@ -14,27 +14,17 @@
 | **Azure CLI** (v2.60+) | Azure 操作 | `az --version` | `winget install Microsoft.AzureCLI` |
 | **GitHub CLI (gh)** | Secrets/Variables 登録 | `gh --version` | `winget install GitHub.cli` |
 | **PowerShell 7+** | スクリプト実行 | `$PSVersionTable.PSVersion` | `winget install Microsoft.PowerShell` |
-
-#### ✅ AKS 操作時に必要
-
-| ツール | 用途 | 確認コマンド | インストール |
-|--------|------|-------------|-------------|
 | **kubectl** | AKS 操作 | `kubectl version --client` | `az aks install-cli` |
 | **kubelogin** | AKS 認証 | （kubectl と同時にインストール） | `az aks install-cli` |
+| **Visual Studio Code** | コード編集・IaC 管理・k8s 操作 | - | `winget install Microsoft.VisualStudioCode` |
 
-#### 📝 ローカル開発時のみ必要
+#### 📝 ローカル開発時のみ必要（GitHub Actions でデプロイするなら不要）
 
 | ツール | 用途 | 確認コマンド | インストール |
 |--------|------|-------------|-------------|
 | **Node.js 20 系 + npm** | board-app / board-api 開発 | `node -v` / `npm -v` | [nodejs.org](https://nodejs.org/) |
 | **Python 3.10+** | admin-app (Flask) 開発 | `python --version` | [python.org](https://www.python.org/) |
 | **Docker Desktop** | コンテナビルド | `docker version` | [docker.com](https://www.docker.com/) |
-
-#### 🎨 推奨（あると便利）
-
-| ツール | 用途 |
-|--------|------|
-| **Visual Studio Code** | コード編集・IaC 管理・k8s 操作の統合環境 |
 
 ### 1.2 推奨 VS Code 拡張機能
 
