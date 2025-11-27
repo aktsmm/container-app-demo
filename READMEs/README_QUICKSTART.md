@@ -43,13 +43,76 @@
 - **Azure サブスクリプションの Contributor 以上の権限**: Resource Group 作成、AKS/ACA/VM/Storage のデプロイ、Policy 割り当てが可能であること。
 - **GitHub リポジトリ管理権限**: Actions の設定変更、Secrets/Variables 作成、ワークフロー実行を行うため。
 
-## 2. リポジトリのクローン
+## 2. リポジトリの準備
+
+GitHub Actions で CI/CD を実行するには、**自分が管理権限を持つリポジトリ**が必要です。  
+以下の 2 つの方法から選択してください。
+
+| 方法                                    | おすすめケース                                  | メリット                  |
+| --------------------------------------- | ----------------------------------------------- | ------------------------- |
+| **A. 新規リポジトリにプッシュ（推奨）** | デモ・学習用途、独自にカスタマイズしたい        | シンプル、完全に独立      |
+| **B. フォーク**                         | 元リポジトリの更新を取り込みたい、PR を送りたい | upstream の変更を追跡可能 |
+
+---
+
+### 方法 A: 新規リポジトリにプッシュ（推奨）
+
+デモ環境として独自にカスタマイズする場合はこちらがシンプルです。
 
 ```powershell
+# 1. GitHub で空のリポジトリを作成（README なし、.gitignore なし）
+#    https://github.com/new から作成
+
+# 2. 任意の作業フォルダへ移動してクローン
+# （d:/00_temp は例です。お好みのフォルダに変更してください）
 Set-Location d:/00_temp
-git clone git@github.com:aktsmm/container-app-demo.git
-Set-Location container-app-demo
+git clone git@github.com:aktsmm/azure-devsecops-demo.git
+Set-Location azure-devsecops-demo
+
+# 3. リモート origin を自分のリポジトリに変更
+# <YOUR_GITHUB_USERNAME> を自分の GitHub ユーザー名に置き換え
+git remote set-url origin git@github.com:<YOUR_GITHUB_USERNAME>/azure-devsecops-demo.git
+
+# 4. プッシュ
+git push -u origin master
 ```
+
+---
+
+### 方法 B: フォーク
+
+元リポジトリの更新を取り込みたい場合や、改善点を PR で送りたい場合はこちら。
+
+#### B-1. GitHub でフォーク
+
+1. ブラウザで [aktsmm/azure-devsecops-demo](https://github.com/aktsmm/azure-devsecops-demo) を開く
+2. 右上の **Fork** ボタンをクリック
+3. 自分のアカウントにフォークを作成
+
+#### B-2. フォークしたリポジトリをクローン
+
+```powershell
+# 任意の作業フォルダへ移動（d:/00_temp は例です）
+Set-Location d:/00_temp
+# <YOUR_GITHUB_USERNAME> を自分の GitHub ユーザー名に置き換え
+git clone git@github.com:<YOUR_GITHUB_USERNAME>/azure-devsecops-demo.git
+Set-Location azure-devsecops-demo
+```
+
+#### B-3. （任意）upstream を設定して元リポジトリの更新を取得
+
+```powershell
+# upstream（元リポジトリ）を追加
+git remote add upstream git@github.com:aktsmm/azure-devsecops-demo.git
+
+# 元リポジトリの更新を取得してマージ
+git fetch upstream
+git merge upstream/master
+```
+
+---
+
+> **💡 重要**: どちらの方法でも、後続の手順 5 で GitHub Secrets/Variables を設定し、GitHub Actions を実行するためには、**自分が管理権限を持つリポジトリ**が必要です。
 
 ## 3. Azure へのサインイン
 
