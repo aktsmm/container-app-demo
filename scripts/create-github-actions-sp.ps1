@@ -22,7 +22,7 @@ param(
 
     # [任意] App Registration の表示名 (既定: gha-sp-secret)
     [Parameter()]
-    [string]$DisplayName = 'gha-sp-secret',
+    [string]$DisplayName = 'gha-sp-secret2',
 
     # [任意] 付与するロール (既定: Contributor)。CI/CD ポリシーに合わせて最小権限で上書きする。
     [Parameter()]
@@ -165,11 +165,21 @@ if ($PSCmdlet.ShouldProcess("Service Principal $DisplayName", '作成とロー�
         -RoleDefinitionName $userAccessAdminRoleName `
         -Scope $policyScopeValue
 
-    Write-Host '--- GitHub Actions に設定するシークレット ---'
-    Write-Host "AZURE_CLIENT_ID = $($result.AzureClientId)"
-    Write-Host "AZURE_TENANT_ID = $($result.AzureTenantId)"
-    Write-Host "AZURE_SUBSCRIPTION_ID = $($result.AzureSubscriptionId)"
-    Write-Host "AZURE_CLIENT_SECRET = $($result.AzureClientSecret)"
-    Write-Host '----------------------------------------'
-    Write-Host 'Scope:' $result.RoleScope
+    Write-Host ''
+    Write-Host '============================================'
+    Write-Host '--- setup-github-secrets_variables.ps1 に転記 ---'
+    Write-Host '============================================'
+    Write-Host ''
+    Write-Host '$AzureCredentials = @{'
+    Write-Host "`tAZURE_SUBSCRIPTION_ID = '$($result.AzureSubscriptionId)'"
+    Write-Host "`tAZURE_CLIENT_ID       = '$($result.AzureClientId)'"
+    Write-Host "`tAZURE_CLIENT_SECRET   = '$($result.AzureClientSecret)'"
+    Write-Host "`tAZURE_TENANT_ID       = '$($result.AzureTenantId)'"
+    Write-Host '}'
+    Write-Host ''
+    Write-Host '============================================'
+    Write-Host "Scope: $($result.RoleScope)"
+    Write-Host '============================================'
+    Write-Host ''
+    Write-Host '💡 上記の値を scripts/setup-github-secrets_variables.ps1 の $AzureCredentials に転記してください。'
 }
