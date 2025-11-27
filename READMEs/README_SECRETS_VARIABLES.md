@@ -49,9 +49,9 @@
 ## 5. 推奨運用
 
 1. 新しい環境値を追加する場合は、まず `ignore/環境情報.md` に記述し、Pull Request でコンテキストを共有する。
-2. `scripts/setup-github-secrets_variables.ps1` で GitHub CLI を通して変数/シークレットを一括設定。以下の仕様を満たすため、値の更新はスクリプト冒頭の設定ブロックのみを修正すればよい。
-   - `$DefaultRepo` に既定の `owner/repo` を宣言。`-Repo` 未指定かつ git remote が解決できない場合は `Read-Host` で入力を促す。
-   - `$GitHubVariables` / `$GitHubSecrets` のハッシュテーブルを編集すると、同じ順で `gh variable set` / `gh secret set` を実行。
+2. `scripts/setup-github-secrets_variables.ps1` で GitHub CLI を通して変数/シークレットを一括設定。以下の仕様を満たすため、値の更新はスクリプト先頭の設定ブロックのみを修正すればよい。
+   - `$DefaultRepo` に自分の `owner/repo` を設定。プレースホルダー（`your-username/your-repo`）のまま実行するとエラーで制御される。
+   - `$AzureCredentials` に `create-github-actions-sp.ps1` の出力値を転記。プレースホルダーのまま実行するとエラーで制御される。
    - `-DryRun` スイッチで gh CLI を呼ばずに適用内容のみ確認可能。
 3. クリティカルな値 (DB パスワード、Client Secret 等) はできるだけ Secret 側へ移し、YAML で `secrets.*` を参照するように更新。
 4. 変更後は `gh variable list` / `gh secret list` で実際に登録されているかを確認。

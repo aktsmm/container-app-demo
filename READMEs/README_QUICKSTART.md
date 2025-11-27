@@ -240,6 +240,11 @@ AZURE_CLIENT_SECRET = xxx~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 規定値は `scripts/setup-github-secrets_variables.ps1`（Windows）または `scripts/setup-github-secrets_variables.sh`（Mac/Linux）で一括反映できます。GitHub CLI で認証済みであることが前提です。
 
+> ⚠️ **必須編集**: スクリプト実行前に以下の値を編集してください。プレースホルダーのまま実行するとエラーで停止します。
+>
+> - `$DefaultRepo` / `DEFAULT_REPO` → 自分のリポジトリ（例: `"your-username/azure-devsecops-demo"`）
+> - `$AzureCredentials` / Azure 認証情報 → 手順 4 の `create-github-actions-sp` 出力値を転記
+
 #### Windows (PowerShell)
 
 ```powershell
@@ -259,8 +264,8 @@ chmod +x ./scripts/setup-github-secrets_variables.sh
 
 - スクリプト起動時に「デフォルトパスワードをランダムな値に一括変更しますか？」と確認されます。`Y` を選ぶと `P@ssw0rd!<乱数>` 形式の値が自動生成され、VM/DB/ACA の各パスワード (`VM_ADMIN_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `DB_APP_PASSWORD`, `ACA_ADMIN_PASSWORD`) に一括適用されます。複数項目を同一パスワードで安全に更新できるため、初期セットアップでは **必ず Y を選択** し、出力されたパスワードを安全な場所へ退避してください。`N` を選ぶとデフォルトの `P@ssw0rd!2025` がそのまま使われます（非推奨）。
 
-- スクリプト冒頭の変数（`$DefaultRepo` / `DEFAULT_REPO` など）を編集するだけで既定値を切り替え可能。
-- `AZURE_CLIENT_ID / SECRET / TENANT_ID / AZURE_SUBSCRIPTION_ID` は **手順 4** のスクリプト実行結果をそのまま転記する。（ダミー値はデモ向け）
+- スクリプト先頭の変数（`$DefaultRepo` / `$AzureCredentials`）を編集するだけで既定値を切り替え可能。プレースホルダーのまま実行するとエラーで制御されます。
+- `AZURE_CLIENT_ID / SECRET / TENANT_ID / AZURE_SUBSCRIPTION_ID` は **手順 4** のスクリプト実行結果を `$AzureCredentials` に転記する。
 - `-Repo` を省略し `$DefaultRepo` も空の場合、git remote から自動取得し、それでも不明な場合は対話入力を促します。
 - `-DryRun` は gh CLI を呼ばず実行プランだけを表示します。実際に反映する前の確認に使用してください。
 
@@ -318,9 +323,9 @@ chmod +x ./scripts/setup-github-secrets_variables.sh
 
 - Ingress 用 Static Public IP / DNS 名（`<label>.<region>.cloudapp.azure.com`）は Bicep で作成されるため、GitHub Variables への個別設定は不要です。
 
-> **💡 ヒント**: スクリプト実行前に `scripts/setup-github-secrets_variables.ps1` 冒頭の `$GitHubVariables` / `$GitHubSecrets` ハッシュテーブルを編集してください。実行後は GitHub リポジトリの Settings → Secrets and variables → Actions で確認できます。
+> **💡 ヒント**: スクリプト実行前に `scripts/setup-github-secrets_variables.ps1` 先頭の `$DefaultRepo` と `$AzureCredentials` を編集してください。プレースホルダーのまま実行するとエラーで制御されます。実行後は GitHub リポジトリの Settings → Secrets and variables → Actions で確認できます。
 
-スクリプト内の `$GitHubVariables` / `$GitHubSecrets` ハッシュテーブルを編集することで、プロジェクト固有の値を一括管理できます。
+スクリプト内の `$DefaultRepo` / `$AzureCredentials` を編集することで、プロジェクト固有の値を一括管理できます。
 
 ### 5.2 手動で設定する場合
 

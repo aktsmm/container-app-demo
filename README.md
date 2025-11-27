@@ -5,7 +5,7 @@
 > 詳細手順は [`🚀READMEs/README_QUICKSTART.md`](READMEs/README_QUICKSTART.md) にまとまっています。セットアップ全体を一気に把握したい場合はそちらを先に確認してください。
 
 1. **Service Principal を発行** – `scripts/create-github-actions-sp.ps1` を実行して `AZURE_CLIENT_ID / SECRET / TENANT_ID / SUBSCRIPTION_ID` を取得し、出力内容をメモします。
-2. **GitHub Secrets/Variables を登録** – `scripts/setup-github-secrets_variables.ps1` で上記クレデンシャルと各種パラメーターを GitHub リポジトリへ投入し、`READMEs/README_SECRETS_VARIABLES.md` で定義された最低限のキーが揃っているか確認します。
+2. **GitHub Secrets/Variables を登録** – `scripts/setup-github-secrets_variables.ps1` の先頭で `$DefaultRepo` と `$AzureCredentials` を編集し、スクリプトを実行して GitHub リポジトリへ投入します。未編集の場合はエラーで制御されます。
 3. **Infrastructure Deploy ワークフローを実行** – `1-infra-deploy.yml` を手動トリガーし、Validate → What-If → Deploy → Policy 適用を完了させて基盤を構築します。
 
 > 詳細手順は [`🚀READMEs/README_QUICKSTART.md`](READMEs/README_QUICKSTART.md) にまとまっています。セットアップ全体を一気に把握したい場合はそちらを先に確認してください。
