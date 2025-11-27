@@ -139,6 +139,12 @@ function Test-Command {
 	return [bool](Get-Command -Name $Name -ErrorAction SilentlyContinue)
 }
 
+function Test-GhCliAuthenticated {
+	# GitHub CLI の認証状態を確認
+	$null = gh auth status 2>&1
+	return $LASTEXITCODE -eq 0
+}
+
 function Get-GitHubRepoFromGit {
 	if (-not (Test-Command -Name 'git')) {
 		return $null
@@ -160,6 +166,13 @@ function Get-GitHubRepoFromGit {
 if (-not (Test-Command -Name 'gh')) {
 	throw 'GitHub CLI (gh) が見つかりません。https://cli.github.com/ を参照してインストールしてください。'
 }
+
+# GitHub CLI のログイン状態を確認
+if (-not (Test-GhCliAuthenticated)) {
+	throw 'GitHub CLI にログインしていません。事前に gh auth login を実行してください。'
+}
+
+Write-Host '✅ GitHub CLI 確認完了' -ForegroundColor Green
 
 if (-not $Repo -and $DefaultRepo) {
 	$Repo = $DefaultRepo
