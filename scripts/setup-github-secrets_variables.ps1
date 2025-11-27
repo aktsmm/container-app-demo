@@ -50,7 +50,7 @@ $AzureCredentials = @{
 	AZURE_TENANT_ID       = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
 }
 
-# 必須設定のバリデーション（プレースホルダーチェック）
+# 必須設定のバリデーション（プレースホルダーチェック）以下は変数置き換えをしてるかのチェックをしているだけなので変更しないでください
 $placeholderPatterns = @(
 	'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
 	'xxx~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
