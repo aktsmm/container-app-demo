@@ -14,8 +14,8 @@ Infrastructure Deploy ワークフローで VM デプロイ時にエラーが発
 
 ```
 PublicIPAddressInUseCannotUpdateToDynamic
-Public IP address /subscriptions/***/resourceGroups/RG-cicd-demo/providers/Microsoft.Network/publicIPAddresses/vm-mysql-demo-pip 
-is in use by ipconfig /subscriptions/***/resourceGroups/RG-cicd-demo/providers/Microsoft.Network/networkInterfaces/vm-mysql-demo-nic/ipConfigurations/ipconfig1 
+Public IP address /subscriptions/***/resourceGroups/RG-cicd-demo/providers/Microsoft.Network/publicIPAddresses/vm-mysql-demo-pip
+is in use by ipconfig /subscriptions/***/resourceGroups/RG-cicd-demo/providers/Microsoft.Network/networkInterfaces/vm-mysql-demo-nic/ipConfigurations/ipconfig1
 and cannot be updated from static to dynamic.
 ```
 
@@ -27,12 +27,12 @@ and cannot be updated from static to dynamic.
 
 **使用中の Public IP は Static ↔ Dynamic を変更できない**
 
-| 変更パターン | 結果 |
-|-------------|------|
-| Static → Static | ✅ OK |
-| Dynamic → Dynamic | ✅ OK |
+| 変更パターン         | 結果                      |
+| -------------------- | ------------------------- |
+| Static → Static      | ✅ OK                     |
+| Dynamic → Dynamic    | ✅ OK                     |
 | **Static → Dynamic** | ❌ エラー（使用中は不可） |
-| Dynamic → Static | ❌ エラー（使用中は不可） |
+| Dynamic → Static     | ❌ エラー（使用中は不可） |
 
 ### 状況
 
@@ -71,14 +71,14 @@ properties: {
 
 ## 📊 Static vs Dynamic 比較
 
-| 項目 | Static（静的） | Dynamic（動的） |
-|------|---------------|-----------------|
-| **IP 固定** | ✅ 常に同じ IP | ❌ VM 停止→起動で変わる可能性 |
-| **再デプロイ安定性** | ✅ エラーが起きにくい | ⚠️ 今回のようなエラーリスク |
-| **SSH 接続** | ✅ 接続先が安定 | ⚠️ IP 変更時に再確認必要 |
-| **コスト（Basic SKU）** | 💰 約 ¥400〜500/月 | 💰 約 ¥300〜400/月 |
-| **コスト差** | +約 ¥100/月 程度 | ベースライン |
-| **IaC との相性** | ✅ 冪等性が高い | ⚠️ 状態変更でエラーリスク |
+| 項目                    | Static（静的）        | Dynamic（動的）                 |
+| ----------------------- | --------------------- | ------------------------------- |
+| **IP 固定**             | ✅ 常に同じ IP        | ❌ VM 停止 → 起動で変わる可能性 |
+| **再デプロイ安定性**    | ✅ エラーが起きにくい | ⚠️ 今回のようなエラーリスク     |
+| **SSH 接続**            | ✅ 接続先が安定       | ⚠️ IP 変更時に再確認必要        |
+| **コスト（Basic SKU）** | 💰 約 ¥400〜500/月    | 💰 約 ¥300〜400/月              |
+| **コスト差**            | +約 ¥100/月 程度      | ベースライン                    |
+| **IaC との相性**        | ✅ 冪等性が高い       | ⚠️ 状態変更でエラーリスク       |
 
 ---
 
