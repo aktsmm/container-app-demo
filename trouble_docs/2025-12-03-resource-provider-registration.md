@@ -7,10 +7,10 @@
 | 項目 | 内容 |
 | ---- | ---- |
 | 症状 | `az acr check-name` や `az storage account check-name` の段階で `ERROR: (SubscriptionNotFound) Subscription *** was not found.` が発生し、ユニーク名チェックが停止する。 |
-| 原因 | 新規サブスクリプションで Azure Resource Provider (Microsoft.Compute / Network / Storage / ContainerRegistry / ContainerService / Web / OperationalInsights / Authorization / ManagedIdentity / KeyVault / Insights) が未登録だったため、CLI がリソースタイプを解決できなかった。Portal で一度も該当リソースを作成していない場合、自動登録されない。 |
-| 対応 | Owner/Contributor 権限を持つ Service Principal で `az account set --subscription <SUB_ID>` を実行後、`az provider register --namespace <ProviderName>` を順に実行。基本 11 種類をまとめて登録し、その他はサービス追加時に都度登録する方針に変更。 |
-| 検証 | `az provider list --query "[?namespace=='Microsoft.Compute'||namespace=='Microsoft.Network'||namespace=='Microsoft.Storage'||namespace=='Microsoft.ContainerRegistry'||namespace=='Microsoft.ContainerService'||namespace=='Microsoft.Web'||namespace=='Microsoft.OperationalInsights'||namespace=='Microsoft.Authorization'||namespace=='Microsoft.ManagedIdentity'||namespace=='Microsoft.KeyVault'||namespace=='Microsoft.Insights'].[namespace,registrationState]" -o table` で全て `Registered` になっていることを確認。 |
-| メモ | 未登録 RP は `az provider list --query "[?registrationState!='Registered'].namespace" -o tsv` で抽出し、PowerShell で `foreach ($ns in $notRegistered) { az provider register --namespace $ns }` を回すと一括登録できる。 |
+| 原因 | 新規サブスクリプションで必要な Azure Resource Provider (Microsoft.Compute / Network / Storage / ContainerRegistry / ContainerService / Web / OperationalInsights / Authorization / ManagedIdentity / KeyVault / Insights) が未登録だったため、CLI がリソースタイプを解決できなかった。Portal で未作成のサービスは自動登録されない。 |
+| 対応 | Owner/Contributor 権限を持つ Service Principal で `az account set --subscription <SUB_ID>` を実行後、`az provider register --namespace <ProviderName>` を順に実行。基本 11 種類をまとめて登録し、その他はサービス追加時に都度登録する運用に変更。 |
+| 検証 | `az provider list --query "[?namespace=='Microsoft.Compute'||namespace=='Microsoft.Network'||namespace=='Microsoft.Storage'||namespace=='Microsoft.ContainerRegistry'||namespace=='Microsoft.ContainerService'||namespace=='Microsoft.Web'||namespace=='Microsoft.OperationalInsights'||namespace=='Microsoft.Authorization'||namespace=='Microsoft.ManagedIdentity'||namespace=='Microsoft.KeyVault'||namespace=='Microsoft.Insights'].[namespace,registrationState]" -o table` が全て `Registered` になることを確認。 |
+| メモ | 未登録 RP は `az provider list --query "[?registrationState!='Registered'].namespace" -o tsv` で抽出し、PowerShell の `foreach ($ns in $notRegistered) { az provider register --namespace $ns }` で一括登録すると早い。 |
 
 ## Tips
 
