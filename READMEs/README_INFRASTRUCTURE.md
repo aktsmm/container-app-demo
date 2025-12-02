@@ -38,7 +38,7 @@ VNet 10.0.0.0/16
   - AKS Control Plane: kube-apiserver / controller-manager / scheduler / cluster-autoscaler
   - Container Apps: Console + System logs
   - Storage Account: Transaction メトリック (必要に応じてログカテゴリを追加可能)
-  - VM: System Assigned ID + Custom Script。Azure Monitor Agent は DCR 整備後に追加予定 (コメント参照)。
+  - VM: System Assigned ID + Custom Script。Azure Monitor Agent + Data Collection Rule (DCR) を `vm.bicep` へ追加する計画を README に明記しており、[Azure Monitor Agent overview](https://learn.microsoft.com/azure/azure-monitor/agents/azure-monitor-agent-overview) と [Collect Syslog events](https://learn.microsoft.com/azure/azure-monitor/vm/data-collection-syslog) の手順に従って Syslog/パフォーマンスを Log Analytics へ転送する予定です。
 - **Role Assignment**: VM の Managed Identity に Storage Blob Data Contributor (バックアップ用) を割り当て。
 - **Storage Network**: `publicNetworkAccess: Enabled` + `defaultAction: Deny` + VNet Service Endpoint により、`snet-vm` と `snet-aca` からのみアクセス可能。Private Endpoint 未構成のため Public は有効だが、RBAC と VNet 制限で保護。
 

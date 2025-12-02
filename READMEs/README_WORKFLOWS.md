@@ -35,6 +35,7 @@
 
 - **トリガー**: `push` (`app/board-app/**`, `app/board-api/**`, `app/board-app/k8s/**`), `workflow_run` (1️⃣ 完了時), `workflow_dispatch`
 - **主なステップ**:
+  - GitGuardian で 400+ パターンのシークレット検出を実施し、`vars.GITGUARDIAN_API_KEY` が未設定の場合は自動スキップ + 空 SARIF を生成して証跡を残す。
   - Gitleaks / Trivy FS でソースと IaC をスキャン。
   - Trivy FS が失敗した場合でも空の `trivy-fs-board.sarif` を自動生成し、Step Summary へフォールバック理由を明記して Security タブのノイズを防止。
   - `app/board-app` (React/Vite) と `app/board-api` (Node.js/Express) の Docker Build → `<short_sha>` + `latest` タグ付与 → Trivy Image Scan / SBOM 生成。
@@ -86,13 +87,14 @@
 ## 6. `🔐 Security Scan (CodeQL + Trivy + Gitleaks + GitGuardian)` (`.github/workflows/security-scan.yml`)
 
 - **トリガー**: `push`, `pull_request`, `schedule` (毎日 12:00 JST), `workflow_dispatch`
-- **ジョブ**:
+- **手動入力**: `skip_board_scans`（bool, 既定 false）を `true` にすると Board 系スキャン（Gitleaks/GitGuardian/Trivy IaC）をまとめてスキップ可能。`gh workflow run security-scan.yml -f skip_board_scans=true` のように指定します。
+- **ジョブ構成**:
   1. `codeql` – JavaScript + Python の security-extended クエリ、SARIF 収集
-  2. `gitleaks-scan` – リポジトリ履歴全体を Gitleaks でスキャンし、SARIF を Security タブへアップロード
-  3. `gitguardian-scan` – `vars.GITGUARDIAN_API_KEY` が設定されている場合に ggshield を使って JSON + SARIF を生成し、カテゴリ別アラートへ統合
-  4. `iac-security` – Trivy (FS/IaC/Kubernetes/Image) によりアプリ/Infra を多層スキャン
-  5. `summary` – CodeQL/Gitleaks/GitGuardian/Trivy の検出を統合し、Step Summary + `security-top-findings-json` に上位 3〜5 件を出力
-- **成果物**: `iac-scan-results` (SARIF 一式), `codeql-sarif`, `gitleaks-sarif`, `security-top-findings-json`
+  2. `board-security` – `.github/workflows/board-security-reusable.yml` を呼び出し、Gitleaks/GitGuardian/Trivy(IaC) を再利用ワークフローとして実行。GitGuardian からは `gitguardian_issues` / `gitguardian_has_key` / `gitguardian_scan_error` の出力を返し、親ジョブのサマリーで利用。
+  3. `trivy-filesystem` – リポジトリ全体を Trivy (vuln+secret+config) でスキャンし SARIF を生成
+  4. `trivy-images` – Board/Admin ビルドワークフローの最新アーティファクトから Trivy Image SARIF を収集
+  5. `summary` – すべての SARIF を集約し、CodeQL/Gitleaks/GitGuardian/Trivy の検出を Step Summary + `security-top-findings-json` に出力。Board 系がスキップされた場合は Step Summary にスキップ理由を明記。
+- **成果物**: `codeql-sarif`, `gitleaks-sarif`, `gitguardian-results`, `trivy-iac-sarif`, `trivy-fs-sarif`, `trivy-images-sarif`, `security-top-findings-json`
 
 ### Security Scan ワークフロー実行例
 
@@ -124,7 +126,7 @@
 
 ## 8. 直近の実行時間（参考値）
 
-> 📅 計測日: 2025-11-26 | 環境: GitHub-hosted runner (ubuntu-latest)
+> 📅 計測日: 2025-12-03 | 環境: GitHub-hosted runner (ubuntu-latest) / 直近 5 実行の平均
 
 | ワークフロー                     | 平均実行時間    | 最短   | 最長    | 備考                           |
 | -------------------------------- | --------------- | ------ | ------- | ------------------------------ |
@@ -135,6 +137,13 @@
 | 🔄 Azure Health Check & Recovery | **約 1〜10 分** | 1.2 分 | 9.9 分  | 停止状態からの復旧時は長め     |
 | 🔄 MySQL Backup Upload           | **約 2〜3 分**  | -      | -       | VM 経由のバックアップ転送      |
 | 🧹 Cleanup Workflow Runs         | **約 1 分**     | -      | -       | 古い実行履歴の削除             |
+
+最新の平均値を取得する際は GitHub CLI で直近ランを JSON 取得し、`jq` で平均を計算してください。例：
+
+```pwsh
+gh run list --workflow "1️⃣ Infrastructure Deploy" --limit 5 --json runStartedAt,durationMs \
+  | jq '[.[].durationMs] | {avg: (add/length), raw: .}'
+```
 
 ### 実行時間の変動要因
 

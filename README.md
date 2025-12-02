@@ -50,6 +50,7 @@
 
 - コスト最適化のため、AKS ノード (Standard_B2s)、Container Apps (Consumption)、VM (Standard_B1ms)、ストレージ (Standard_LRS + Cool) など **低コスト SKU** を標準採用しています。
 - Security Scan ワークフローでは GitGuardian の API キーベース検査も有効化しており、`vars.GITGUARDIAN_API_KEY` が設定されている場合は 400+ パターンで履歴全体のシークレット検出を実施します。
+- `2️⃣ Board App Build & Deploy` ワークフローは先頭ジョブで GitGuardian スキャンを実行し、ビルド前にコミット済みシークレットを検出して SARIF を生成します。`vars.GITGUARDIAN_API_KEY` が未設定の場合は自動的にスキップされるため、環境に応じてオン/オフを切り替えられます。
 - `app/board-app/public/dummy-secret.txt` は UI からリンクされるダミー資格情報であり、本物の機密情報ではありません。
 
 ## 2. 主要コンポーネント
@@ -84,7 +85,7 @@ trouble_docs/       # トラブルシューティング履歴
 
 ### ⏱️ ワークフロー実行時間の目安
 
-> 📅 計測日: 2025-11-26 | GitHub-hosted runner (ubuntu-latest)
+> 📅 計測日: 2025-12-03 | GitHub-hosted runner (ubuntu-latest, 直近 5 実行の平均)
 
 | ワークフロー                | 実行時間    |
 | --------------------------- | ----------- |
@@ -95,6 +96,12 @@ trouble_docs/       # トラブルシューティング履歴
 | 🔄 Azure Health Check       | 約 1〜10 分 |
 
 **📦 フルデプロイ合計: 約 15〜20 分**（Board/Admin は並列実行）
+
+最新の実行時間を自分の環境で再測定したい場合は、GitHub CLI で以下のように直近ランの `durationMs` を取得して平均化してください。
+
+```pwsh
+gh run list --workflow "1️⃣ Infrastructure Deploy" --limit 5 --json databaseId,durationMs | jq '[.[].durationMs]'
+```
 
 > 詳細は [`READMEs/README_WORKFLOWS.md`](READMEs/README_WORKFLOWS.md) を参照
 
@@ -127,8 +134,8 @@ trouble_docs/       # トラブルシューティング履歴
 
 - **フル IaC**: AKS/ACA/VM/Storage/Log Analytics/Policy を `infra/main.bicep` に集約し、すべての定数は `infra/parameters/main-dev.parameters.json` に退避。
 - **低コスト設計**: VM `Standard_B1ms`, AKS `Standard_B2s`、Storage `Standard_LRS + Cool`、ACA Consumption など最小構成。
-- **ログ統合**: 現在は AKS Control Plane・Container Apps・Storage からの診断ログ/メトリックを `logAnalytics.outputs.id` に集約済み。VM (MySQL) の Syslog やバックアップスクリプトのログを Log Analytics へ転送するには Azure Monitor Agent + Data Collection Rule の構成が必要であり（参考: [Collect Syslog events from virtual machine client with Azure Monitor](https://learn.microsoft.com/azure/azure-monitor/vm/data-collection-syslog)）、本リポジトリではまだ未導入です。
-- **GitGuardian API キー**: `vars.GITGUARDIAN_API_KEY` を登録すると Security Scan ワークフロー内の GitGuardian ジョブが有効化され、`security-scan` の Step Summary とカテゴリ別アラートに GitGuardian の検出結果が集計されます。未設定の場合は GitGuardian ジョブのみスキップされるため、環境に応じて設定可否を判断してください。
+- **ログ統合**: 現在は AKS Control Plane・Container Apps・Storage からの診断ログ/メトリックを `logAnalytics.outputs.id` に集約済み。VM (MySQL) の Syslog やバックアップスクリプトのログを Log Analytics へ転送するには Azure Monitor Agent + Data Collection Rule の構成が必要であり（参考: [Collect Syslog events from virtual machine client with Azure Monitor](https://learn.microsoft.com/azure/azure-monitor/vm/data-collection-syslog)、[Azure Monitor Agent overview](https://learn.microsoft.com/azure/azure-monitor/agents/azure-monitor-agent-overview)）、本リポジトリではまだ未導入です。次回の IaC 更新で `vm.bicep` に Data Collection Rule と Association を追加する計画を README_INFRASTRUCTURE に記載しています。
+- **GitGuardian API キー**: `vars.GITGUARDIAN_API_KEY` を登録すると Security Scan ワークフロー内の GitGuardian ジョブが有効化され、`security-scan` の Step Summary とカテゴリ別アラートに GitGuardian の検出結果が集計されます。未設定の場合は GitGuardian ジョブのみスキップされるため、環境に応じて設定可否を判断してください。あわせて `workflow_dispatch` で `skip_board_scans=true` を渡すと、Board 向けの Gitleaks/GitGuardian/Trivy(IaC) をまとめてスキップできるため、緊急時やリソース節約時の手動起動で役立ちます。
 - **dummy-secret 露出**: `public/dummy-secret.txt` はダミー値であり、本物の秘密情報を置かない。[`READMEs/README_SECRETS_VARIABLES.md`](READMEs/README_SECRETS_VARIABLES.md) にも明記。
 - **Service Principal 認証**: すべてのワークフローが `vars.AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID` と `secrets.AZURE_SUBSCRIPTION_ID` を使用。
 - **Secrets/Variables 参照表**: 運用に必要なキーは README からも確認できるようにしています。詳細は [`READMEs/README_SECRETS_VARIABLES.md`](READMEs/README_SECRETS_VARIABLES.md) を参照してください。
