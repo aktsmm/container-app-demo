@@ -1,4 +1,5 @@
 name: 1️⃣ Infrastructure Deploy
+run-name: "1️⃣ Infrastructure Deploy – triggered by ${{ github.actor }}"
 
 on:
   workflow_dispatch:
