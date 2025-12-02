@@ -2,7 +2,6 @@ name: 1️⃣ Infrastructure Deploy
 
 on:
   workflow_dispatch:
-  workflow_call:
   push:
     paths:
       - "infra/**"
