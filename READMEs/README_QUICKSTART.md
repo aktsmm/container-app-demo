@@ -96,7 +96,6 @@ $providers = @(
   "Microsoft.ContainerService",
   "Microsoft.Web",
   "Microsoft.OperationalInsights",
-  # ポリシー/ID/Key Vault/Monitor を IaC で管理する場合に備えて登録
   "Microsoft.Authorization",
   "Microsoft.ManagedIdentity",
   "Microsoft.KeyVault",
