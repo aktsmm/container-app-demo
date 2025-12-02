@@ -295,15 +295,6 @@ jobs:
       ACA_SUBNET_NAME: ${{ needs.prepare.outputs.aca_subnet_name }}
       AKS_SKIP_CREATE: ${{ needs.prepare.outputs.aks_skip_create }}
       AKS_SSH_PUBLIC_KEY: ${{ needs.prepare.outputs.aks_ssh_public_key }}
-      BICEP_COMMON_PARAMS: >-
-        --parameters "@${PARAM_FILE}"
-        --parameters location="$LOCATION"
-        --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME"
-        --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD"
-        --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD"
-        --parameters aksName="$AKS_CLUSTER_NAME" vmName="$VM_NAME"
-        --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE" aksNodeResourceGroup="$AKS_NODE_RESOURCE_GROUP"
-        --parameters containerAppsEnvironmentName="$CONTAINER_APPS_ENV_NAME"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -324,21 +315,59 @@ jobs:
 
       - name: Bicep Validate
         run: |
+          set -euo pipefail
+          SSH_VALUE="${AKS_SSH_PUBLIC_KEY:-unused}"
+          COMMON_PARAMS=(
+            --parameters "@${PARAM_FILE}"
+            --parameters location="$LOCATION"
+            --parameters storageAccountName="$STORAGE_ACCOUNT_NAME"
+            --parameters acrName="$ACR_NAME"
+            --parameters vmAdminUsername="$VM_ADMIN_USERNAME"
+            --parameters vmAdminPassword="$VM_ADMIN_PASSWORD"
+            --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD"
+            --parameters mysqlAppUsername="$DB_APP_USERNAME"
+            --parameters mysqlAppPassword="$DB_APP_PASSWORD"
+            --parameters aksName="$AKS_CLUSTER_NAME"
+            --parameters vmName="$VM_NAME"
+            --parameters aksSshPublicKey="$SSH_VALUE"
+            --parameters aksSkipCreate="$AKS_SKIP_CREATE"
+            --parameters aksNodeResourceGroup="$AKS_NODE_RESOURCE_GROUP"
+            --parameters containerAppsEnvironmentName="$CONTAINER_APPS_ENV_NAME"
+          )
           az deployment group validate \
             --resource-group "$RESOURCE_GROUP_NAME" \
             --name "validate-$(date +%s)" \
             --template-file infra/main.bicep \
-            $BICEP_COMMON_PARAMS
+            "${COMMON_PARAMS[@]}"
 
       - name: Bicep What-If
         # 既存 AKS クラスターがある場合は What-If で SSH キー変更エラーが出るためスキップ
         if: ${{ needs.prepare.outputs.aks_skip_create == 'false' }}
         run: |
+          set -euo pipefail
+          SSH_VALUE="${AKS_SSH_PUBLIC_KEY:-unused}"
+          COMMON_PARAMS=(
+            --parameters "@${PARAM_FILE}"
+            --parameters location="$LOCATION"
+            --parameters storageAccountName="$STORAGE_ACCOUNT_NAME"
+            --parameters acrName="$ACR_NAME"
+            --parameters vmAdminUsername="$VM_ADMIN_USERNAME"
+            --parameters vmAdminPassword="$VM_ADMIN_PASSWORD"
+            --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD"
+            --parameters mysqlAppUsername="$DB_APP_USERNAME"
+            --parameters mysqlAppPassword="$DB_APP_PASSWORD"
+            --parameters aksName="$AKS_CLUSTER_NAME"
+            --parameters vmName="$VM_NAME"
+            --parameters aksSshPublicKey="$SSH_VALUE"
+            --parameters aksSkipCreate="$AKS_SKIP_CREATE"
+            --parameters aksNodeResourceGroup="$AKS_NODE_RESOURCE_GROUP"
+            --parameters containerAppsEnvironmentName="$CONTAINER_APPS_ENV_NAME"
+          )
           az deployment group what-if \
             --resource-group "$RESOURCE_GROUP_NAME" \
             --name "whatif-$(date +%s)" \
             --template-file infra/main.bicep \
-            $BICEP_COMMON_PARAMS
+            "${COMMON_PARAMS[@]}"
 
       - name: Bicep Deploy
         id: deploy
@@ -346,11 +375,29 @@ jobs:
           set -euo pipefail
           DEPLOYMENT_NAME="infra-main-$(date +%s)"
           echo "deployment_name=$DEPLOYMENT_NAME" >> "$GITHUB_OUTPUT"
+          SSH_VALUE="${AKS_SSH_PUBLIC_KEY:-unused}"
+          COMMON_PARAMS=(
+            --parameters "@${PARAM_FILE}"
+            --parameters location="$LOCATION"
+            --parameters storageAccountName="$STORAGE_ACCOUNT_NAME"
+            --parameters acrName="$ACR_NAME"
+            --parameters vmAdminUsername="$VM_ADMIN_USERNAME"
+            --parameters vmAdminPassword="$VM_ADMIN_PASSWORD"
+            --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD"
+            --parameters mysqlAppUsername="$DB_APP_USERNAME"
+            --parameters mysqlAppPassword="$DB_APP_PASSWORD"
+            --parameters aksName="$AKS_CLUSTER_NAME"
+            --parameters vmName="$VM_NAME"
+            --parameters aksSshPublicKey="$SSH_VALUE"
+            --parameters aksSkipCreate="$AKS_SKIP_CREATE"
+            --parameters aksNodeResourceGroup="$AKS_NODE_RESOURCE_GROUP"
+            --parameters containerAppsEnvironmentName="$CONTAINER_APPS_ENV_NAME"
+          )
           az deployment group create \
             --resource-group "$RESOURCE_GROUP_NAME" \
             --name "$DEPLOYMENT_NAME" \
             --template-file infra/main.bicep \
-            $BICEP_COMMON_PARAMS \
+            "${COMMON_PARAMS[@]}" \
             --parameters backupContainerName="${BACKUP_CONTAINER_NAME:-mysql-backups}" \
             --only-show-errors
 
