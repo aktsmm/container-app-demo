@@ -296,7 +296,7 @@ jobs:
       AKS_SKIP_CREATE: ${{ needs.prepare.outputs.aks_skip_create }}
       AKS_SSH_PUBLIC_KEY: ${{ needs.prepare.outputs.aks_ssh_public_key }}
       BICEP_COMMON_PARAMS: >-
-        --parameters "@${{ env.PARAM_FILE }}"
+        --parameters "@${PARAM_FILE}"
         --parameters location="$LOCATION"
         --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME"
         --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD"
@@ -487,7 +487,7 @@ jobs:
             --resource-group "$RESOURCE_GROUP_NAME" \
             --name "policy-validate-$(date +%s)" \
             --template-file infra/policy.bicep \
-            --parameters "@${{ env.POLICY_PARAM_FILE }}" \
+            --parameters "@${POLICY_PARAM_FILE}" \
             --parameters managedIdentityLocation="$LOCATION"
 
       - name: Azure Policy What-If (resource group scope)
@@ -496,7 +496,7 @@ jobs:
             --resource-group "$RESOURCE_GROUP_NAME" \
             --name "policy-whatif-$(date +%s)" \
             --template-file infra/policy.bicep \
-            --parameters "@${{ env.POLICY_PARAM_FILE }}" \
+            --parameters "@${POLICY_PARAM_FILE}" \
             --parameters managedIdentityLocation="$LOCATION"
 
       - name: Azure Policy Deploy (resource group scope)
@@ -505,7 +505,7 @@ jobs:
             --resource-group "$RESOURCE_GROUP_NAME" \
             --name "policy-deploy-$(date +%s)" \
             --template-file infra/policy.bicep \
-            --parameters "@${{ env.POLICY_PARAM_FILE }}" \
+            --parameters "@${POLICY_PARAM_FILE}" \
             --parameters managedIdentityLocation="$LOCATION" \
             --only-show-errors
 
