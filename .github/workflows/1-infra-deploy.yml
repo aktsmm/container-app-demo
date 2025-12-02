@@ -13,6 +13,9 @@ permissions:
 env:
   RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
   LOCATION: ${{ vars.LOCATION }}
+  AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+  VM_NAME: ${{ vars.VM_NAME }}
+  ACA_ENVIRONMENT_NAME: ${{ vars.ACA_ENVIRONMENT_NAME }}
   PARAM_FILE: infra/parameters/main-dev.parameters.json
   POLICY_PARAM_FILE: infra/parameters/policy-dev.parameters.json
   ACR_NAME_PREFIX: ${{ vars.ACR_NAME_PREFIX }}
@@ -84,7 +87,11 @@ jobs:
             exit 1
           fi
           NODE_RG="mc-${RESOURCE_GROUP_NAME}"
-          CAE_NAME="cae-${RESOURCE_GROUP_NAME}"
+          if [ -n "${ACA_ENVIRONMENT_NAME:-}" ]; then
+            CAE_NAME="$ACA_ENVIRONMENT_NAME"
+          else
+            CAE_NAME="cae-${RESOURCE_GROUP_NAME}"
+          fi
           RG_EXISTS=$(az group exists --name "$RESOURCE_GROUP_NAME" || echo false)
           if [ "$RG_EXISTS" != "true" ]; then
             RG_EXISTS=false
@@ -151,6 +158,14 @@ jobs:
             echo "MySQL の認証情報が未設定です。GitHub Actions で MYSQL_ROOT_PASSWORD / DB_APP_USERNAME / DB_APP_PASSWORD を定義してください" >&2
             exit 1
           fi
+          if [ -z "${AKS_CLUSTER_NAME:-}" ] || [ "$AKS_CLUSTER_NAME" = "__PIPELINE_OVERRIDDEN__" ]; then
+            echo "AKS クラスター名 (AKS_CLUSTER_NAME) が未設定です" >&2
+            exit 1
+          fi
+          if [ -z "${VM_NAME:-}" ] || [ "$VM_NAME" = "__PIPELINE_OVERRIDDEN__" ]; then
+            echo "VM 名 (VM_NAME) が未設定です" >&2
+            exit 1
+          fi
 
       - name: Ensure resource group exists
         run: |
@@ -162,7 +177,7 @@ jobs:
         id: aks_check
         run: |
           set -euo pipefail
-          AKS_NAME=$(jq -r '.parameters.aksName.value' "${PARAM_FILE}")
+          AKS_NAME="${AKS_CLUSTER_NAME:-}"
           if az aks show -g "$RESOURCE_GROUP_NAME" -n "$AKS_NAME" >/dev/null 2>&1; then
             echo "既存 AKS クラスター $AKS_NAME が見つかったため再作成をスキップします"
             echo "skip_create=true" >> "$GITHUB_OUTPUT"
@@ -221,9 +236,11 @@ jobs:
             --name "validate-$(date +%s)" \
             --template-file infra/main.bicep \
             --parameters "@${{ env.PARAM_FILE }}" \
+            --parameters location="$LOCATION" \
             --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
             --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
             --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
+            --parameters aksName="$AKS_CLUSTER_NAME" vmName="$VM_NAME" \
             --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE" aksNodeResourceGroup="$AKS_NODE_RESOURCE_GROUP" \
             --parameters containerAppsEnvironmentName="$CONTAINER_APPS_ENV_NAME"
 
@@ -236,9 +253,11 @@ jobs:
             --name "whatif-$(date +%s)" \
             --template-file infra/main.bicep \
             --parameters "@${{ env.PARAM_FILE }}" \
+            --parameters location="$LOCATION" \
             --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
             --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
             --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
+            --parameters aksName="$AKS_CLUSTER_NAME" vmName="$VM_NAME" \
             --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE" aksNodeResourceGroup="$AKS_NODE_RESOURCE_GROUP" \
             --parameters containerAppsEnvironmentName="$CONTAINER_APPS_ENV_NAME"
 
@@ -253,10 +272,12 @@ jobs:
             --name "$DEPLOYMENT_NAME" \
             --template-file infra/main.bicep \
             --parameters "@${{ env.PARAM_FILE }}" \
+            --parameters location="$LOCATION" \
             --parameters storageAccountName="$STORAGE_ACCOUNT_NAME" acrName="$ACR_NAME" \
             --parameters backupContainerName="${BACKUP_CONTAINER_NAME:-mysql-backups}" \
             --parameters vmAdminUsername="$VM_ADMIN_USERNAME" vmAdminPassword="$VM_ADMIN_PASSWORD" \
             --parameters mysqlRootPassword="$MYSQL_ROOT_PASSWORD" mysqlAppUsername="$DB_APP_USERNAME" mysqlAppPassword="$DB_APP_PASSWORD" \
+            --parameters aksName="$AKS_CLUSTER_NAME" vmName="$VM_NAME" \
             --parameters aksSshPublicKey="${AKS_SSH_PUBLIC_KEY:-unused}" aksSkipCreate="$AKS_SKIP_CREATE" aksNodeResourceGroup="$AKS_NODE_RESOURCE_GROUP" \
             --parameters containerAppsEnvironmentName="$CONTAINER_APPS_ENV_NAME" \
             --only-show-errors

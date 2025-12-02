@@ -82,6 +82,34 @@
 - **Azure サブスクリプションの Contributor 以上の権限**: Resource Group 作成、AKS/ACA/VM/Storage のデプロイ、Policy 割り当てが可能であること。
 - **GitHub リポジトリ管理権限**: Actions の設定変更、Secrets/Variables 作成、ワークフロー実行を行うため。
 
+### 1.4 新規サブスクリプション利用時の Resource Provider 登録
+
+Azure では、サブスクリプションごとに利用するリソースプロバイダー (Microsoft.Compute / Microsoft.Network / Microsoft.Storage / Microsoft.ContainerRegistry / Microsoft.ContainerService / Microsoft.Web / Microsoft.OperationalInsights など) を事前登録しておく必要があります。未登録のまま `1️⃣ Infrastructure Deploy` を実行すると `SubscriptionNotFound` や `MissingSubscriptionRegistration` エラーが発生するため、**新しいサブスクリプションで初めてデプロイする前に必ず登録**してください。また、ポリシー割り当てやマネージド ID/Key Vault/監査ログを IaC で扱う場合は Microsoft.Authorization / Microsoft.ManagedIdentity / Microsoft.KeyVault / Microsoft.Insights も登録しておくと後段のワークフローで 403 や登録エラーを避けられます。
+
+```powershell
+az account set --subscription "<SUBSCRIPTION_ID>"
+$providers = @(
+  "Microsoft.Compute",
+  "Microsoft.Network",
+  "Microsoft.Storage",
+  "Microsoft.ContainerRegistry",
+  "Microsoft.ContainerService",
+  "Microsoft.Web",
+  "Microsoft.OperationalInsights",
+  # ポリシー/ID/Key Vault/Monitor を IaC で管理する場合に備えて登録
+  "Microsoft.Authorization",
+  "Microsoft.ManagedIdentity",
+  "Microsoft.KeyVault",
+  "Microsoft.Insights"
+)
+foreach ($ns in $providers) {
+  az provider register --namespace $ns
+}
+az provider list --query "[?namespace=='Microsoft.Compute'||namespace=='Microsoft.Network'||namespace=='Microsoft.Storage'||namespace=='Microsoft.ContainerRegistry'||namespace=='Microsoft.ContainerService'||namespace=='Microsoft.Web'||namespace=='Microsoft.OperationalInsights'||namespace=='Microsoft.Authorization'||namespace=='Microsoft.ManagedIdentity'||namespace=='Microsoft.KeyVault'||namespace=='Microsoft.Insights'].[namespace,registrationState]" -o table
+```
+
+> 📖 参考: [Resolve errors for resource provider registration](https://learn.microsoft.com/azure/azure-resource-manager/troubleshooting/error-register-resource-provider#solution)
+
 ## 2. リポジトリの準備
 
 GitHub Actions で CI/CD を実行するには、**自分が管理権限を持つリポジトリ**が必要です。  

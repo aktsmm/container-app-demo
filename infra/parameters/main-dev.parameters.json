@@ -3,7 +3,7 @@
   "contentVersion": "1.0.0.0",
   "parameters": {
     "location": {
-      "value": "japaneast"
+      "value": "__PIPELINE_OVERRIDDEN__"
     },
     "environmentName": {
       "value": "dev"
@@ -66,7 +66,7 @@
       "value": "__PIPELINE_OVERRIDDEN__"
     },
     "aksName": {
-      "value": "aks-demo-dev"
+      "value": "__PIPELINE_OVERRIDDEN__"
     },
     "aksDnsPrefix": {
       "value": "aksdemodev"
@@ -105,7 +105,7 @@
       "value": "10.244.0.0/16"
     },
     "vmName": {
-      "value": "vm-mysql-demo"
+      "value": "__PIPELINE_OVERRIDDEN__"
     },
     "vmSize": {
       "value": "Standard_B1ms"

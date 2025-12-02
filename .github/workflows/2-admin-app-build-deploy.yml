@@ -37,6 +37,7 @@ env:
   ACA_ADMIN_USERNAME: ${{ vars.ACA_ADMIN_USERNAME }}
   ACA_ADMIN_PASSWORD: ${{ vars.ACA_ADMIN_PASSWORD }}
   PARAM_FILE: infra/parameters/main-dev.parameters.json
+  VM_NAME: ${{ vars.VM_NAME }}
   GH_TOKEN: ${{ github.token }}
 
 jobs:
@@ -170,12 +171,15 @@ jobs:
           fi
           if [ -z "$MYSQL_IP" ]; then
             echo "infra-outputs から MySQL IP を取得できなかったため Azure リソースから解決します" >&2
-            VM_NAME=$(jq -r '.parameters.vmName.value // empty' "$PARAM_FILE")
-            if [ -z "$VM_NAME" ]; then
-              echo "parameters ファイルに vmName が存在しません" >&2
+            RESOLVED_VM_NAME="${VM_NAME:-}"
+            if [ -z "$RESOLVED_VM_NAME" ] || [ "$RESOLVED_VM_NAME" = "__PIPELINE_OVERRIDDEN__" ]; then
+              RESOLVED_VM_NAME=$(jq -r '.parameters.vmName.value // empty' "$PARAM_FILE")
+            fi
+            if [ -z "$RESOLVED_VM_NAME" ] || [ "$RESOLVED_VM_NAME" = "__PIPELINE_OVERRIDDEN__" ]; then
+              echo "VM 名が特定できません。VM_NAME 変数または parameters を確認してください" >&2
               exit 1
             fi
-            MYSQL_IP=$(az vm list-ip-addresses --resource-group "$RESOLVED_RG" --name "$VM_NAME" --query "[0].virtualMachine.network.privateIpAddresses[0]" -o tsv || true)
+            MYSQL_IP=$(az vm list-ip-addresses --resource-group "$RESOLVED_RG" --name "$RESOLVED_VM_NAME" --query "[0].virtualMachine.network.privateIpAddresses[0]" -o tsv || true)
           fi
           MYSQL_PORT=$(jq -r '.parameters.mysqlPort.value // 3306' "$PARAM_FILE")
           if [ -z "$MYSQL_IP" ] || [ "$MYSQL_IP" = "null" ]; then
