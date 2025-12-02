@@ -2,6 +2,7 @@ name: 1️⃣ Infrastructure Deploy
 
 on:
   workflow_dispatch:
+  workflow_call:
   push:
     paths:
       - "infra/**"
@@ -54,6 +55,63 @@ jobs:
       - name: Azure アカウント情報を出力
         run: |
           az account show --output json
+
+      - name: Container Apps 既存環境を自動クリーンアップ
+        run: |
+          set -euo pipefail
+          PARAM_FILE="${{ env.PARAM_FILE }}"
+          if [ ! -f "$PARAM_FILE" ]; then
+            echo "パラメータファイル $PARAM_FILE が存在しません" >&2
+            exit 1
+          fi
+
+          VNET_NAME=$(jq -r '.parameters.vnetName.value' "$PARAM_FILE")
+          ACA_SUBNET=$(jq -r '.parameters.containerAppSubnetName.value' "$PARAM_FILE")
+          if [ -z "$VNET_NAME" ] || [ "$VNET_NAME" = "null" ]; then
+            echo "vnetName が parameters に未設定です" >&2
+            exit 1
+          fi
+          if [ -z "$ACA_SUBNET" ] || [ "$ACA_SUBNET" = "null" ]; then
+            echo "containerAppSubnetName が parameters に未設定です" >&2
+            exit 1
+          fi
+
+          CAE_NAME="${CONTAINER_APPS_ENV_NAME:-}"
+          if [ -z "$CAE_NAME" ] || [ "$CAE_NAME" = "__PIPELINE_OVERRIDDEN__" ]; then
+            CAE_NAME="cae-${RESOURCE_GROUP_NAME}"
+          fi
+
+          if az containerapp env show -g "$RESOURCE_GROUP_NAME" -n "$CAE_NAME" >/dev/null 2>&1; then
+            echo "既存 Container Apps 環境 $CAE_NAME を削除します"
+            az containerapp env delete -g "$RESOURCE_GROUP_NAME" -n "$CAE_NAME" --yes
+            for attempt in {1..30}; do
+              if az containerapp env show -g "$RESOURCE_GROUP_NAME" -n "$CAE_NAME" >/dev/null 2>&1; then
+                echo "削除完了を待機中 (${attempt}/30)"
+                sleep 10
+              else
+                echo "Container Apps 環境 $CAE_NAME の削除を確認しました"
+                break
+              fi
+            done
+          else
+            echo "Container Apps 環境 $CAE_NAME は存在しません"
+          fi
+
+          if az network vnet show --resource-group "$RESOURCE_GROUP_NAME" --name "$VNET_NAME" >/dev/null 2>&1; then
+            if az network vnet subnet show --resource-group "$RESOURCE_GROUP_NAME" --vnet-name "$VNET_NAME" --name "$ACA_SUBNET" >/dev/null 2>&1; then
+              DELEGATED=$(az network vnet subnet show --resource-group "$RESOURCE_GROUP_NAME" --vnet-name "$VNET_NAME" --name "$ACA_SUBNET" --query "properties.delegations[?serviceName=='Microsoft.App/environments']" -o tsv)
+              if [ -n "$DELEGATED" ]; then
+                echo "サブネット $ACA_SUBNET の委任を解放するため削除します"
+                az network vnet subnet delete --resource-group "$RESOURCE_GROUP_NAME" --vnet-name "$VNET_NAME" --name "$ACA_SUBNET"
+              else
+                echo "サブネット $ACA_SUBNET に Container Apps の委任は残っていません"
+              fi
+            else
+              echo "サブネット $ACA_SUBNET は存在しません"
+            fi
+          else
+            echo "VNet $VNET_NAME はまだ作成されていません"
+          fi
 
       - name: Service Principal に Policy 権限を付与
         run: |
