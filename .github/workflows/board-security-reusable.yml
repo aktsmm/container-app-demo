@@ -1,4 +1,5 @@
 name: ♻ Board Security Scan (Reusable)
+run-name: "♻ Board Security Scan – triggered by ${{ github.actor }}"
 
 on:
     workflow_call:

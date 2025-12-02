@@ -1,4 +1,5 @@
 name: 🔐 Security Scan (CodeQL + Trivy + Gitleaks)
+run-name: "🔐 Security Scan – triggered by ${{ github.actor }}"
 
 on:
   push:

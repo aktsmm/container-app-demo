@@ -1,4 +1,5 @@
 name: 2️⃣ Admin App Build & Deploy
+run-name: "2️⃣ Admin App Build & Deploy – triggered by ${{ github.actor }}"
 
 on:
   workflow_dispatch:

@@ -1,4 +1,5 @@
 name: 🧹 Cleanup Workflow Runs (Scheduled)
+run-name: "🧹 Cleanup Workflow Runs – triggered by ${{ github.actor }}"
 
 on:
   schedule:

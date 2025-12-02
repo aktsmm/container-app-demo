@@ -15,6 +15,7 @@
 #   - trouble_docs/2025-11-26-aks-24h-auto-stop-full-recovery.md
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 name: 🔄 Azure Health Check & Recovery
+run-name: "🔄 Azure Health Check & Recovery – triggered by ${{ github.actor }}"
 
 on:
   # 手動実行のみ（定期実行が必要な場合は schedule を有効化）
