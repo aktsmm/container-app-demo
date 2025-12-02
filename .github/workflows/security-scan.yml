@@ -18,6 +18,11 @@ on:
   schedule:
     - cron: "0 3 * * *" # 毎日 03:00 UTC (JST 午前 12時) 定期スキャン
   workflow_dispatch:
+    inputs:
+      skip_board_scans:
+        description: "GitGuardian/Gitleaks/Trivy (Board) をスキップする"
+        type: boolean
+        default: false
 
 permissions:
   # CodeQL と SARIF アップロードで必要な最低権限
@@ -73,364 +78,12 @@ jobs:
           path: codeql-sarif/*.sarif
           if-no-files-found: warn
 
-  # 並列実行グループ2: Gitleaks (シークレット検出)
-  gitleaks-scan:
-    name: Gitleaks (シークレット検出)
-    runs-on: ubuntu-latest
-    steps:
-      - name: コード取得
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # 全履歴を取得
-
-      - name: Gitleaks キャッシュ復元
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/gitleaks
-          key: gitleaks-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            gitleaks-${{ runner.os }}-
-
-      - name: Gitleaks インストール
-        run: |
-          set -euo pipefail
-          VERSION="8.18.4"
-          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o gitleaks.tgz
-          tar -xzf gitleaks.tgz gitleaks
-          sudo install -m 755 gitleaks /usr/local/bin/gitleaks
-          gitleaks version
-
-      - name: Gitleaks でシークレット検出 (全リポジトリ)
-        continue-on-error: true
-        run: |
-          set +e
-          gitleaks detect --no-banner --report-format sarif --report-path gitleaks-repo.sarif
-          EXIT_CODE=$?
-          if [ $EXIT_CODE -ne 0 ]; then
-            echo "⚠️ シークレット検出あり（警告）- Security タブで確認してください"
-          fi
-          exit 0
-
-      - name: Gitleaks SARIF アップロード
-        if: github.actor != 'dependabot[bot]'
-        uses: github/codeql-action/upload-sarif@v4
-        continue-on-error: true
-        with:
-          sarif_file: gitleaks-repo.sarif
-          category: gitleaks
-
-      - name: Gitleaks SARIF アーティファクト保存
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gitleaks-sarif
-          path: gitleaks-repo.sarif
-          if-no-files-found: warn
-
-  # 並列実行グループ2-B: GitGuardian (シークレット検出・強化版)
-  gitguardian-scan:
-    name: GitGuardian (シークレット検出)
-    runs-on: ubuntu-latest
-    outputs:
-      gitguardian_issues: ${{ steps.count_issues.outputs.issues }}
-      has_key: ${{ steps.check-api-key.outputs.has_key }}
-      scan_error: ${{ steps.gg_scan.outputs.scan_error }}
-    steps:
-      - name: コード取得
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # 全履歴を取得
-
-      - name: GitGuardian API キー確認
-        id: check-api-key
-        run: |
-          if [ -z "${{ vars.GITGUARDIAN_API_KEY }}" ]; then
-            echo "⚠️ GitGuardian API キーが設定されていません（スキャンをスキップ）"
-            echo "設定方法:"
-            echo "1. https://dashboard.gitguardian.com/api/personal-access-tokens でトークンを生成"
-            echo "2. Settings → Variables → New repository variable"
-            echo "3. Name: GITGUARDIAN_API_KEY, Value: <生成したトークン>"
-            echo "has_key=false" >> $GITHUB_OUTPUT
-          else
-            echo "✅ GitGuardian API キーが設定されています"
-            echo "has_key=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: GitGuardian スキャン
-        id: gg_scan
-        if: steps.check-api-key.outputs.has_key == 'true'
-        continue-on-error: true
-        run: |
-          set +e
-          # ggshield をインストール
-          pip install --quiet ggshield
-
-          # JSON 形式でスキャン実行とエラー捕捉
-          SCAN_OUTPUT=$(ggshield secret scan repo . --json --output gitguardian-results.json 2>&1)
-          SCAN_EXIT_CODE=$?
-
-          # エラーメッセージをチェック
-          if echo "$SCAN_OUTPUT" | grep -q "Token is missing the required scope"; then
-            echo "::error::❌ GitGuardian API Key に 'scan' スコープが不足しています"
-            echo ""
-            echo "📋 解決手順:"
-            echo "1. https://dashboard.gitguardian.com/api/personal-access-tokens にアクセス"
-            echo "2. 新しいトークンを作成し、以下のスコープを選択:"
-            echo "   ✅ scan (必須)"
-            echo "   ✅ incident:read"
-            echo "   ✅ incident:write"
-            echo "3. GitHub リポジトリの Settings → Secrets and variables → Variables"
-            echo "4. GITGUARDIAN_API_KEY を新しいトークンで更新"
-            echo ""
-            echo "詳細: trouble_docs/2025-11-24-gitguardian-api-key-scope.md"
-            echo "scan_error=scope_missing" >> "$GITHUB_OUTPUT"
-            exit 1
-          elif echo "$SCAN_OUTPUT" | grep -q -E "(401|403|Unauthorized|Forbidden)"; then
-            echo "::error::❌ GitGuardian API Key が無効または権限不足です"
-            echo ""
-            echo "📋 解決手順:"
-            echo "1. API Key が正しく設定されているか確認"
-            echo "2. API Key に 'scan' スコープが含まれているか確認"
-            echo "3. https://dashboard.gitguardian.com/api/personal-access-tokens で新しいトークンを生成"
-            echo "scan_error=auth_failed" >> "$GITHUB_OUTPUT"
-            exit 1
-          elif [ $SCAN_EXIT_CODE -ne 0 ] && [ ! -f gitguardian-results.json ]; then
-            echo "::warning::⚠️ GitGuardian スキャンが失敗しましたが、ワークフローは継続します"
-            echo "$SCAN_OUTPUT"
-            echo "scan_error=unknown" >> "$GITHUB_OUTPUT"
-          else
-            echo "✅ GitGuardian スキャン完了"
-            echo "scan_error=none" >> "$GITHUB_OUTPUT"
-          fi
-
-          # 検出があるか確認
-          if [ -f gitguardian-results.json ] && [ -s gitguardian-results.json ]; then
-            echo "✅ GitGuardian スキャン結果を取得"
-          else
-            echo "⚠️ スキャン結果なし"
-            echo '{"secrets":[]}' > gitguardian-results.json
-          fi
-
-          exit 0
-        env:
-          GITGUARDIAN_API_KEY: ${{ vars.GITGUARDIAN_API_KEY }}
-
-      - name: GitGuardian 未設定時の空ファイル作成
-        if: steps.check-api-key.outputs.has_key == 'false'
-        run: |
-          echo '{"secrets":[]}' > gitguardian-results.json
-
-      - name: GitGuardian 結果を SARIF 変換
-        continue-on-error: true
-        run: |
-          cat > convert-gg-to-sarif.py << 'PYEOF'
-          import json
-          import sys
-          from datetime import datetime
-
-          # GitGuardian JSON を読み込み
-          try:
-              with open('gitguardian-results.json', 'r', encoding='utf-8') as f:
-                  gg_data = json.load(f)
-          except:
-              gg_data = {"scans": []}
-
-          # SARIF フォーマット生成
-          sarif = {
-              "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-              "version": "2.1.0",
-              "runs": [{
-                  "tool": {
-                      "driver": {
-                          "name": "GitGuardian",
-                          "version": "1.0",
-                          "informationUri": "https://www.gitguardian.com/"
-                      }
-                  },
-                  "results": []
-              }]
-          }
-
-          # GitGuardian の実際の JSON 構造を解析
-          # 構造: { "scans": [ { "entities_with_incidents": [ { "filename": "...", "incidents": [...] } ] } ] }
-          if isinstance(gg_data, dict) and "scans" in gg_data:
-              scans = gg_data.get("scans", [])
-              for scan in scans:
-                  if not isinstance(scan, dict):
-                      continue
-                  
-                  # 各コミットの entities_with_incidents を処理
-                  entities = scan.get("entities_with_incidents", [])
-                  for entity in entities:
-                      if not isinstance(entity, dict):
-                          continue
-                      
-                      filename = entity.get("filename", "unknown")
-                      incidents = entity.get("incidents", [])
-                      
-                      # 各インシデントを SARIF に変換
-                      for incident in incidents:
-                          if not isinstance(incident, dict):
-                              continue
-                          
-                          incident_type = incident.get("type", "secret-detected")
-                          policy = incident.get("policy", "Secrets detection")
-                          occurrences = incident.get("occurrences", [])
-                          
-                          # 最初の occurrence から位置情報を取得
-                          line_start = 1
-                          line_end = 1
-                          if occurrences and isinstance(occurrences, list) and len(occurrences) > 0:
-                              first_occ = occurrences[0]
-                              if isinstance(first_occ, dict):
-                                  line_start = first_occ.get("line_start", 1)
-                                  line_end = first_occ.get("line_end", line_start)
-                          
-                          # SARIF result に追加
-                          sarif["runs"][0]["results"].append({
-                              "ruleId": f"gitguardian/{incident_type}",
-                              "level": "error",
-                              "message": {
-                                  "text": f"GitGuardian detected {incident_type} in {filename}"
-                              },
-                              "locations": [{
-                                  "physicalLocation": {
-                                      "artifactLocation": {
-                                          "uri": filename
-                                      },
-                                      "region": {
-                                          "startLine": line_start,
-                                          "endLine": line_end
-                                      }
-                                  }
-                              }],
-                              "properties": {
-                                  "severity": "HIGH",
-                                  "policy": policy
-                              }
-                          })
-
-          # SARIF ファイル出力
-          with open('gitguardian-repo.sarif', 'w', encoding='utf-8') as f:
-              json.dump(sarif, f, indent=2, ensure_ascii=False)
-
-          print(f"✅ SARIF 変換完了: {len(sarif['runs'][0]['results'])} 件の検出")
-          PYEOF
-
-          python convert-gg-to-sarif.py
-
-      - name: GitGuardian SARIF アップロード
-        if: steps.check-api-key.outputs.has_key == 'true' && github.actor != 'dependabot[bot]'
-        uses: github/codeql-action/upload-sarif@v4
-        continue-on-error: true
-        with:
-          sarif_file: gitguardian-repo.sarif
-          category: gitguardian
-
-      - name: 検出数をカウント
-        id: count_issues
-        if: always()
-        run: |
-          if [ -f gitguardian-repo.sarif ]; then
-            ISSUES=$(jq '.runs[0].results | length' gitguardian-repo.sarif 2>/dev/null || echo "0")
-          else
-            ISSUES=0
-          fi
-          echo "issues=$ISSUES" >> "$GITHUB_OUTPUT"
-          echo "GitGuardian: $ISSUES 件のシークレット検出"
-
-          # エラー状態をログに出力（サマリには書き込まない）
-          SCAN_ERROR="${{ steps.gg_scan.outputs.scan_error || 'none' }}"
-          HAS_KEY="${{ steps.check-api-key.outputs.has_key }}"
-
-          if [ "$HAS_KEY" != "true" ]; then
-            echo "⚠️ GitGuardian API Key 未設定 - スキャンをスキップしました"
-          elif [ "$SCAN_ERROR" = "scope_missing" ]; then
-            echo "❌ GitGuardian API Key に 'scan' スコープが不足しています"
-          elif [ "$SCAN_ERROR" = "auth_failed" ]; then
-            echo "❌ GitGuardian 認証エラー - API Key を確認してください"
-          elif [ "$SCAN_ERROR" != "none" ]; then
-            echo "⚠️ GitGuardian スキャンでエラーが発生しました"
-          fi
-
-      - name: GitGuardian 結果を Artifact として保存
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gitguardian-results
-          path: |
-            gitguardian-repo.sarif
-            gitguardian-results.json
-          retention-days: 7
-          if-no-files-found: warn
-
-  # 並列実行グループ3: Trivy IaC スキャン (Bicep/K8s)
-  trivy-iac:
-    name: Trivy IaC (Bicep/K8s)
-    runs-on: ubuntu-latest
-    steps:
-      - name: コード取得
-        uses: actions/checkout@v4
-
-      - name: Trivy DB キャッシュ復元
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/trivy
-          key: trivy-db-${{ runner.os }}-${{ hashFiles('infra/**/*.bicep', 'app/**/k8s/**/*.yaml') }}
-          restore-keys: |
-            trivy-db-${{ runner.os }}-
-
-      - name: Trivy CLI インストール
-        run: |
-          set -euo pipefail
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-          trivy --version
-
-      - name: Bicep (infra/) 設定 & 秘密情報 & ミスコンフィグ スキャン (SARIF)
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          trivy fs infra \
-            --scanners config,secret \
-            --severity CRITICAL,HIGH,MEDIUM \
-            --format sarif --output trivy-infra.sarif \
-            --ignore-unfixed
-
-      - name: Kubernetes マニフェスト (board-app/k8s) スキャン (SARIF)
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          trivy fs app/board-app/k8s \
-            --scanners config,secret \
-            --severity CRITICAL,HIGH,MEDIUM \
-            --format sarif --output trivy-k8s.sarif \
-            --ignore-unfixed
-
-      - name: Trivy SARIF アップロード (infra)
-        if: github.actor != 'dependabot[bot]'
-        uses: github/codeql-action/upload-sarif@v4
-        continue-on-error: true
-        with:
-          sarif_file: trivy-infra.sarif
-          category: trivy-infra
-
-      - name: Trivy SARIF アップロード (k8s)
-        if: github.actor != 'dependabot[bot]'
-        uses: github/codeql-action/upload-sarif@v4
-        continue-on-error: true
-        with:
-          sarif_file: trivy-k8s.sarif
-          category: trivy-k8s
-
-      - name: Trivy IaC SARIF アーティファクト保存
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-iac-sarif
-          path: |
-            trivy-infra.sarif
-            trivy-k8s.sarif
-          if-no-files-found: warn
+  # 並列実行グループ2: Board セキュリティジョブ群 (再利用ワークフロー)
+  board-security:
+    name: Board Security Scans
+    uses: ./.github/workflows/board-security-reusable.yml
+    secrets: inherit
+    if: ${{ !(github.event_name == 'workflow_dispatch' && github.event.inputs.skip_board_scans == 'true') }}
 
   # 並列実行グループ4: Trivy FS 全体スキャン
   trivy-filesystem:
@@ -528,15 +181,7 @@ jobs:
   summary:
     name: まとめレポート
     runs-on: ubuntu-latest
-    needs:
-      [
-        codeql,
-        gitleaks-scan,
-        gitguardian-scan,
-        trivy-iac,
-        trivy-filesystem,
-        trivy-images,
-      ]
+    needs: [codeql, board-security, trivy-filesystem, trivy-images]
     if: always()
     steps:
       - name: すべての SARIF アーティファクトを取得
@@ -700,11 +345,15 @@ jobs:
           echo "2. **Gitleaks** - シークレット・認証情報の漏洩検出（全履歴）" >> $GITHUB_STEP_SUMMARY
 
           # GitGuardian 結果（詳細表示 + エラーハンドリング）
-          GG_ISSUES="${{ needs.gitguardian-scan.outputs.gitguardian_issues || '0' }}"
-          HAS_KEY="${{ needs.gitguardian-scan.outputs.has_key || 'true' }}"
-          SCAN_ERROR="${{ needs.gitguardian-scan.outputs.scan_error || 'none' }}"
+          GG_ISSUES="${{ needs.board-security.outputs.gitguardian_issues || '0' }}"
+          HAS_KEY="${{ needs.board-security.outputs.gitguardian_has_key || 'true' }}"
+          SCAN_ERROR="${{ needs.board-security.outputs.gitguardian_scan_error || 'none' }}"
+          BOARD_SCAN_RESULT="${{ needs.board-security.result || 'skipped' }}"
+          SKIPPED_BY_INPUT="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_board_scans == 'true' }}"
 
-          if [ "$HAS_KEY" != "true" ]; then
+          if [ "$BOARD_SCAN_RESULT" = "skipped" ] && [ "$SKIPPED_BY_INPUT" = "true" ]; then
+            echo "3. **GitGuardian** - ⏭️ 手動実行入力 (skip_board_scans=true) のため GitGuardian/Gitleaks/Trivy(IaC) をまとめてスキップ" >> $GITHUB_STEP_SUMMARY
+          elif [ "$HAS_KEY" != "true" ]; then
             echo "3. **GitGuardian** - ⚠️ API Key 未設定（スキップ）" >> $GITHUB_STEP_SUMMARY
             echo "   - 💡 [設定手順](https://dashboard.gitguardian.com/api/personal-access-tokens) でトークンを生成し、Variables に \`GITGUARDIAN_API_KEY\` を設定" >> $GITHUB_STEP_SUMMARY
             echo "   - 必要なスコープ: **scan** (必須), incident:read, incident:write" >> $GITHUB_STEP_SUMMARY
